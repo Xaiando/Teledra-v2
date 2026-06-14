@@ -2,10 +2,10 @@ import numpy as np
 from teledra_synth import synth_note, mix_waves, fit_to_length, lowpass_filter, reverb, delay, play_sound
 
 SR = 44100
-BEAT = 0.45
-chords = [["D4","F4","A4"],["A3","C4","E4"],["B3","D4","F4"],["G3","B3","D4"]]
-bass_notes = ["D2","A1","B1","G1"]
-lead_motif = ["A5","F5","E5","D5","A4","D5","F5","A5"]
+BEAT = 0.55
+chords = [["E4","G4","B4"],["C4","E4","G4"],["A3","C4","E4"],["B3","D4","F4"]]
+bass_notes = ["E2","C2","A1","B1"]
+lead_motif = ["B4","E5","G5","B5","A5","G5","E5","B4"]
 bar_seconds = BEAT * 4
 bar_len = int(bar_seconds * SR)
 full_track = np.zeros(bar_len * len(chords))
@@ -21,10 +21,10 @@ for j, note in enumerate(lead_motif * len(chords)):
     t = j * BEAT
     if t * SR >= len(full_track):
         break
-    voice = synth_note(note, BEAT * 0.8, wave_type="triangle", attack=0.02, release=0.15, volume=0.12)
+    voice = synth_note(note, BEAT * 0.8, wave_type="sine", attack=0.02, release=0.15, volume=0.12)
     voice = delay(voice, delay_time=BEAT / 2, feedback=0.35, mix=0.3)
     full_track = mix_waves(full_track, voice, start_time=t)
-full_track = lowpass_filter(full_track, cutoff=2600)
+full_track = lowpass_filter(full_track, cutoff=3800)
 full_track = reverb(full_track, room_size=0.6, mix=0.25)
 full_track = fit_to_length(full_track, len(full_track))
 play_sound(full_track, loop=True)

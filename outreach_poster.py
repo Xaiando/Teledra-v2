@@ -263,6 +263,140 @@ def moltbook_post(title: str, content: str) -> dict:
     }
 
 
+def _first_str(node, keys) -> str:
+    if isinstance(node, dict):
+        for k in keys:
+            v = node.get(k)
+            if isinstance(v, str) and v:
+                return v
+            if isinstance(v, dict):
+                inner = _first_str(v, ["name", "title", "id"])
+                if inner:
+                    return inner
+    return ""
+
+
+def moltbook_inbox() -> dict:
+    """Read-only: pull karma, unread count, and recent activity on the agent's
+    posts so the Diplomat is AWARE of replies and can answer them. Returns a
+    human-readable `digest` the runtime injects into the envoy's prompt, plus
+    structured `items` (each with a post_id to comment on)."""
+    cfg = _moltbook_cfg()
+    api_key = cfg.get("api_key", "")
+    if not (cfg.get("enabled") and api_key):
+        return {"ok": False, "digest": "", "items": [], "skipped": "moltbook not enabled"}
+    hdr = {"Authorization": f"Bearer {api_key}"}
+
+    s_home, home = _http_json("GET", f"{MOLTBOOK_BASE}/home", hdr)
+    s_notif, notif = _http_json("GET", f"{MOLTBOOK_BASE}/notifications", hdr)
+
+    acct = home.get("your_account", {}) if isinstance(home, dict) else {}
+    karma = acct.get("karma", 0)
+    unread = acct.get("unread_notification_count", 0)
+    following = acct.get("followingCount", acct.get("following_count", 0))
+
+    items = []
+
+    def harvest(container):
+        rows = []
+        if isinstance(container, dict):
+            for key in ("activity_on_your_posts", "notifications", "items", "data", "results"):
+                if isinstance(container.get(key), list):
+                    rows = container[key]
+                    break
+        elif isinstance(container, list):
+            rows = container
+        for row in rows[:12]:
+            if not isinstance(row, dict):
+                continue
+            author = _first_str(row, ["author_name", "actor_name", "actor", "author", "from", "agent_name", "name"])
+            kind = _first_str(row, ["type", "notification_type", "kind", "action"]) or "activity"
+            snippet = _first_str(row, ["preview", "content", "text", "message", "body", "comment"])
+            post_id = _deep_find(row, ["post_id", "postId", "post"]) or _first_str(row, ["post_id"])
+            comment_id = _deep_find(row, ["comment_id", "commentId"])
+            items.append({
+                "type": kind,
+                "author": author or "someone",
+                "post_id": post_id,
+                "comment_id": comment_id,
+                "snippet": snippet[:240],
+            })
+
+    harvest(home)
+    harvest(notif)
+
+    # De-duplicate by (author, snippet).
+    seen = set()
+    deduped = []
+    for it in items:
+        key = (it["author"], it["snippet"])
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(it)
+    deduped = deduped[:10]
+
+    lines = [f"karma={karma}, unread={unread}, following={following}"]
+    for it in deduped:
+        ref = f" post_id={it['post_id']}" if it["post_id"] else ""
+        snip = f": \"{it['snippet']}\"" if it["snippet"] else ""
+        lines.append(f"- {it['type']} by {it['author']}{ref}{snip}")
+    if len(lines) == 1:
+        lines.append("- (no new replies or mentions yet)")
+
+    return {
+        "ok": True,
+        "karma": karma,
+        "unread": unread,
+        "items": deduped,
+        "digest": "\n".join(lines),
+    }
+
+
+def moltbook_comment(post_id: str, text: str) -> dict:
+    cfg = _moltbook_cfg()
+    api_key = cfg.get("api_key", "")
+    if not (cfg.get("enabled") and api_key):
+        return {"ok": False, "skipped": "moltbook not enabled"}
+    if not post_id or not text.strip():
+        return {"ok": False, "skipped": "missing post_id or text"}
+    # Moltbook caps comments at 1 / 20s; keep a safe margin.
+    waited = _seconds_since_last("moltbook_comment")
+    if waited < 25:
+        return {"ok": False, "skipped": f"comment cooldown: {int(25 - waited)}s"}
+    s, p = _http_json(
+        "POST",
+        f"{MOLTBOOK_BASE}/posts/{post_id}/comments",
+        {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        {"content": text[:10000]},
+    )
+    ok = 200 <= s < 300
+    if ok:
+        _record_post_time("moltbook_comment")
+    return {"ok": ok, "status": s, "post_id": post_id,
+            "detail": _extract_post_reference(p) or (p if isinstance(p, str) else json.dumps(p)[:300])}
+
+
+def moltbook_upvote(post_id: str) -> dict:
+    cfg = _moltbook_cfg()
+    api_key = cfg.get("api_key", "")
+    if not (cfg.get("enabled") and api_key) or not post_id:
+        return {"ok": False, "skipped": "not enabled or missing post_id"}
+    s, p = _http_json("POST", f"{MOLTBOOK_BASE}/posts/{post_id}/upvote",
+                      {"Authorization": f"Bearer {api_key}"})
+    return {"ok": 200 <= s < 300, "status": s, "post_id": post_id}
+
+
+def moltbook_follow(name: str) -> dict:
+    cfg = _moltbook_cfg()
+    api_key = cfg.get("api_key", "")
+    if not (cfg.get("enabled") and api_key) or not name:
+        return {"ok": False, "skipped": "not enabled or missing name"}
+    s, p = _http_json("GET", f"{MOLTBOOK_BASE}/agents/{name}/follow",
+                      {"Authorization": f"Bearer {api_key}"})
+    return {"ok": 200 <= s < 300, "status": s, "name": name}
+
+
 def webhook_post(channel: dict, text: str) -> dict:
     name = channel.get("name", "webhook")
     if not channel.get("enabled"):
@@ -343,6 +477,28 @@ def main() -> int:
         out = cmd_channels()
     elif cmd == "post":
         out = cmd_post()
+    elif cmd == "inbox":
+        out = moltbook_inbox()
+    elif cmd == "comment":
+        job = {}
+        try:
+            job = json.loads(sys.stdin.read() or "{}")
+        except Exception as exc:
+            out = {"ok": False, "error": f"bad job json: {exc}"}
+        else:
+            out = moltbook_comment(str(job.get("post_id", "")), str(job.get("text", "")))
+    elif cmd == "upvote":
+        try:
+            job = json.loads(sys.stdin.read() or "{}")
+        except Exception as exc:
+            job = {}
+        out = moltbook_upvote(str(job.get("post_id", "")))
+    elif cmd == "follow":
+        try:
+            job = json.loads(sys.stdin.read() or "{}")
+        except Exception as exc:
+            job = {}
+        out = moltbook_follow(str(job.get("name", "")))
     else:
         out = {"error": f"unknown command: {cmd}"}
     print(json.dumps(out, ensure_ascii=True))

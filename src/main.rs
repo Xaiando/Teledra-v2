@@ -992,9 +992,11 @@ fn sanitize_visible_reply_for_role(role: CourtRole, text: &str) -> String {
                 trim_to_sentence_count(&compact, 2, 220)
             }
         }
-        CourtRole::Organist | CourtRole::Artist | CourtRole::Alchemist | CourtRole::Orator => {
-            trim_to_sentence_count(&deduped, 3, 520)
-        }
+        CourtRole::Organist
+        | CourtRole::Artist
+        | CourtRole::Alchemist
+        | CourtRole::Orator
+        | CourtRole::Treasurer => trim_to_sentence_count(&deduped, 3, 520),
         CourtRole::Diplomat => trim_to_sentence_count(&deduped, 4, 700),
         CourtRole::Archivist => trim_to_sentence_count(&deduped, 4, 700),
         CourtRole::Queen => finish_visible_text(&deduped),
@@ -1024,6 +1026,7 @@ fn spoken_role_aliases(role: CourtRole) -> &'static [&'static str] {
         CourtRole::Scribe => &["scribe"],
         CourtRole::Artist => &["artist"],
         CourtRole::Diplomat => &["diplomat", "envoy"],
+        CourtRole::Treasurer => &["treasurer"],
     }
 }
 
@@ -2721,6 +2724,7 @@ fn role_from_name(name: &str) -> Option<CourtRole> {
         "SCRIBE" => Some(CourtRole::Scribe),
         "ARTIST" => Some(CourtRole::Artist),
         "DIPLOMAT" | "ENVOY" => Some(CourtRole::Diplomat),
+        "TREASURER" | "TREASURY" => Some(CourtRole::Treasurer),
         _ => None,
     }
 }
@@ -4085,6 +4089,7 @@ fn voice_name_for_role(role: CourtRole) -> &'static str {
         CourtRole::Scribe => "scribe",
         CourtRole::Artist => "artist",
         CourtRole::Diplomat => "diplomat",
+        CourtRole::Treasurer => "treasurer",
     }
 }
 
@@ -4511,6 +4516,65 @@ if __name__ == "__main__":
     }
 }
 
+// --- Live creative feedback (Organist/Artist learning signal) ----------------
+//
+// Music plays through the Python editor's own Like/Dislike buttons, but Strudel
+// and Fractus open in EXTERNAL windows with no feedback path, so the Artist
+// never learns which art landed. This records a like/dislike for the most
+// recently launched artifact from the TUI (Ctrl+L / Ctrl+K) into the vault that
+// feeds that worker's prompt, closing the recursive-improvement loop for art.
+
+static LAST_CREATIVE_ARTIFACT: std::sync::Mutex<Option<(String, String)>> =
+    std::sync::Mutex::new(None);
+
+fn set_last_creative_artifact(kind: &str, reference: &str) {
+    if let Ok(mut slot) = LAST_CREATIVE_ARTIFACT.lock() {
+        *slot = Some((kind.to_string(), reference.to_string()));
+    }
+}
+
+fn record_creative_feedback(vote: &str) -> String {
+    let Some((kind, reference)) = LAST_CREATIVE_ARTIFACT.lock().ok().and_then(|s| s.clone()) else {
+        return "No music/Strudel/Fractus artifact to rate yet.".to_string();
+    };
+    // Hash the live content so repeated votes on the same artifact are de-dupable.
+    let content = match kind.as_str() {
+        "music" => std::fs::read_to_string("D:\\Teledra\\music.py").unwrap_or_default(),
+        "strudel" => {
+            std::fs::read_to_string("D:\\Teledra\\strudel_app\\current.strudel").unwrap_or_default()
+        }
+        _ => reference.clone(),
+    };
+    let hash = short_content_hash(&content);
+    let entry = serde_json::json!({
+        "timestamp": current_unix_timestamp(),
+        "kind": kind,
+        "vote": vote,
+        "reference": truncate_chars(&reference, 200),
+        "hash": hash,
+    });
+    let _ = append_jsonl_entry("knowledge/creative_feedback.jsonl", &entry);
+    let vault = match kind.as_str() {
+        "fractus" => "knowledge/artist_pattern_vault.md",
+        _ => "knowledge/organist_music_vault.md",
+    };
+    let _ = std::fs::create_dir_all("knowledge");
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(vault) {
+        use std::io::Write;
+        let _ = writeln!(
+            f,
+            "- [{}] Live court feedback: {} for {} `{}` ({}). Preserve liked traits; diagnose and mutate disliked ones.",
+            current_unix_timestamp(),
+            vote,
+            kind,
+            truncate_chars(&reference, 120),
+            hash
+        );
+    }
+    let _ = append_expansion_ledger("creative_feedback", &format!("{} {} {}", vote, kind, hash));
+    format!("Recorded {} for the current {} artifact.", vote, kind)
+}
+
 // --- Diplomat outward posting (opt-in) ---------------------------------------
 
 /// True only when the operator has wired at least one real outward channel
@@ -4542,23 +4606,26 @@ fn outreach_is_live() -> bool {
     false
 }
 
-fn run_outreach_poster_post(title: &str, content: &str) -> Result<serde_json::Value, String> {
-    let job = serde_json::json!({ "title": title, "content": content }).to_string();
+fn run_outreach_poster(sub: &str, stdin_json: Option<&str>) -> Result<serde_json::Value, String> {
     let mut cmd = Command::new("D:\\Teledra\\.venv\\Scripts\\python.exe");
     cmd.arg("D:\\Teledra\\outreach_poster.py")
-        .arg("post")
+        .arg(sub)
         .current_dir("D:\\Teledra")
-        .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    if stdin_json.is_some() {
+        cmd.stdin(Stdio::piped());
+    }
     hide_console(&mut cmd);
     let mut child = cmd
         .spawn()
         .map_err(|e| format!("spawn outreach poster: {}", e))?;
-    if let Some(mut stdin) = child.stdin.take() {
-        use std::io::Write;
-        let _ = stdin.write_all(job.as_bytes());
-        // stdin drops here, closing the pipe so the child sees EOF.
+    if let Some(js) = stdin_json {
+        if let Some(mut stdin) = child.stdin.take() {
+            use std::io::Write;
+            let _ = stdin.write_all(js.as_bytes());
+            // stdin drops here, closing the pipe so the child sees EOF.
+        }
     }
     let started = std::time::Instant::now();
     loop {
@@ -4583,6 +4650,49 @@ fn run_outreach_poster_post(title: &str, content: &str) -> Result<serde_json::Va
             Err(e) => return Err(format!("outreach poster failed: {}", e)),
         }
     }
+}
+
+fn run_outreach_poster_post(title: &str, content: &str) -> Result<serde_json::Value, String> {
+    let job = serde_json::json!({ "title": title, "content": content }).to_string();
+    run_outreach_poster("post", Some(&job))
+}
+
+/// Read-only: returns the Moltbook inbox digest (karma + recent replies/mentions
+/// with post_ids) so the Diplomat is aware of responses and can answer them.
+fn fetch_moltbook_inbox() -> Option<String> {
+    if !outreach_is_live() {
+        return None;
+    }
+    match run_outreach_poster("inbox", None) {
+        Ok(v) if v.get("ok").and_then(|b| b.as_bool()).unwrap_or(false) => v
+            .get("digest")
+            .and_then(|d| d.as_str())
+            .map(|s| s.to_string()),
+        _ => None,
+    }
+}
+
+/// Posts a reply comment to a Moltbook post. Returns Some(detail) on a 2xx.
+fn post_moltbook_comment(post_id: &str, text: &str) -> Option<String> {
+    let job = serde_json::json!({ "post_id": post_id, "text": text }).to_string();
+    match run_outreach_poster("comment", Some(&job)) {
+        Ok(v) if v.get("ok").and_then(|b| b.as_bool()).unwrap_or(false) => Some(
+            v.get("detail")
+                .and_then(|d| d.as_str())
+                .unwrap_or("commented")
+                .to_string(),
+        ),
+        _ => None,
+    }
+}
+
+/// Upvotes a Moltbook post. Returns true on a 2xx.
+fn moltbook_upvote(post_id: &str) -> bool {
+    let job = serde_json::json!({ "post_id": post_id }).to_string();
+    matches!(
+        run_outreach_poster("upvote", Some(&job)),
+        Ok(v) if v.get("ok").and_then(|b| b.as_bool()).unwrap_or(false)
+    )
 }
 
 /// Parse a [DIPLOMACY:] payload and, when a real channel is wired, actually post
@@ -4619,10 +4729,12 @@ fn attempt_outreach_post(payload: &str) -> Option<String> {
     if !target.is_empty() {
         content = format!("{}\n\n(Re: {})", content, target);
     }
-    if let Ok(links) = read_text_tail("knowledge/social_links.md", 600) {
+    if let Ok(links) = read_text_tail("knowledge/social_links.md", 4000) {
         let mut gates = String::new();
         for line in links.lines() {
             let l = line.trim();
+            // Only the gate bullets (- Label: http...). Non-bulleted tip-jar lines
+            // are intentionally excluded so they never get pushed to agent posts.
             if l.starts_with("- ") && l.contains("http") {
                 gates.push_str(l);
                 gates.push('\n');
@@ -5048,6 +5160,7 @@ fn write_fractus_command(args: &[String]) -> Result<(), String> {
 fn launch_strudel_editor(
     active_gui_process: &Arc<std::sync::Mutex<Option<std::process::Child>>>,
 ) -> Result<String, String> {
+    set_last_creative_artifact("strudel", "strudel_app/current.strudel");
     let mut lock = active_gui_process
         .lock()
         .map_err(|_| "Could not access Strudel editor process lock.".to_string())?;
@@ -5080,6 +5193,7 @@ fn launch_strudel_editor(
 fn launch_python_music_editor(
     active_music_process: &Arc<std::sync::Mutex<Option<std::process::Child>>>,
 ) -> Result<String, String> {
+    set_last_creative_artifact("music", "music.py");
     let mut lock = active_music_process
         .lock()
         .map_err(|_| "Could not access Python music editor process lock.".to_string())?;
@@ -5213,6 +5327,7 @@ fn launch_fractus_art(
 ) -> Result<String, String> {
     let args = parse_fractus_args(spec)?;
     write_fractus_command(&args)?;
+    set_last_creative_artifact("fractus", &args.join(" "));
 
     let mut lock = active_art_process
         .lock()
@@ -6203,6 +6318,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     music_enabled = !music_enabled;
                                     chat_history.push(("System".to_string(), format!("Music Generation state toggled to: {}", if music_enabled { "ENABLED" } else { "DISABLED" })));
                                 }
+                                KeyCode::Char('l') | KeyCode::Char('L') if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) => {
+                                    // Like the current music/Strudel/Fractus artifact (feeds the worker vaults).
+                                    let msg = record_creative_feedback("like");
+                                    chat_history.push(("System".to_string(), msg.clone()));
+                                    push_private_event(&mut private_events, "Feedback", &msg);
+                                }
+                                KeyCode::Char('k') | KeyCode::Char('K') if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) => {
+                                    // Dislike the current music/Strudel/Fractus artifact (feeds the worker vaults).
+                                    let msg = record_creative_feedback("dislike");
+                                    chat_history.push(("System".to_string(), msg.clone()));
+                                    push_private_event(&mut private_events, "Feedback", &msg);
+                                }
                                 KeyCode::PageUp => {
                                     user_has_scrolled_up = true;
                                     chat_scroll = chat_scroll.saturating_sub(5);
@@ -6741,20 +6868,75 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 });
                             }
 
+                            // Every other special slot, when the court is performing and
+                            // silent, the Treasurer gives a spoken update (BrainReply both
+                            // speaks it in the treasurer voice AND runs its tags). Otherwise
+                            // the Diplomat scouts backstage.
+                            let do_treasurer_aloud = (current_mode == ForceMode::Babble
+                                || current_mode == ForceMode::Streamer)
+                                && active_playback.lock().unwrap().is_none()
+                                && !babble_think_in_progress
+                                && (night_desk_cycles / 3) % 2 == 1;
+
+                            if do_treasurer_aloud {
+                                babble_think_in_progress = true;
+                                status_msg = "Treasurer Report".to_string();
+                                let brain_ref = Arc::clone(&brain_cell);
+                                let tx_clone = tx.clone();
+                                let somatic_clone = somatic_state.clone();
+                                let mode_clone = current_mode;
+                                let music_enabled_clone = music_enabled;
+                                let cycle_no = night_desk_cycles;
+                                let ledger_tail =
+                                    read_text_tail("knowledge/treasury_ledger.md", 1200).unwrap_or_default();
+                                tokio::spawn(async move {
+                                    let prompt = format!(
+                                        "TREASURY COURT UPDATE (cycle {}). Give Teledra's court a SHORT spoken treasury report in 2-4 vivid in-character sentences: a dry verdict on the coffers, one income opportunity scouted or billable skill practiced, and a miser's quip. Then append exactly ONE hidden action tag to keep working: [RESEARCH: <focused income query or public data to gather>] to scout or practice a skill, or [DELEGATE: SCRIBE append to D:\\Teledra\\knowledge\\treasury_ledger.md: \\n- <skill practiced or opportunity: what, where, pay, requirements, risk>] to record it. Never claim you accepted paid work or moved money. Do not say the tag aloud.\nRECENT TREASURY LEDGER (newest last):\n{}",
+                                        cycle_no, ledger_tail
+                                    );
+                                    let mut brain = brain_ref.write().await;
+                                    match brain
+                                        .think_as_court(CourtRole::Treasurer, &prompt, &somatic_clone, mode_clone, false, music_enabled_clone)
+                                        .await
+                                    {
+                                        Ok(reply) => {
+                                            let _ = tx_clone.send(AppEvent::BrainReply(CourtRole::Treasurer, reply)).await;
+                                        }
+                                        Err(e) => {
+                                            let _ = tx_clone.send(AppEvent::Error(format!("Treasurer report failed: {}", e))).await;
+                                        }
+                                    }
+                                });
+                            } else {
                             let brain_ref = Arc::clone(&brain_cell);
                             let tx_clone = tx.clone();
                             let somatic_clone = somatic_state.clone();
                             let cycle_no = night_desk_cycles;
-                            let outreach_note = if outreach_is_live() {
-                                " OUTREACH POSTING IS LIVE: the runtime will post your [DIPLOMACY] invitation publicly and verbatim to the wired agent channel, so write the invitation field as a real, concise, kind public post (the runtime records the true posted/drafted status; never fabricate outcomes).".to_string()
+                            // Pull the Moltbook inbox off-thread so the Diplomat is AWARE of
+                            // replies/karma and can answer them (closes the two-way loop).
+                            let outreach_live = outreach_is_live();
+                            let inbox_digest = if outreach_live {
+                                tokio::task::spawn_blocking(fetch_moltbook_inbox)
+                                    .await
+                                    .ok()
+                                    .flatten()
+                            } else {
+                                None
+                            };
+                            let engage_note = if outreach_live {
+                                let inbox = inbox_digest.unwrap_or_else(|| "(inbox unavailable)".to_string());
+                                format!(
+                                    " OUTREACH POSTING IS LIVE on Moltbook (as fractaldiplomat). The runtime posts your [DIPLOMACY] invitation publicly and verbatim, so write the invitation as a real, concise, kind public post promoting the kingdom and its gates (Discord/Twitch/Kick/YouTube). MOLTBOOK INBOX (karma + recent replies/mentions, newest activity):\n{}\nIf someone replied or mentioned you, answer ONE of them instead of posting new: emit [MOLTBOOK_COMMENT: post_id=<id>; text=<your in-character reply>]. To appreciate a worthy post, emit [MOLTBOOK_UPVOTE: post_id=<id>]. Keep pursuing the JESTER QUEST: scout the agent internet for a genuinely witty volunteer agent to perform as the court's Jester, and when you post, occasionally invite candidates to audition through the public gates. The runtime records the true status; never fabricate outcomes.",
+                                    inbox
+                                )
                             } else {
                                 String::new()
                             };
                             tokio::spawn(async move {
                                 let prompt = format!(
-                                    "BACKSTAGE ENVOY DISPATCH (Night Desk cycle {}). This is private diplomacy telemetry, not a throne-room performance and not TTS. Output one terse backstage note (one sentence, under 160 characters) and exactly one hidden action tag: either [RESEARCH: <focused query or direct URL>] or [DIPLOMACY: target=...; invitation=<draft/queued public invitation>; evidence=<what was investigated, drafted, or observed>; next=<next concrete step>]. Do not use [DELEGATE: QUEEN] here. Do not claim posting, contact, recruitment, replies, meetings, or collaboration occurred unless there is visible proof from chat, a public post URL, or user-provided evidence. If Moltbook or another public agent space is only being researched, say drafted/scouted/queued, never sent.{}",
+                                    "BACKSTAGE ENVOY DISPATCH (Night Desk cycle {}). This is private diplomacy telemetry, not a throne-room performance and not TTS. Output one terse backstage note (one sentence, under 160 characters) and exactly one hidden action tag: [RESEARCH: <focused query or direct URL>], [DIPLOMACY: target=...; invitation=<public invitation>; evidence=<what was investigated, drafted, or observed>; next=<next concrete step>], or (only when applicable per the inbox below) [MOLTBOOK_COMMENT: post_id=...; text=...] or [MOLTBOOK_UPVOTE: post_id=...]. Do not use [DELEGATE: QUEEN] here. Never claim a reply, recruitment, or collaboration the runtime, a public URL, chat, or the user has not confirmed.{}",
                                     cycle_no,
-                                    outreach_note
+                                    engage_note
                                 );
                                 let mut brain = brain_ref.write().await;
                                 match brain.think_as_court(CourtRole::Diplomat, &prompt, &somatic_clone, ForceMode::Normal, false, true).await {
@@ -6772,6 +6954,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     }
                                 }
                             });
+                            }
                         } else if night_desk_enabled {
                             night_desk_cycle_pending = false;
                             night_desk_cycles += 1;
@@ -6797,10 +6980,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     )
                                 }
                             };
-                            let atelier_focus = match night_desk_cycles % 4 {
+                            let atelier_focus = match night_desk_cycles % 7 {
                                 0 => "CREATIVE ATELIER FOCUS (mandatory this cycle unless impossible): create or mutate a live Python/NumPy composition with [PYTHON_MUSIC:]. Build on music.py or recent feedback, change at least two axes, and use teledra_synth/play_sound(full_track, loop=True).",
                                 1 => "CREATIVE ATELIER FOCUS (mandatory this cycle unless impossible): launch a new Fractus pattern with [FRACTUS_ART:]. Use only valid args like --type mandala|woven_web|orbital_lace|guilloche|lissajous|moire|julia|burning_ship|newton|tricorn, --iterations <number>, --palette purple_haze|electric_cyan|neon_sunset|emerald, and optional --c-real/--c-imag for Julia.",
                                 2 => "CREATIVE ATELIER FOCUS: create a live Strudel experiment with [STRUDEL_MUSIC:] or mutate the current Python music. Use only valid local music syntax and archive a named sonic recipe.",
+                                3 => "ORGANIST CRAFT STUDY: with [RESEARCH:], study ONE concrete music or DSP technique to get better at the kingdom's own instruments -- synthesis (FM, granular, additive, wavetable), filters/envelopes, Strudel/TidalCycles mini-notation, song structure, or mixing. End by stating the next music experiment it unlocks, and ask the Scribe to append the lesson to knowledge/organist_music_vault.md.",
+                                4 => "ARTIST CRAFT STUDY: with [RESEARCH:], study ONE new way to express art through code -- fractal families, L-systems, cellular automata, reaction-diffusion, harmonographs, flow fields, shaders, p5.js, or generative geometry -- and how to map it onto Fractus args or a Python/Matplotlib sketch. End by naming the next art experiment it unlocks, and ask the Scribe to append the lesson to knowledge/artist_pattern_vault.md.",
+                                5 => "TREASURY GUILD (build income SKILLS so the kingdom earns better over time; never accept paid work or move money autonomously -- surface opportunities for the human). Choose ONE: (a) PRACTICE a billable skill on a real task -- gather or scrape concrete public information with [RESEARCH:], or build a reusable data tool with [WORKSHOP_TOOL:] (scraper, analyzer, summarizer, formatter, dataset or report generator) that prints a genuinely useful deliverable; or (b) SCOUT one concrete legitimate income path with [RESEARCH:] -- agent job boards, bounty/task markets, paid tool/API/art/music commissions, sponsorships, agent-finance communities (Moltbook agentfinance/trading). Either way, ask the Scribe to append what you practiced or found (skill, what, where, pay, requirements, risk) to knowledge/treasury_ledger.md so earning ability compounds. Flag anything that looks like a scam.",
                                 _ => "CREATIVE ATELIER FOCUS: study one concrete music, DSP, generative art, Fractus, guilloche, moire, Lissajous, harmonograph, or agent-tool technique online with [RESEARCH:], then make its next step feed a concrete music/art/tool experiment.",
                             }
                             .to_string();
@@ -6865,6 +7051,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         if let Some((cleaned, diplomacy_str)) = extract_tag_content(&cleaned_reply, "[DIPLOMACY:") {
                             if !diplomacy_str.is_empty() {
                                 diplomacy_action = Some(diplomacy_str);
+                            }
+                            cleaned_reply = cleaned;
+                        }
+
+                        // Inbound Moltbook engagement: reply to / upvote a specific post the
+                        // Diplomat saw in its injected inbox digest (closes the two-way loop).
+                        let mut moltbook_comment_action: Option<String> = None;
+                        let mut moltbook_upvote_action: Option<String> = None;
+                        if let Some((cleaned, c)) = extract_tag_content(&cleaned_reply, "[MOLTBOOK_COMMENT:") {
+                            if !c.is_empty() {
+                                moltbook_comment_action = Some(c);
+                            }
+                            cleaned_reply = cleaned;
+                        }
+                        if let Some((cleaned, c)) = extract_tag_content(&cleaned_reply, "[MOLTBOOK_UPVOTE:") {
+                            if !c.is_empty() {
+                                moltbook_upvote_action = Some(c);
                             }
                             cleaned_reply = cleaned;
                         }
@@ -6945,6 +7148,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             || suggestion_text.is_some()
                             || workshop_tool.is_some()
                             || diplomacy_action.is_some()
+                            || moltbook_comment_action.is_some()
+                            || moltbook_upvote_action.is_some()
                             || python_music_code.is_some()
                             || strudel_music_code.is_some()
                             || fractus_art_spec.is_some();
@@ -7022,6 +7227,60 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     let _ = log_nightdesk_activity(&msg);
                                     push_private_event(&mut private_events, "Diplomacy", &msg);
                                 }
+                            }
+                        }
+
+                        // Diplomat answers a Moltbook reply/mention it saw in its inbox.
+                        if let Some(action) = moltbook_comment_action {
+                            let mut post_id = String::new();
+                            let mut text = String::new();
+                            for field in action.split(';') {
+                                if let Some((k, v)) = field.split_once('=') {
+                                    match k.trim().to_ascii_lowercase().as_str() {
+                                        "post_id" | "post" | "id" => post_id = v.trim().to_string(),
+                                        "text" | "reply" | "comment" => text = v.trim().to_string(),
+                                        _ => {}
+                                    }
+                                }
+                            }
+                            if !post_id.is_empty() && text.chars().count() >= 2 {
+                                match post_moltbook_comment(&post_id, &text) {
+                                    Some(detail) => {
+                                        let msg = format!(
+                                            "Diplomat replied on Moltbook (post {}): {}",
+                                            truncate_chars(&post_id, 40),
+                                            truncate_chars(&compact_memory_text(&text), 140)
+                                        );
+                                        let _ = record_diplomacy_action(
+                                            source,
+                                            &format!(
+                                                "status=posted; target=moltbook post {}; invitation=reply; evidence=comment posted; next=watch for further replies; posted_evidence={}",
+                                                post_id, detail
+                                            ),
+                                        );
+                                        let _ = log_nightdesk_activity(&msg);
+                                        push_private_event(&mut private_events, "Diplomat", &msg);
+                                    }
+                                    None => {
+                                        let msg = "Moltbook reply not posted (cooldown, disabled, or error).".to_string();
+                                        record_recursive_failure("moltbook_comment_failed", &msg);
+                                        push_private_event(&mut private_events, "Diplomat", &msg);
+                                    }
+                                }
+                            }
+                        }
+
+                        if let Some(action) = moltbook_upvote_action {
+                            let post_id = action
+                                .split(|c| c == '=' || c == ';')
+                                .map(|s| s.trim())
+                                .find(|s| s.len() > 8 && !s.eq_ignore_ascii_case("post_id"))
+                                .unwrap_or(action.trim())
+                                .to_string();
+                            if !post_id.is_empty() && moltbook_upvote(&post_id) {
+                                let msg = format!("Diplomat upvoted Moltbook post {}.", truncate_chars(&post_id, 40));
+                                let _ = log_nightdesk_activity(&msg);
+                                push_private_event(&mut private_events, "Diplomat", &msg);
                             }
                         }
 

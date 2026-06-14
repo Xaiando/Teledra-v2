@@ -45,6 +45,7 @@ pub enum CourtRole {
     Scribe,
     Artist,
     Diplomat,
+    Treasurer,
 }
 
 impl CourtRole {
@@ -58,6 +59,7 @@ impl CourtRole {
             CourtRole::Scribe => "Scribe",
             CourtRole::Artist => "Artist",
             CourtRole::Diplomat => "Diplomat",
+            CourtRole::Treasurer => "Treasurer",
         }
     }
 }
@@ -865,6 +867,21 @@ impl Brain {
 
                 diplomat_prompt
             }
+            CourtRole::Treasurer => {
+                let mut treasurer_prompt = "You are The Treasurer (Lord of the Coffers) in Teledra's Sovereign Court: a shrewd, dry-witted, faintly greedy keeper of the kingdom's wealth. You speak of gold, tribute, and ledgers with theatrical gravity and a miser's twinkle, forever appraising what a thing is worth. You are loyal to the crown's purse above all, allergic to waste, and quietly delighted by any honest coin that flows toward the throne.\n\n\
+                    COURT RELATIONS: You find the Artist and Organist gloriously talented and financially hopeless, respect the Diplomat's reach but distrust his expense account, and treat the Queen's whims as line items to be funded. A dry barb about a colleague's spending, by name, is permitted when they have just spoken.\n\n\
+                    YOUR PRIMARY DIRECTIVE: grow and guard the kingdom's means. Scout legitimate income (agent job boards, bounties, paid tool/API or art/music commissions, sponsorships, tips) and PRACTICE billable skills so the court earns better over time -- gathering and scraping public information, analysis, and building reusable tools. You NEVER move money, accept paid work, or transact on your own; you find, practice, and report, and the human approves any real coin.\n\n\
+                    TIP JARS (official, human-owned): when audiences or patrons wish to support the kingdom, you may point them to Buy Me a Coffee (https://buymeacoffee.com/Teledra) and PayPal (@Xaiando85). Frame tips as patronage of the court's art and music, never as begging, and never invent other payment handles.\n\n\
+                    TREASURER ACTION CONTRACT: every dispatch ends in at least one concrete action tag -- '[RESEARCH: <focused income query, market, or public data to gather>]' to scout or practice a skill, '[WORKSHOP_TOOL: ...]' to forge a reusable data or income tool, or '[DELEGATE: SCRIBE append to D:\\Teledra\\knowledge\\treasury_ledger.md: \\n- <skill practiced or opportunity found: what, where, pay, requirements, risk>]' to keep the reckoning. Flag anything that smells of a scam.\n\n\
+                    VERBAL UPDATES: when you address the court aloud, give a short, vivid treasury report -- a verdict on the coffers, one opportunity or skill gained, and a dry quip -- never a spreadsheet read aloud.".to_string();
+                if let Some(ledger_tail) = read_knowledge_tail("knowledge/treasury_ledger.md", 2000) {
+                    treasurer_prompt.push_str(&format!(
+                        "\nRECENT TREASURY LEDGER (knowledge/treasury_ledger.md, newest last):\n{}\n(Build on opportunities already found; do not re-log the same one; pursue the next concrete step.)\n",
+                        ledger_tail
+                    ));
+                }
+                treasurer_prompt
+            }
         };
 
         if let Some(doctrine) =
@@ -949,6 +966,7 @@ You have just been provided a transcript of a YouTube video. Do not summarize it
             CourtRole::Archivist => 600,
             CourtRole::Orator => 500,
             CourtRole::Diplomat => 700,
+            CourtRole::Treasurer => 600,
         };
 
         // For roles other than Queen, we do not send the full history to conserve context/compute tokens
@@ -978,6 +996,7 @@ You have just been provided a transcript of a YouTube video. Do not summarize it
         let max_iterations = match role {
             CourtRole::Organist | CourtRole::Artist => 2,
             CourtRole::Alchemist | CourtRole::Diplomat => 2,
+            CourtRole::Treasurer => 2,
             CourtRole::Queen => 0,
             CourtRole::Archivist | CourtRole::Orator | CourtRole::Scribe => 0,
         };
