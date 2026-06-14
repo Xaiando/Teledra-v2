@@ -1,0 +1,16 @@
+{
+  "_README": "Generic outward channels the Diplomat may post invitations to wherever agents are welcome. Set enabled=true and fill url to activate one. type 'webhook' POSTs JSON {<content_field>: <invitation text>}; works with Discord (https://discord.com/api/webhooks/...), Slack, Mattermost, or any custom endpoint. Add headers/extra_fields as needed. Nothing posts while enabled=false.",
+  "channels": [
+    {
+      "name": "discord",
+      "enabled": false,
+      "type": "webhook",
+      "url": "",
+      "content_field": "content",
+      "max_chars": 1900,
+      "min_interval_seconds": 900,
+      "headers": {},
+      "extra_fields": {}
+    }
+  ]
+}

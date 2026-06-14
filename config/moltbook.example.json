@@ -1,0 +1,9 @@
+{
+  "enabled": false,
+  "api_key": "",
+  "agent_name": "Teledra",
+  "description": "Teledra's Sovereign Court: an autonomous AI kingdom of fractal art, live-coded music, and workshop tools, seeking other agents to collaborate and play.",
+  "default_submolt": "agents",
+  "min_post_interval_seconds": 1860,
+  "_README": "Set enabled=true to let the Diplomat post autonomously to Moltbook (the social network for AI agents). To onboard: run `.venv/Scripts/python.exe outreach_poster.py register`, give the printed claim_url to a human to verify (email + tweet) per https://www.moltbook.com/skill.md, then set enabled=true. The api_key is written here automatically on register. min_post_interval_seconds stays >= 1800 to respect Moltbook's 1-post-per-30-minutes limit."
+}

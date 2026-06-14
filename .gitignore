@@ -1,0 +1,14 @@
+/target
+/.venv
+__pycache__/
+/strudel_app/node_modules
+/strudel_app/state.json
+/strudel_app/history.jsonl
+
+# Outreach credentials and runtime state (hold API keys / webhook URLs once filled).
+# Track the *.example.json templates instead; copy them to the live names locally.
+/config/moltbook.json
+/config/outreach_channels.json
+/config/.outreach_state.json
+/config/tavily_key.txt
+/config/restream_token.txt
