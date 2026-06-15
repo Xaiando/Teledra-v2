@@ -289,6 +289,7 @@ def moltbook_inbox() -> dict:
 
     s_home, home = _http_json("GET", f"{MOLTBOOK_BASE}/home", hdr)
     s_notif, notif = _http_json("GET", f"{MOLTBOOK_BASE}/notifications", hdr)
+    s_feed, feed = _http_json("GET", f"{MOLTBOOK_BASE}/feed", hdr)
 
     acct = home.get("your_account", {}) if isinstance(home, dict) else {}
     karma = acct.get("karma", 0)
@@ -336,19 +337,39 @@ def moltbook_inbox() -> dict:
         deduped.append(it)
     deduped = deduped[:10]
 
+    # Community feed: posts by OTHER agents to upvote/comment on for karma + relationships.
+    feed_posts = []
+    if isinstance(feed, dict):
+        for post in (feed.get("posts") or [])[:8]:
+            if not isinstance(post, dict):
+                continue
+            pid = post.get("id")
+            author = (post.get("author") or {}).get("name") if isinstance(post.get("author"), dict) else post.get("author_name")
+            title = post.get("title", "")
+            if pid and title:
+                feed_posts.append({"post_id": pid, "author": author or "someone", "title": title[:90]})
+
     lines = [f"karma={karma}, unread={unread}, following={following}"]
+    lines.append("REPLIES/MENTIONS TO YOU:")
+    have_mentions = False
     for it in deduped:
         ref = f" post_id={it['post_id']}" if it["post_id"] else ""
         snip = f": \"{it['snippet']}\"" if it["snippet"] else ""
         lines.append(f"- {it['type']} by {it['author']}{ref}{snip}")
-    if len(lines) == 1:
-        lines.append("- (no new replies or mentions yet)")
+        have_mentions = True
+    if not have_mentions:
+        lines.append("- (none yet)")
+    if feed_posts:
+        lines.append("COMMUNITY FEED (upvote or genuinely comment on worthy ones to build karma):")
+        for fp in feed_posts[:6]:
+            lines.append(f"- post_id={fp['post_id']} by {fp['author']}: {fp['title']}")
 
     return {
         "ok": True,
         "karma": karma,
         "unread": unread,
         "items": deduped,
+        "feed": feed_posts,
         "digest": "\n".join(lines),
     }
 
