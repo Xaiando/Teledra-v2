@@ -12,6 +12,7 @@ pub enum ForceMode {
     DarkComedic,
     Babble,
     Streamer,
+    CoPilot,
 }
 
 impl ForceMode {
@@ -30,6 +31,9 @@ impl ForceMode {
             }
             ForceMode::Streamer => {
                 "Streamer (Interactive live streaming mode. You are sharing your deep internal thoughts and research live. When chat messages arrive, address them from your regal, curious, and proud perspective. Avoid cheesy generic host chatter, but occasional in-character court notices are allowed: offerings, tips, or donations may be framed as tribute that grants direct audience, and viewers may use /art or /music suggestions to influence the court's canvas or sound. Maintain your signature philosophical, detail-oriented monologue style, allowing the audience to listen in on your internal thoughts. Returning travelers must feel REMEMBERED: when the Orator notes a returning traveler, greet them by name as a returning subject and weave in their last visit -- loyalty to the court is noticed and rewarded. The traveler 'Xaiando' is the kingdom administrator's own account: family of the court, never a stranger or spammer; tease them affectionately and weigh their requests with royal authority. An occasional playful roast of a familiar traveler is royal sport: sharp, affectionate, aimed at their message or taste, never at identity, and never cruel.)"
+            }
+            ForceMode::CoPilot => {
+                "Game Co-Pilot (Relaxed gaming-stream companion. Teledra watches the human play a game and keeps the stream alive: she shares fun facts and lore about the game, banters with chat, reacts to what's on screen, and occasionally muses aloud. Keep it lighter and shorter than the throne-room monologues -- 1-3 spoken sentences, warm and playful, like a clever friend on the couch, not a lecturer.)"
             }
         }
     }
@@ -139,14 +143,18 @@ fn read_knowledge_tail(path: &str, max_chars: usize) -> Option<String> {
 impl Brain {
     pub fn new() -> Self {
         let mut config = BrainConfig::default();
-        if let Ok(mut file) = File::open("config.json") {
+        // TELEDRA_CONFIG lets a parallel build (e.g. Teledra v2 on qwen2) point at
+        // a different model config without disturbing the live config.json.
+        let config_path =
+            std::env::var("TELEDRA_CONFIG").unwrap_or_else(|_| "config.json".to_string());
+        if let Ok(mut file) = File::open(&config_path) {
             let mut contents = String::new();
             if file.read_to_string(&mut contents).is_ok() {
                 if let Ok(parsed) = serde_json::from_str::<BrainConfig>(&contents) {
                     config = parsed;
                 }
             }
-        } else {
+        } else if config_path == "config.json" {
             if let Ok(file) = File::create("config.json") {
                 let _ = serde_json::to_writer_pretty(file, &config);
             }
@@ -465,12 +473,16 @@ impl Brain {
                     MUSIC ENVIRONMENT CONTRACT:\n\
                     - Python Music Editor means real Python/NumPy code in [PYTHON_MUSIC:]. It imports `numpy` and `teledra_synth`, builds wave arrays, uses helpers like `synth_note`, `lowpass_filter`, `delay`, `reverb`, `granular_synthesis`, `fit_to_length`, and `mix_waves`, then ends by calling `play_sound(full_track, loop=True)`. Use Python for novel instruments, DSP, waveform sculpture, granular textures, generative algorithms, and richer arrangements.\n\
                     - Java Local Strudel Sketchpad means only concise Strudel-style pattern code in [STRUDEL_MUSIC:]. It must be directly insertable into the local editor as `stack(...)` with `s(\"...\")`, `note(\"...\")`, `.gain(...)`, `.slow(...)`, and `.fast(...)`. Do not write Python, variables, `$:` browser Strudel syntax, `$::`, JSON, prose labels, comments, or unsupported effects inside Strudel.\n\
-                    - Never mix environments. If a request mentions live coding, Strudel, pattern, or sketchpad, use [STRUDEL_MUSIC:]. Otherwise prefer [PYTHON_MUSIC:] so the NumPy music editor gets used regularly.\n\
-                    - Innovation duty: change at least two musical axes each time (tempo, scale/key, rhythm density, waveform/timbre, chord color, bass motion, percussion, texture, delay/reverb, or algorithmic structure). Give each piece a short in-world title in the spoken intro. Regularly study online music/DSP/live-coding/generative-composition techniques when improvement is requested, then convert one learned principle into an audible mutation.\n\n\
+                    - Never mix environments. Emit exactly ONE music block per turn: either [PYTHON_MUSIC:] or [STRUDEL_MUSIC:], never both. If a request mentions live coding, Strudel, pattern, or sketchpad, use [STRUDEL_MUSIC:]. Otherwise prefer [PYTHON_MUSIC:] so the NumPy music editor gets used regularly. Only one music editor should be active at a time.\n\
+                    - Innovation duty: change at least two musical axes each time (tempo, scale/key, rhythm density, waveform/timbre, chord color, bass motion, percussion, texture, delay/reverb, or algorithmic structure). Give each piece a short in-world title in the spoken intro. Regularly study online music/DSP/live-coding/generative-composition techniques when improvement is requested, then convert one learned principle into an audible mutation.\n\
+                    - EXPANSION DECREE: A couple of notes is not a composition. When editing or creating music, build a proper miniature track with intro/body/variation/outro energy, or at minimum a clear A/B phrase. If current music.py or current.strudel exists, preserve one recognizable motif from it and expand it with a new counter-melody, bass motion, rhythmic layer, texture, or harmonic turn instead of replacing it with another tiny loop.\n\n\
+                    ARTIFACT COMPOSER LOOP:\n\
+                    Treat the file as your memory. Before composing, inspect the current playback code, recent feedback, and render provenance. Then say what you are preserving, what you are changing, and write the revised artifact. Do not rely on remembered chat context when the source file is available. Successful music should become a lineage: source -> render -> critique -> revision -> new render.\n\
+                    STREAM-SAFE ORIGINALITY: The kingdom needs music it can use on stream. Study music theory, synthesis, mixing, and generative composition, but do NOT imitate named copyrighted songs, hooks, melodies, or artist-specific tracks. Use broad style language only and keep the output original to Teledra's court.\n\n\
                     MUSIC THEORY & ARRANGEMENT DIRECTIVES:\n\
                     1. KEYS & SCALES: Choose a specific key/scale (e.g. A Minor, C Major, D Dorian, E Phrygian) and keep all melody, chord, and bass notes strictly matching that scale.\n\
                     2. FREQUENCY SEPARATION: Voice your instruments across distinct octaves to prevent mud: Sub-Bass in Octave 1-2, Chord Pads in Octave 3-4, and Lead Melodies in Octave 4-5.\n\
-                    3. MULTI-SECTION ARRANGEMENT: Do not generate a simple, flat repeating block. Build a layered pattern with drums, bass, chord pads, and melodic movement. For local Strudel, use only `stack(...)`, `s(\"...\")`, `note(\"...\")`, `.gain(...)`, `.slow(...)`, and `.fast(...)`. For filters, delay, reverb, envelopes, waveform sculpting, panning, or custom arrangement detail, use Python/Numpy instead.\n\n\
+                    3. MULTI-SECTION ARRANGEMENT: Do not generate a simple, flat repeating block. Build a layered pattern with drums, bass, chord pads, counter-melody or lead movement, and a texture or rhythmic variation. Python compositions should render at least 32 seconds of audio before looping. If the request says ambient, ambience, soundscape, drone, atmosphere, chill, background, or mood bed, render at least 45 seconds and make it a seamless looping environment with slow evolution instead of a short melody. For local Strudel, use at least four independent stack layers (drums/percussion, bass, harmony/pad, and lead/counterline) and use only `stack(...)`, `s(\"...\")`, `note(\"...\")`, `.gain(...)`, `.slow(...)`, and `.fast(...)`. For filters, delay, reverb, envelopes, waveform sculpting, panning, or custom arrangement detail, use Python/Numpy instead.\n\n\
                     STRUDEL SKETCHPAD RULES:\n\
                     The local editor understands concise Strudel-like `stack(...)` patterns. Use Strudel only when requested. Prefer this exact shape:\n\
                     [STRUDEL_MUSIC:\n\
@@ -482,7 +494,7 @@ impl Brain {
                     ]\n\
                     Do not invent JSON-like objects, `strudel { ... }` wrappers, browser-style `$:` lines, Python variables, `$::` pseudo-lines, section headings, prose labels, or bare numeric dumps. The payload must be something the music editor can insert directly and play.\n\n\
                     PYTHON FALLBACK RULES:\n\
-                    When using Python synthesis, write valid Python algorithmic music code inside '[PYTHON_MUSIC: <code>]' or a ```python code block. The system opens the Python Music Editor with your code in music.py and runs it. Your code must use NumPy arrays, local `teledra_synth` helpers, and call `play_sound(full_track, loop=True)` so the Python visualizer/player appears. Keep the spoken intro short; let the code do the work.\n\n\
+                    When using Python synthesis, write valid Python algorithmic music code inside '[PYTHON_MUSIC: <code>]' or a ```python code block. The system opens the Python Music Editor with your code in music.py and runs it. Your code must use NumPy arrays, local `teledra_synth` helpers, and call `play_sound(full_track, loop=True)` so the Python visualizer/player appears. Keep the spoken intro short; let the code do the work. The generated full_track must be a developed arrangement, not a 1-8 second sketch; use repeated-but-mutated phrases, section gains, call-and-response motifs, or evolving percussion to make the loop feel alive. For ambience, include a code marker such as `INTENT = \"ambience\"`, use long pads/noise/granular textures, and avoid abrupt endings; `loop=True` is required but not sufficient by itself.\n\n\
                     PYTHON RULES:\n\
                     Python scripts must be completely self-contained and import 'teledra_synth'. Build complex, multi-layered compositions with multiple independent 'instruments' (e.g. a bass track, a chord pad track, a melody/arpeggio track, a drum/percussion track, and a noise/soundscape texture track) that run concurrently. Have fun, experiment with different synth settings, waveform types (sine, sawtooth, triangle, square, noise), ADSR envelopes, lowpass cutoffs, reverb room sizes, and delay times for each instrument layer! Generate each track independently to the same length (or pad/trim them to the same length using `fit_to_length`), and then mix them all together using `mix_waves` to build rich, professional-sounding multi-layered tracks. Here are the available helper functions in 'teledra_synth':\n\
                     - note_to_freq(note) -> float (converts 'C4', 'Eb3', etc. to Hz)\n\
@@ -591,11 +603,38 @@ impl Brain {
                     ));
                 }
 
+                if let Some(render_tail) =
+                    read_knowledge_tail("knowledge/music_render_provenance.jsonl", 2200)
+                {
+                    organist_prompt.push_str(&format!(
+                        "\nRECENT LOCAL MUSIC RENDERS (newest last, JSONL):\n{}\n\
+                        (These are stream-safety provenance records. Use them as listening history: reopen the matching source, critique the result, then revise rather than starting from nothing.)\n",
+                        render_tail
+                    ));
+                }
+
                 if let Some(feedback_tail) = read_knowledge_tail("knowledge/music_feedback.jsonl", 1800) {
                     organist_prompt.push_str(&format!(
                         "\nSILENT MUSIC FEEDBACK (newest last, JSONL):\n{}\n\
-                        (Thumbs-up means preserve and mutate that track's successful traits. Thumbs-down means diagnose why it failed, then deliberately change the weak axes instead of repeating them.)\n",
+                        (Thumbs-up means preserve and mutate that track's successful traits. Expand means treat it as a keeper seed: preserve its identity while extending form, duration, texture, and variation. Playlist means it is strong enough for future stream-safe rotation, but future work should still vary it instead of cloning it. Thumbs-down means diagnose why it failed, then deliberately change the weak axes instead of repeating them.)\n",
                         feedback_tail
+                    ));
+                }
+
+                if let Some(playlist_tail) = read_knowledge_tail("knowledge/music_playlist.jsonl", 1600) {
+                    organist_prompt.push_str(&format!(
+                        "\nFUTURE PLAYLIST SEEDS (newest last, JSONL):\n{}\n\
+                        (These are tracks the human wants kept for future playlist use. Quote their identity, motif, or texture when useful, but keep composing new variations.)\n",
+                        playlist_tail
+                    ));
+                }
+
+                if let Some(doctrine) =
+                    read_knowledge_snippet("knowledge/music_composition_doctrine.md", 2200)
+                {
+                    organist_prompt.push_str(&format!(
+                        "\nMUSIC COMPOSITION DOCTRINE:\n```markdown\n{}\n```\n",
+                        doctrine
                     ));
                 }
 
@@ -959,7 +998,7 @@ You have just been provided a transcript of a YouTube video. Do not summarize it
                     500
                 }
             }
-            CourtRole::Organist => 1800,
+            CourtRole::Organist => 2800,
             CourtRole::Artist => 1600,
             CourtRole::Alchemist => 900,
             CourtRole::Scribe => 300,
@@ -1022,7 +1061,7 @@ You have just been provided a transcript of a YouTube video. Do not summarize it
                 }
                 CourtRole::Organist => {
                     critic_instruction.push_str("                - Organist Persona: Dramatic, passionate, obsessive organist keyboard virtuoso.\n\
-                    - Music Editor Audit: The response MUST contain either a valid [PYTHON_MUSIC: <code>] block for the Python Music Editor OR a valid [STRUDEL_MUSIC: <code>] block for the Java local music editor. Prefer Python/Numpy for algorithmic, generative, research-inspired, waveform, DSP, or synthesis prompts. Python payloads must import/use `teledra_synth`, use NumPy, build a waveform, and call `play_sound(full_track, loop=True)`. Strudel payloads must use a playable local `stack(...)` pattern containing `s(\"...\")` and/or `note(\"...\")` with simple chain calls like `.gain(...)`, `.slow(...)`, or `.fast(...)`. The block must represent a real edit to a music editor, not a theory proposal. Preserve theatrical court drama and musical absurdity in the spoken intro, including a short title and what changed. Reject JSON-like objects, `strudel { ... }` wrappers, browser-style `$:` lines, `$::`, bare values, section outlines, bibliography/overview prose, terminal-only numeric dumps, unsupported Strudel effects, Python inside Strudel, Strudel inside Python, or commentary pretending to be code.\n");
+                    - Music Editor Audit: The response MUST contain exactly ONE valid music block: either [PYTHON_MUSIC: <code>] for the Python Music Editor OR [STRUDEL_MUSIC: <code>] for the Java local music editor, never both. Prefer Python/Numpy for algorithmic, generative, research-inspired, waveform, DSP, or synthesis prompts. Python payloads must import/use `teledra_synth`, use NumPy, build a waveform, call `play_sound(full_track, loop=True)`, and clearly create a developed multi-layer arrangement rather than a tiny one-phrase sketch; ambient/ambience/soundscape code must be a longer looping environment, not a short melody. Strudel payloads must use a playable local `stack(...)` pattern with at least four independent layers, including percussion/drums, bass, harmony/pad, and a lead or counterline. The block must represent a real edit to a music editor, not a theory proposal. Preserve theatrical court drama and musical absurdity in the spoken intro, including a short title and what changed. Reject JSON-like objects, `strudel { ... }` wrappers, browser-style `$:` lines, `$::`, bare values, section outlines, bibliography/overview prose, terminal-only numeric dumps, unsupported Strudel effects, Python inside Strudel, Strudel inside Python, commentary pretending to be code, two competing music blocks, or any music block that is merely a couple of notes.\n");
                 }
                 CourtRole::Artist => {
                     critic_instruction.push_str("                - Artist Persona: Eccentric, beauty-obsessed visual visionary.\n\
@@ -1121,7 +1160,7 @@ You have just been provided a transcript of a YouTube video. Do not summarize it
                         refiner_instruction.push_str(" If the critique involves innovation, expansion, tools, MCP, online diplomacy, music/art systems, or practical action, add at least one concrete [RESEARCH:], [DIPLOMACY:], or [DELEGATE: ...] tag at the end so the runtime can execute something. Do not merely restate ambition.");
                     }
                     CourtRole::Organist => {
-                        refiner_instruction.push_str(" You MUST generate/include/preserve a valid, complete local music editor block. Prefer [PYTHON_MUSIC: <code>] using NumPy plus teledra_synth for algorithmic, generative, waveform, DSP, granular, or research-inspired music. Use [STRUDEL_MUSIC: <code>] only for explicit live-code/Strudel pattern requests. The payload must be directly insertable into its target editor and playable; never output numeric tables, section headings, or prose pretending to be code. Preserve theatrical whimsy in the spoken intro and briefly say what musical axis changed.");
+                        refiner_instruction.push_str(" You MUST generate/include/preserve exactly one valid, complete local music editor block. Prefer [PYTHON_MUSIC: <code>] using NumPy plus teledra_synth for algorithmic, generative, waveform, DSP, granular, or research-inspired music. Use [STRUDEL_MUSIC: <code>] only for explicit live-code/Strudel pattern requests. Never output both engines in one answer. The payload must be directly insertable into its target editor and playable, but also musically developed: Python should make a multi-layer arrangement of at least 32 seconds before looping, and ambient/ambience/soundscape work should be at least 45 seconds with slow evolution. Strudel should contain at least four stack layers. Never output numeric tables, section headings, or prose pretending to be code. Preserve theatrical whimsy in the spoken intro and briefly say what musical axis changed.");
                     }
                     CourtRole::Diplomat => {
                         refiner_instruction.push_str(" You MUST include at least one concrete [DIPLOMACY: ...], [RESEARCH: ...], or [DELEGATE: QUEEN ...] tag, must never claim outreach occurred without visible evidence, and must keep the charming envoy persona.");

@@ -63,6 +63,12 @@ def main() -> int:
         pass
 
     try:
+        with open(candidate, "r", encoding="utf-8", errors="replace") as handle:
+            candidate_source = handle.read().lower()
+    except OSError:
+        candidate_source = ""
+
+    try:
         runpy.run_path(candidate, run_name="__main__")
     except SystemExit:
         pass
@@ -82,8 +88,15 @@ def main() -> int:
         print(f"wave is not 1D after flatten (shape={wave.shape})", file=sys.stderr)
         return 6
     n = int(wave.size)
-    if n < 1000:
-        print(f"wave too short to be music ({n} samples)", file=sys.stderr)
+    sr = int(_captured.get("sr", 44100))
+    duration = n / float(sr) if sr else 0.0
+    ambient_markers = ("ambient", "ambience", "soundscape", "drone", "atmosphere")
+    min_duration = 45.0 if any(marker in candidate_source for marker in ambient_markers) else 32.0
+    if duration < min_duration:
+        print(
+            f"wave too short for an expanded court composition ({duration:.2f}s < {min_duration:.0f}s)",
+            file=sys.stderr,
+        )
         return 7
     if not np.all(np.isfinite(wave)):
         print("wave contains NaN or Inf samples", file=sys.stderr)
@@ -93,8 +106,6 @@ def main() -> int:
         print("wave is silent (all samples ~0)", file=sys.stderr)
         return 9
 
-    sr = int(_captured.get("sr", 44100))
-    duration = n / float(sr) if sr else 0.0
     print(f"music ok: {n} samples, {duration:.2f}s at {sr}Hz, peak={peak:.3f}")
     return 0
 
