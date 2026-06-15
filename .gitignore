@@ -11,5 +11,6 @@ __pycache__/
 /config/outreach_channels.json
 /config/.outreach_state.json
 /config/.treasury_state.json
+/config/mcp_servers.json
 /config/tavily_key.txt
 /config/restream_token.txt

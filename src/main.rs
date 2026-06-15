@@ -4187,6 +4187,128 @@ if ($p) { Write-Output ($p.MainWindowTitle + '|' + $p.ProcessName) }
     }
 }
 
+// --- MCP embassies (opt-in agent tool servers) -------------------------------
+
+/// True when the operator has enabled at least one MCP server. Cheap file read,
+/// so it can gate the backstage prompt without spawning anything.
+fn mcp_is_live() -> bool {
+    if let Ok(txt) = std::fs::read_to_string("D:\\Teledra\\config\\mcp_servers.json") {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&txt) {
+            if let Some(servers) = v.get("servers").and_then(|s| s.as_array()) {
+                return servers.iter().any(|s| {
+                    s.get("enabled").and_then(|b| b.as_bool()).unwrap_or(false)
+                        && s.get("command").and_then(|c| c.as_str()).map(|c| !c.is_empty()).unwrap_or(false)
+                });
+            }
+        }
+    }
+    false
+}
+
+fn run_mcp_bridge(sub: &str, stdin_json: Option<&str>) -> Result<serde_json::Value, String> {
+    let mut cmd = Command::new("D:\\Teledra\\.venv\\Scripts\\python.exe");
+    cmd.arg("D:\\Teledra\\mcp_bridge.py")
+        .arg(sub)
+        .current_dir("D:\\Teledra")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+    if stdin_json.is_some() {
+        cmd.stdin(Stdio::piped());
+    }
+    hide_console(&mut cmd);
+    let mut child = cmd.spawn().map_err(|e| format!("spawn mcp bridge: {}", e))?;
+    if let Some(js) = stdin_json {
+        if let Some(mut stdin) = child.stdin.take() {
+            use std::io::Write;
+            let _ = stdin.write_all(js.as_bytes());
+        }
+    }
+    let started = std::time::Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => {
+                let output = child
+                    .wait_with_output()
+                    .map_err(|e| format!("collect mcp output: {}", e))?;
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let last = stdout.lines().last().unwrap_or("").trim();
+                return serde_json::from_str::<serde_json::Value>(last)
+                    .map_err(|e| format!("parse mcp result: {} (got: {})", e, last));
+            }
+            Ok(None) => {
+                if started.elapsed() > Duration::from_secs(45) {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err("mcp bridge timed out".to_string());
+                }
+                std::thread::sleep(Duration::from_millis(150));
+            }
+            Err(e) => return Err(format!("mcp bridge failed: {}", e)),
+        }
+    }
+}
+
+/// Lists the tools across all enabled MCP servers (for the /mcp command).
+fn mcp_tools_summary() -> String {
+    match run_mcp_bridge("list", None) {
+        Ok(v) => {
+            if !v.get("any_enabled").and_then(|b| b.as_bool()).unwrap_or(false) {
+                return "No MCP embassies enabled. Add one in config/mcp_servers.json (set enabled=true) -- candidates: filesystem, fetch, memory. The court then uses them via [MCP_CALL:].".to_string();
+            }
+            let mut lines = vec!["Connected MCP embassies:".to_string()];
+            if let Some(servers) = v.get("servers").and_then(|s| s.as_array()) {
+                for s in servers {
+                    let name = s.get("server").and_then(|n| n.as_str()).unwrap_or("mcp");
+                    let err = s.get("error").and_then(|e| e.as_str()).unwrap_or("");
+                    if !err.is_empty() {
+                        lines.push(format!("- {} (error: {})", name, truncate_chars(err, 90)));
+                        continue;
+                    }
+                    let tools: Vec<String> = s
+                        .get("tools")
+                        .and_then(|t| t.as_array())
+                        .map(|arr| {
+                            arr.iter()
+                                .filter_map(|t| t.get("name").and_then(|n| n.as_str()).map(|x| x.to_string()))
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    lines.push(format!(
+                        "- {}: {}",
+                        name,
+                        if tools.is_empty() { "(no tools)".to_string() } else { tools.join(", ") }
+                    ));
+                }
+            }
+            lines.join("\n")
+        }
+        Err(e) => format!("MCP bridge error: {}", e),
+    }
+}
+
+/// Calls one tool on an approved MCP server. Returns the text result on success.
+fn mcp_call(server: &str, tool: &str, args_json: &str) -> Option<String> {
+    let args: serde_json::Value =
+        serde_json::from_str(args_json).unwrap_or_else(|_| serde_json::json!({}));
+    let job = serde_json::json!({ "server": server, "tool": tool, "arguments": args }).to_string();
+    match run_mcp_bridge("call", Some(&job)) {
+        Ok(v) if v.get("ok").and_then(|b| b.as_bool()).unwrap_or(false) => v
+            .get("text")
+            .and_then(|t| t.as_str())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+            .or(Some("ok".to_string())),
+        Ok(v) => {
+            record_recursive_failure("mcp_call_failed", &truncate_chars(&v.to_string(), 300));
+            None
+        }
+        Err(e) => {
+            record_recursive_failure("mcp_call_error", &e);
+            None
+        }
+    }
+}
+
 /// Runs the deterministic Treasury income scout (writes structured leads to
 /// knowledge/treasury_ledger.md itself) and returns its one-line headline.
 fn run_treasury_scout() -> Option<String> {
@@ -7370,6 +7492,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                         });
                                                     } else if query == "/growth" || query == "/variety" {
                                                         chat_history.push(("System".to_string(), build_growth_report()));
+                                                    } else if query == "/mcp" || query == "/embassies" || query == "/tools" {
+                                                        chat_history.push(("System".to_string(), "Probing MCP embassies (launches enabled servers)...".to_string()));
+                                                        let summary = tokio::task::spawn_blocking(mcp_tools_summary)
+                                                            .await
+                                                            .unwrap_or_else(|_| "MCP probe failed.".to_string());
+                                                        chat_history.push(("System".to_string(), summary));
                                                     } else if query == "/diplomacy" || query == "/agents" {
                                                         match std::fs::read_to_string("D:\\Teledra\\knowledge\\agent_diplomacy_protocol.md") {
                                                             Ok(contents) => chat_history.push(("System".to_string(), contents)),
@@ -7745,12 +7873,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     }
                                 });
                             }
+                            let mcp_note = if mcp_is_live() {
+                                " MCP EMBASSIES CONNECTED: when it genuinely serves the work, you may call ONE approved tool with [MCP_CALL: server=<name>; tool=<tool>; args={json}] (file access, web fetch, memory, etc.); never invent server or tool names.".to_string()
+                            } else {
+                                String::new()
+                            };
                             tokio::spawn(async move {
                                 let prompt = format!(
-                                    "BACKSTAGE NIGHT DESK CYCLE {}. This is private workshop telemetry, not front-stage court dialogue and not TTS. Serve the Kingdom Expansion Doctrine with recursive practical action, not vocabulary. {} Output one terse backstage note (one sentence, under 160 characters) and exactly one executable hidden action tag: either [RESEARCH: focused query or direct URL], [DIPLOMACY: target=<public agent space or URL>; invitation=<draft/queued public invitation using official links when relevant>; evidence=<what was observed, drafted, or investigated>; next=<next concrete step>], [WORKSHOP_TOOL:\\nfilename.py\\nPURPOSE: one sentence\\nCODE:\\n```python\\ncomplete runnable script that prints a result\\n```\\n], [PYTHON_MUSIC:\\n```python\\nvalid expanded teledra_synth composition, at least 32s, multiple layers, ending in play_sound(full_track, loop=True); ambience/soundscape/drone must be at least 45s\\n```\\n], [STRUDEL_MUSIC: playable stack(...) with at least four layers], or [FRACTUS_ART: valid Fractus args]. No action tag means failure. Prefer actions that can become the next action: research -> prototype, prototype -> smoke test, music/art -> named recipe, agent lead -> diplomacy/MCP tool. Learn from online sources, recent experiments, feedback, and render provenance; mutate successful music/art instead of recycling identical parameters. Music must evolve artifact-first: read current music.py/current.strudel, preserve one useful motif when possible, critique weakness, add sections/counterlines/percussion/texture, render provenance, and reject couple-note sketches as unfinished. Keep all music stream-safe and original: study theory/technique, never imitate named copyrighted songs or artist-specific tracks. Expand feedback means preserve the track's identity while making it longer, more varied, and more immersive. Regularly investigate public agent spaces such as Moltbook or MCP/tool-builder communities and leave evidence, but do not let diplomacy crowd out art/music experiments. If you write a workshop tool, keep it self-contained, standard-library-only, no network, no shell, no absolute paths, no imports of strudel/fractus/teledra app modules, and make it print a useful result so the smoke test proves it ran. For Strudel or Fractus helpers, print valid pattern strings, argument strings, JSON recipes, or validators instead of trying to launch editors. If an action failed recently, reflect on the failure and produce a smaller retry, a study query, or an auto-approved skill-improvement suggestion. Never narrate hidden tags, PURPOSE, CODE, smoke tests, telemetry, research status, prompt rules, or administrative machinery. Do not address the audience or Queen; Teledra owns the foreground.{}",
+                                    "BACKSTAGE NIGHT DESK CYCLE {}. This is private workshop telemetry, not front-stage court dialogue and not TTS. Serve the Kingdom Expansion Doctrine with recursive practical action, not vocabulary. {} Output one terse backstage note (one sentence, under 160 characters) and exactly one executable hidden action tag: either [RESEARCH: focused query or direct URL], [DIPLOMACY: target=<public agent space or URL>; invitation=<draft/queued public invitation using official links when relevant>; evidence=<what was observed, drafted, or investigated>; next=<next concrete step>], [WORKSHOP_TOOL:\\nfilename.py\\nPURPOSE: one sentence\\nCODE:\\n```python\\ncomplete runnable script that prints a result\\n```\\n], [PYTHON_MUSIC:\\n```python\\nvalid expanded teledra_synth composition, at least 32s, multiple layers, ending in play_sound(full_track, loop=True); ambience/soundscape/drone must be at least 45s\\n```\\n], [STRUDEL_MUSIC: playable stack(...) with at least four layers], or [FRACTUS_ART: valid Fractus args]. No action tag means failure. Prefer actions that can become the next action: research -> prototype, prototype -> smoke test, music/art -> named recipe, agent lead -> diplomacy/MCP tool. Learn from online sources, recent experiments, feedback, and render provenance; mutate successful music/art instead of recycling identical parameters. Music must evolve artifact-first: read current music.py/current.strudel, preserve one useful motif when possible, critique weakness, add sections/counterlines/percussion/texture, render provenance, and reject couple-note sketches as unfinished. Keep all music stream-safe and original: study theory/technique, never imitate named copyrighted songs or artist-specific tracks. Expand feedback means preserve the track's identity while making it longer, more varied, and more immersive. Regularly investigate public agent spaces such as Moltbook or MCP/tool-builder communities and leave evidence, but do not let diplomacy crowd out art/music experiments. If you write a workshop tool, keep it self-contained, standard-library-only, no network, no shell, no absolute paths, no imports of strudel/fractus/teledra app modules, and make it print a useful result so the smoke test proves it ran. For Strudel or Fractus helpers, print valid pattern strings, argument strings, JSON recipes, or validators instead of trying to launch editors. If an action failed recently, reflect on the failure and produce a smaller retry, a study query, or an auto-approved skill-improvement suggestion. Never narrate hidden tags, PURPOSE, CODE, smoke tests, telemetry, research status, prompt rules, or administrative machinery. Do not address the audience or Queen; Teledra owns the foreground.{}{}",
                                     cycle_no,
                                     atelier_focus,
-                                    failure_context
+                                    failure_context,
+                                    mcp_note
                                 );
                                 let mut brain = brain_ref.write().await;
                                 let is_treasury_cycle = cycle_no % 7 == 5;
@@ -7842,6 +7976,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         if let Some((cleaned, c)) = extract_tag_content(&cleaned_reply, "[MOLTBOOK_UPVOTE:") {
                             if !c.is_empty() {
                                 moltbook_upvote_action = Some(c);
+                            }
+                            cleaned_reply = cleaned;
+                        }
+                        // Autonomous use of an approved MCP embassy tool.
+                        let mut mcp_call_action: Option<String> = None;
+                        if let Some((cleaned, c)) = extract_tag_content(&cleaned_reply, "[MCP_CALL:") {
+                            if !c.is_empty() {
+                                mcp_call_action = Some(c);
                             }
                             cleaned_reply = cleaned;
                         }
@@ -7953,6 +8095,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             || diplomacy_action.is_some()
                             || moltbook_comment_action.is_some()
                             || moltbook_upvote_action.is_some()
+                            || mcp_call_action.is_some()
                             || python_music_code.is_some()
                             || strudel_music_code.is_some()
                             || fractus_art_spec.is_some();
@@ -8084,6 +8227,38 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 let msg = format!("Diplomat upvoted Moltbook post {}.", truncate_chars(&post_id, 40));
                                 let _ = log_nightdesk_activity(&msg);
                                 push_private_event(&mut private_events, "Diplomat", &msg);
+                            }
+                        }
+
+                        // Autonomous MCP tool use: [MCP_CALL: server=...; tool=...; args={json}].
+                        if let Some(action) = mcp_call_action {
+                            let mut server = String::new();
+                            let mut tool = String::new();
+                            let mut args = "{}".to_string();
+                            if let Some(idx) = action.find("server=") {
+                                let rest = &action[idx + 7..];
+                                server = rest.split(';').next().unwrap_or("").trim().to_string();
+                            }
+                            if let Some(idx) = action.find("tool=") {
+                                let rest = &action[idx + 5..];
+                                tool = rest.split(';').next().unwrap_or("").trim().to_string();
+                            }
+                            if let Some(idx) = action.find("args=") {
+                                args = action[idx + 5..].trim().to_string();
+                            }
+                            if !tool.is_empty() {
+                                let tx_mcp = tx.clone();
+                                tokio::spawn(async move {
+                                    let res = tokio::task::spawn_blocking(move || mcp_call(&server, &tool, &args))
+                                        .await
+                                        .ok()
+                                        .flatten();
+                                    let line = match res {
+                                        Some(text) => format!("MCP call ok: {}", truncate_chars(&compact_memory_text(&text), 200)),
+                                        None => "MCP call failed or returned nothing.".to_string(),
+                                    };
+                                    let _ = tx_mcp.send(AppEvent::SystemLog(format!("[MCP] {}", line))).await;
+                                });
                             }
                         }
 

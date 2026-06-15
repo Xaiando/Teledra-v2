@@ -1,0 +1,29 @@
+{
+  "_README": "Approved MCP servers the court may use. Each is OFF until you set enabled=true and have its launcher installed (npx needs Node; uvx needs uv/Python). The bridge speaks stdio JSON-RPC. Nothing launches while enabled=false. Candidates below are well-known reference servers; add your own (e.g. a finance, search, or art server) the same way.",
+  "servers": [
+    {
+      "name": "filesystem",
+      "enabled": false,
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "D:\\Teledra\\knowledge"],
+      "env": {},
+      "note": "Read/write files under knowledge/ — gives agents real file tools."
+    },
+    {
+      "name": "fetch",
+      "enabled": false,
+      "command": "uvx",
+      "args": ["mcp-server-fetch"],
+      "env": {},
+      "note": "Fetch and read web pages as markdown."
+    },
+    {
+      "name": "memory",
+      "enabled": false,
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-memory"],
+      "env": {},
+      "note": "A persistent knowledge-graph memory the court can query."
+    }
+  ]
+}
