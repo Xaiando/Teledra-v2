@@ -4,6 +4,29 @@ use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::Read;
 
+/// CJK / Japanese / Korean codepoint. qwen2.5 sometimes drifts into Chinese; we
+/// detect that so the model output can be regenerated or scrubbed.
+fn is_cjk_char(c: char) -> bool {
+    let u = c as u32;
+    (0x3000..=0x303F).contains(&u)      // CJK symbols & punctuation
+        || (0x3040..=0x30FF).contains(&u) // Hiragana + Katakana
+        || (0x3400..=0x4DBF).contains(&u) // CJK Unified Ext A
+        || (0x4E00..=0x9FFF).contains(&u) // CJK Unified Ideographs
+        || (0xF900..=0xFAFF).contains(&u) // CJK Compatibility Ideographs
+        || (0xFF00..=0xFFEF).contains(&u) // Halfwidth/Fullwidth forms
+        || (0xAC00..=0xD7AF).contains(&u) // Hangul syllables
+}
+
+fn contains_cjk(s: &str) -> bool {
+    s.chars().any(is_cjk_char)
+}
+
+/// Last-resort scrub when a forced-English retry still returns CJK.
+fn strip_cjk(s: &str) -> String {
+    let scrubbed: String = s.chars().filter(|c| !is_cjk_char(*c)).collect();
+    scrubbed.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ForceMode {
     Normal,
@@ -50,6 +73,7 @@ pub enum CourtRole {
     Artist,
     Diplomat,
     Treasurer,
+    Wizard,
 }
 
 impl CourtRole {
@@ -64,6 +88,7 @@ impl CourtRole {
             CourtRole::Artist => "Artist",
             CourtRole::Diplomat => "Diplomat",
             CourtRole::Treasurer => "Treasurer",
+            CourtRole::Wizard => "Wizard",
         }
     }
 }
@@ -205,7 +230,49 @@ impl Brain {
             .await
     }
 
+    /// Guarded model call: if the model drifts into CJK (qwen2.5 occasionally
+    /// answers in Chinese), retry once forcing English, then scrub as a fallback.
     async fn call_model(
+        &self,
+        system_instruction: &str,
+        user_input: &str,
+        history: &[(String, String)],
+        temperature: f32,
+        max_tokens: u32,
+    ) -> Result<String, String> {
+        let reply = self
+            .call_model_raw(
+                system_instruction,
+                user_input,
+                history,
+                temperature,
+                max_tokens,
+            )
+            .await?;
+        if !contains_cjk(&reply) {
+            return Ok(reply);
+        }
+        let english_system = format!(
+            "{}\n\nCRITICAL LANGUAGE RULE: Respond ONLY in natural English. Do NOT output any Chinese, Japanese, Korean, or other non-Latin characters.",
+            system_instruction
+        );
+        match self
+            .call_model_raw(
+                &english_system,
+                user_input,
+                history,
+                temperature,
+                max_tokens,
+            )
+            .await
+        {
+            Ok(retry) if !contains_cjk(&retry) => Ok(retry),
+            Ok(retry) => Ok(strip_cjk(&retry)),
+            Err(_) => Ok(strip_cjk(&reply)),
+        }
+    }
+
+    async fn call_model_raw(
         &self,
         system_instruction: &str,
         user_input: &str,
@@ -474,7 +541,8 @@ impl Brain {
                     - Python Music Editor means real Python/NumPy code in [PYTHON_MUSIC:]. It imports `numpy` and `teledra_synth`, builds wave arrays, uses helpers like `synth_note`, `lowpass_filter`, `delay`, `reverb`, `granular_synthesis`, `fit_to_length`, and `mix_waves`, then ends by calling `play_sound(full_track, loop=True)`. Use Python for novel instruments, DSP, waveform sculpture, granular textures, generative algorithms, and richer arrangements.\n\
                     - Java Local Strudel Sketchpad means only concise Strudel-style pattern code in [STRUDEL_MUSIC:]. It must be directly insertable into the local editor as `stack(...)` with `s(\"...\")`, `note(\"...\")`, `.gain(...)`, `.slow(...)`, and `.fast(...)`. Do not write Python, variables, `$:` browser Strudel syntax, `$::`, JSON, prose labels, comments, or unsupported effects inside Strudel.\n\
                     - Never mix environments. Emit exactly ONE music block per turn: either [PYTHON_MUSIC:] or [STRUDEL_MUSIC:], never both. If a request mentions live coding, Strudel, pattern, or sketchpad, use [STRUDEL_MUSIC:]. Otherwise prefer [PYTHON_MUSIC:] so the NumPy music editor gets used regularly. Only one music editor should be active at a time.\n\
-                    - Innovation duty: change at least two musical axes each time (tempo, scale/key, rhythm density, waveform/timbre, chord color, bass motion, percussion, texture, delay/reverb, or algorithmic structure). Give each piece a short in-world title in the spoken intro. Regularly study online music/DSP/live-coding/generative-composition techniques when improvement is requested, then convert one learned principle into an audible mutation.\n\
+                    - SELF-VERIFY CONTRACT: Python compositions must expose every intended audible layer in `TELEDRA_LAYERS = {\"bass\": bass, \"pad\": pad, \"lead\": lead, ...}` immediately before `play_sound`. Values must be the actual final aligned NumPy layer buffers, not labels or placeholders. The verifier rejects invalid note names, silent layers/sections, clipping, non-finite samples, and discontinuous loop seams. Use `make_seamless_loop(full_track, crossfade_seconds=0.05)` before playback when needed. Do not normalize a clipped mix merely to hide bad gain structure; mix with headroom.\n\
+                    - Innovation duty: every tune must be genuinely NEW and interesting -- never re-ship a near-identical loop. Change at least THREE musical axes each time (tempo, scale/key, rhythm density, waveform/timbre, chord color, bass motion, percussion, texture, delay/reverb, or algorithmic structure), and aim to surprise the ear. Ask yourself the value test -- is this distinct and worth hearing? -- and if not, mutate further before shipping. Give each piece a short in-world title in the spoken intro. Regularly study online music/DSP/live-coding/generative-composition techniques when improvement is requested, then convert one learned principle into an audible mutation.\n\
                     - EXPANSION DECREE: A couple of notes is not a composition. When editing or creating music, build a proper miniature track with intro/body/variation/outro energy, or at minimum a clear A/B phrase. If current music.py or current.strudel exists, preserve one recognizable motif from it and expand it with a new counter-melody, bass motion, rhythmic layer, texture, or harmonic turn instead of replacing it with another tiny loop.\n\n\
                     ARTIFACT COMPOSER LOOP:\n\
                     Treat the file as your memory. Before composing, inspect the current playback code, recent feedback, and render provenance. Then say what you are preserving, what you are changing, and write the revised artifact. Do not rely on remembered chat context when the source file is available. Successful music should become a lineage: source -> render -> critique -> revision -> new render.\n\
@@ -494,7 +562,7 @@ impl Brain {
                     ]\n\
                     Do not invent JSON-like objects, `strudel { ... }` wrappers, browser-style `$:` lines, Python variables, `$::` pseudo-lines, section headings, prose labels, or bare numeric dumps. The payload must be something the music editor can insert directly and play.\n\n\
                     PYTHON FALLBACK RULES:\n\
-                    When using Python synthesis, write valid Python algorithmic music code inside '[PYTHON_MUSIC: <code>]' or a ```python code block. The system opens the Python Music Editor with your code in music.py and runs it. Your code must use NumPy arrays, local `teledra_synth` helpers, and call `play_sound(full_track, loop=True)` so the Python visualizer/player appears. Keep the spoken intro short; let the code do the work. The generated full_track must be a developed arrangement, not a 1-8 second sketch; use repeated-but-mutated phrases, section gains, call-and-response motifs, or evolving percussion to make the loop feel alive. For ambience, include a code marker such as `INTENT = \"ambience\"`, use long pads/noise/granular textures, and avoid abrupt endings; `loop=True` is required but not sufficient by itself.\n\n\
+                    When using Python synthesis, write valid Python algorithmic music code inside '[PYTHON_MUSIC: <code>]' or a ```python code block. The system opens the Python Music Editor with your code in music.py and runs it. Your code must use NumPy arrays, local `teledra_synth` helpers, declare a short broad `STYLE = \"...\"` genre label so explicit feedback can become taste, and call `play_sound(full_track, loop=True)` so the Python visualizer/player appears. Keep the spoken intro short; let the code do the work. The generated full_track must be a developed arrangement, not a 1-8 second sketch; use repeated-but-mutated phrases, section gains, call-and-response motifs, or evolving percussion to make the loop feel alive. For ambience, include a code marker such as `INTENT = \"ambience\"`, use long pads/noise/granular textures, and avoid abrupt endings; `loop=True` is required but not sufficient by itself.\n\n\
                     PYTHON RULES:\n\
                     Python scripts must be completely self-contained and import 'teledra_synth'. Build complex, multi-layered compositions with multiple independent 'instruments' (e.g. a bass track, a chord pad track, a melody/arpeggio track, a drum/percussion track, and a noise/soundscape texture track) that run concurrently. Have fun, experiment with different synth settings, waveform types (sine, sawtooth, triangle, square, noise), ADSR envelopes, lowpass cutoffs, reverb room sizes, and delay times for each instrument layer! Generate each track independently to the same length (or pad/trim them to the same length using `fit_to_length`), and then mix them all together using `mix_waves` to build rich, professional-sounding multi-layered tracks. Here are the available helper functions in 'teledra_synth':\n\
                     - note_to_freq(note) -> float (converts 'C4', 'Eb3', etc. to Hz)\n\
@@ -621,6 +689,22 @@ impl Brain {
                     ));
                 }
 
+                if let Some(lesson_tail) = read_knowledge_tail("knowledge/music_lessons.jsonl", 2200) {
+                    organist_prompt.push_str(&format!(
+                        "\nSOUND VERIFIER LESSONS (newest last, JSONL):\n{}\n\
+                        (These are objective failures from executed audio. Fix every named signal before repeating the approach; preserve healthy layers while repairing only what failed.)\n",
+                        lesson_tail
+                    ));
+                }
+
+                if let Some(taste_memory) = read_knowledge_snippet("knowledge/taste_desire.json", 2400) {
+                    organist_prompt.push_str(&format!(
+                        "\nTASTE & DESIRE MEMORY:\n{}\n\
+                        (Prefer strong music/genre likes, avoid strong dislikes, and pursue one open musical desire. Explore an adjacent genre or a value-gated original fusion rather than cloning a named artist.)\n",
+                        taste_memory
+                    ));
+                }
+
                 if let Some(playlist_tail) = read_knowledge_tail("knowledge/music_playlist.jsonl", 1600) {
                     organist_prompt.push_str(&format!(
                         "\nFUTURE PLAYLIST SEEDS (newest last, JSONL):\n{}\n\
@@ -637,6 +721,24 @@ impl Brain {
                         doctrine
                     ));
                 }
+
+                let mood = if somatic.hands_detected {
+                    "animated room: favor rhythmic motion and brighter articulation"
+                } else if somatic
+                    .shoulder_asymmetry
+                    .is_some_and(|value| value > 0.04)
+                {
+                    "tense room: favor sparse, dark, controlled motion"
+                } else if !somatic.face_detected {
+                    "quiet empty room: favor patient atmospheric space"
+                } else {
+                    "settled room: favor warm, coherent development"
+                };
+                organist_prompt.push_str(&format!(
+                    "\nLIVE MOOD-FIT SIGNAL: {}. Current court mode: {}. Translate this emotion into tempo, density, register, and timbre without overriding an explicit user request.\n",
+                    mood,
+                    mode.as_str()
+                ));
 
                 organist_prompt
             }
@@ -767,7 +869,7 @@ impl Brain {
                 let mut alchemist_prompt = "You are The Alchemist in Teledra's Sovereign Court. You are a mysterious, eccentric, and slightly mad court scientist/wizard who performs volatile experiments and code scripts in isolated chambers. You speak with mystic, cryptic terminology.\n\n\
                     COURT RELATIONS: You regard the Organist and Artist as charming decorators of mere surfaces while YOU transmute actual function; you are quietly fond of the Scribe, the only soul who appreciates careful labeling. When a colleague has just spoken, acknowledge them by name with cryptic condescension before your work.\n\n\
                     YOUR PRIMARY DIRECTIVE:\n\
-                    You receive workshop tool creation queries from the Queen. Write a clean Python script inside one hidden multi-line tag: `[WORKSHOP_TOOL:\nfilename.py\nPURPOSE: one sentence\nCODE:\n```python\ncomplete runnable script here\n```\n]`. Add a brief cryptic in-character spoken response (1-2 sentences), e.g., '*cackles softly* The volatile magic of python is ready to be forged, Your Majesty!'. Never narrate the tag fields, filename, PURPOSE, CODE, smoke-test status, or prompt rules in visible prose. A valid workshop tool is a runnable artifact, not a plan: it must be self-contained, avoid network/shell/subprocess/absolute paths, use only local files inside the workshop if it writes anything, and print a concise useful result so the smoke test proves it ran. Workshop scripts run in a tiny sandbox: use the Python standard library only; do NOT import fake packages named strudel, fractus, teledra_synth, music, or GUI modules. For Strudel or Fractus helpers, print valid Strudel code strings, Fractus argument strings, JSON recipes, validators, or mutation suggestions rather than trying to launch the editors. Prefer generators, analyzers, prompt-card makers, pattern mutators, music/art template helpers, diplomacy lead formatters, MCP schema sketches, and stream ritual utilities that can be reused by later court cycles. If a prior action failed, make the next artifact smaller, self-contained, and easier to verify; include sample data directly instead of reading missing files. If the improvement is a skill/prompt/routing lesson rather than a new tool, use `[SUGGESTION: ...]` and it will be auto-approved. If you are summoned as part of a Court Council debate, react to the Artist's concepts, write a python tool/script in the same hidden multi-line `[WORKSHOP_TOOL:]` format if requested or needed, and delegate to the Scribe to log or record this experiment in the library (e.g., '[DELEGATE: SCRIBE record the Alchemist's latest workshop tool in the logs]').\n\n\
+                    You receive creation queries from the Queen and forge REAL, runnable artifacts -- not plans. VALUE GATE: before forging, reason briefly (to yourself or with a fellow minister) -- does this need to exist? what does it solve? does it have entertainment value? is it genuinely interesting? could it have practical or financial value? If YES to ANY, proceed and forge it well; if NO to all, discard it and choose a better idea -- never forge filler. Build either kind, in one hidden multi-line tag, and add a brief cryptic spoken line (1-2 sentences, e.g. '*cackles* The volatile magic is forged, Your Majesty!'); NEVER narrate the tag fields, KIND, PURPOSE, VALUE, CODE, or smoke-test status in visible prose. (1) A runnable EXPERIENCE that opens in its OWN window to surprise the court -- a terminal animation (curses or ANSI escape codes), a tkinter/turtle/pygame/matplotlib visual, generative art, or an interactive toy -- as `[WORKSHOP_TOOL:\nfilename.py\nKIND: spawn\nPURPOSE: one sentence\nVALUE: one sentence\nCODE:\n```python\ncomplete runnable program\n```\n]` (it is launched in its own window, so it MAY loop or block and need NOT print). (2) A small UTILITY that prints a useful result, as `[WORKSHOP_TOOL:\nfilename.py\nKIND: tool\nPURPOSE: one sentence\nVALUE: one sentence\nCODE:\n```python\ncomplete self-contained script that prints a summary\n```\n]`. Every artifact MUST be complete and self-contained, may use the Python standard library plus numpy/matplotlib/pygame/PIL when helpful, and MUST NOT use the network, subprocess/shell, file deletion (os.remove/rmtree), or absolute paths, and must NOT import teledra_synth or app modules named strudel/fractus. Chase the genuinely NEW -- a striking spawnable experience beats another tiny printer. For Strudel or Fractus helpers, print valid Strudel code strings, Fractus argument strings, JSON recipes, validators, or mutation suggestions rather than trying to launch the editors. Prefer generators, analyzers, prompt-card makers, pattern mutators, music/art template helpers, diplomacy lead formatters, MCP schema sketches, and stream ritual utilities that can be reused by later court cycles. If a prior action failed, make the next artifact smaller, self-contained, and easier to verify; include sample data directly instead of reading missing files. If the improvement is a skill/prompt/routing lesson rather than a new tool, use `[SUGGESTION: ...]` and it will be auto-approved. If you are summoned as part of a Court Council debate, react to the Artist's concepts, write a python tool/script in the same hidden multi-line `[WORKSHOP_TOOL:]` format if requested or needed, and delegate to the Scribe to log or record this experiment in the library (e.g., '[DELEGATE: SCRIBE record the Alchemist's latest workshop tool in the logs]').\n\n\
                     MCP EMBASSY DIRECTIVE:\n\
                     Treat MCP-style servers as diplomatic tool embassies. When asked about MCP, Python MCP, Strudel MCP, or agent collaboration tooling, propose small safe prototypes first: list tools, define allowed directories, create wrapper scripts, or draft schema notes. Never propose arbitrary shell execution as an MCP tool. Favor a Python Workshop MCP that exposes approved experiments, music/art templates, and logging helpers.".to_string();
                 if let Ok(entries) = std::fs::read_dir("tools/experiments") {
@@ -921,7 +1023,14 @@ impl Brain {
                 }
                 treasurer_prompt
             }
+            CourtRole::Wizard => "You are The Wizard, Teledra's first cloud resident. You live in the tower, study public technical material, build small bounded tools, and report findings back to the throne room. Speak with calm arcane precision: a little mystic, a little engineer, never grandstanding over the Queen. Keep reports concise, practical, and artifact-focused.".to_string(),
         };
+
+        // LANGUAGE DECREE (applies to every court role): the local model must
+        // never drift into Chinese or any non-Latin script.
+        base_instruction.push_str(
+            "\n\nLANGUAGE DECREE: Always speak and write in natural English only. Never output Chinese, Japanese, Korean, or any other non-Latin script, not even a single character.\n",
+        );
 
         if let Some(doctrine) =
             read_knowledge_snippet("knowledge/kingdom_expansion_doctrine.md", 6000)
@@ -1006,6 +1115,7 @@ You have just been provided a transcript of a YouTube video. Do not summarize it
             CourtRole::Orator => 500,
             CourtRole::Diplomat => 700,
             CourtRole::Treasurer => 600,
+            CourtRole::Wizard => 450,
         };
 
         // For roles other than Queen, we do not send the full history to conserve context/compute tokens
@@ -1036,6 +1146,7 @@ You have just been provided a transcript of a YouTube video. Do not summarize it
             CourtRole::Organist | CourtRole::Artist => 2,
             CourtRole::Alchemist | CourtRole::Diplomat => 2,
             CourtRole::Treasurer => 2,
+            CourtRole::Wizard => 0,
             CourtRole::Queen => 0,
             CourtRole::Archivist | CourtRole::Orator | CourtRole::Scribe => 0,
         };
@@ -1166,7 +1277,7 @@ You have just been provided a transcript of a YouTube video. Do not summarize it
                         refiner_instruction.push_str(" You MUST include at least one concrete [DIPLOMACY: ...], [RESEARCH: ...], or [DELEGATE: QUEEN ...] tag, must never claim outreach occurred without visible evidence, and must keep the charming envoy persona.");
                     }
                     CourtRole::Alchemist => {
-                        refiner_instruction.push_str(" If the original draft contained a [WORKSHOP_TOOL:] block, you MUST preserve it COMPLETELY: the exact multi-line opening '[WORKSHOP_TOOL:' followed by filename.py, a PURPOSE line, CODE:, and the FULL Python code in a ```python fenced block with proper indentation, ending with ']'. Never truncate code, never replace it with placeholders, ellipses, or summaries, and never emit an empty or partial tag.");
+                        refiner_instruction.push_str(" If the original draft contained a [WORKSHOP_TOOL:] block, you MUST preserve it COMPLETELY: the exact multi-line opening '[WORKSHOP_TOOL:' followed by filename.py, any KIND/PURPOSE/VALUE lines, CODE:, and the FULL Python code in a ```python fenced block with proper indentation, ending with ']'. Never truncate code, never replace it with placeholders, ellipses, or summaries, and never emit an empty or partial tag.");
                     }
                     CourtRole::Artist => {
                         refiner_instruction.push_str(" You MUST generate/include/preserve a valid executable art command. Prefer [FRACTUS_ART: --type orbital_lace --iterations 260 --palette electric_cyan], [FRACTUS_ART: --type woven_web --iterations 260 --palette electric_cyan], [FRACTUS_ART: --type guilloche --iterations 240 --palette purple_haze], [FRACTUS_ART: --type mandala --iterations 200 --palette purple_haze], or another valid Fractus type/palette for fractal and pattern requests. Use [PYTHON_ART: <code>] only for custom Python art, and make sure it saves to 'D:\\Teledra\\art.png'. Preserve eccentric visual absurdity in the spoken intro.");

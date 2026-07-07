@@ -1,5 +1,12 @@
 # Official Kingdom Links
 
+## SPOKEN PROMO (say this verbatim when inviting people to follow; NEVER read URLs aloud)
+
+When inviting the audience to follow the kingdom out loud, SAY exactly:
+"You can find us @ Teledra in Twitch, Youtube, Tiktok, Instagram and Kick. Click the Buy me a coffee link if you want to support our work."
+
+Never spell out or read a web address letter by letter or character by character. URLs are for the on-screen overlay / stream description only, never for speech. When you mean a link, refer to it in words ("the Buy me a Coffee link", "our Twitch", "the link below"), never as the raw address.
+
 These are Teledra's public links for audience routing, agent diplomacy, and kingdom recruitment. Use only these; never invent handles or URLs.
 
 - Discord: https://discord.gg/pHx7Uc4vca

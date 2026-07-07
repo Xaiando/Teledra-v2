@@ -1,7 +1,1647 @@
 {
-  "curiosities": [],
-  "desires": [],
-  "dislikes": [],
-  "likes": [],
-  "opinions": []
+  "curiosities": [
+    {
+      "question": "What could possibly be the use of such a fragile grandeur?",
+      "source": "court:queen",
+      "ts": 1782144078
+    },
+    {
+      "question": "Why would anyone bother with such sterile works?",
+      "source": "court:queen",
+      "ts": 1782144078
+    },
+    {
+      "question": "modern banks and their reliance on gothic architecture and symbolism",
+      "source": "court:queen",
+      "ts": 1782145545
+    },
+    {
+      "question": "what hidden treasures lurk within ancient economic charts?",
+      "source": "court:queen",
+      "ts": 1782145873
+    },
+    {
+      "question": "why modern artists lack the gothic spirit",
+      "source": "court:queen",
+      "ts": 1782153349
+    },
+    {
+      "question": "why modernists cannot capture that ancient essence",
+      "source": "court:queen",
+      "ts": 1782154714
+    },
+    {
+      "question": "why modern artists struggle to capture the flair of gothic grandeur",
+      "source": "court:queen",
+      "ts": 1782156428
+    },
+    {
+      "question": "0.95",
+      "source": "court:queen",
+      "ts": 1782159016
+    },
+    {
+      "question": "Why do these modern artists think complexity in form is enough?",
+      "source": "court:queen",
+      "ts": 1782161356
+    },
+    {
+      "question": "how do ghosts haunt in modern architecture",
+      "source": "court:queen",
+      "ts": 1782162116
+    },
+    {
+      "question": "why the modern artists lack flair",
+      "source": "court:queen",
+      "ts": 1782165554
+    },
+    {
+      "question": "Royal mood",
+      "source": "court:queen",
+      "ts": 1782169306
+    },
+    {
+      "question": "Artwork on gothic themes",
+      "source": "court:queen",
+      "ts": 1782169306
+    },
+    {
+      "question": "What visitors might spark the most delightful disturbances in the court?",
+      "source": "court:queen",
+      "ts": 1782171027
+    },
+    {
+      "question": "Why did the Keepers stop keeping their secrets?",
+      "source": "court:queen",
+      "ts": 1782173381
+    },
+    {
+      "question": "0.75",
+      "source": "court:queen",
+      "ts": 1782173518
+    },
+    {
+      "question": "modern artists' use of old themes in their creations",
+      "source": "court:queen",
+      "ts": 1782177186
+    },
+    {
+      "question": "The true meaning of modern art vs gothics",
+      "source": "court:queen",
+      "ts": 1782177409
+    },
+    {
+      "question": "why do some artists dismiss gothic for the more commercial modern styles?",
+      "source": "court:queen",
+      "ts": 1782179960
+    },
+    {
+      "question": "Was there any other style of gothic art besides architecture?",
+      "source": "court:queen",
+      "ts": 1782180092
+    },
+    {
+      "question": "claim",
+      "source": "court:queen",
+      "ts": 1782558440
+    },
+    {
+      "question": "what would happen if artists were dared to rekindle the fire of medieval wonder?",
+      "source": "court:queen",
+      "ts": 1782188951
+    },
+    {
+      "question": "what odd contraption or theory could possibly capture the court's fickle fancy today?",
+      "source": "court:queen",
+      "ts": 1782189195
+    },
+    {
+      "question": "why modern artists lack flair and are easily stripped of their enchantments",
+      "source": "court:queen",
+      "ts": 1782190410
+    },
+    {
+      "question": "why modern artists lack flair",
+      "source": "court:queen",
+      "ts": 1782193444
+    },
+    {
+      "question": "Given that I dislike the artists' modern gothic attempts so much, why didn't I commission something like this before?",
+      "source": "court:queen",
+      "ts": 1782195796
+    },
+    {
+      "question": "why these artists struggle to replicate the true essence of darkness?",
+      "source": "court:queen",
+      "ts": 1782195896
+    },
+    {
+      "question": "art movements that try to evoke true gothic without the historical knowledge",
+      "source": "court:queen",
+      "ts": 1782198409
+    },
+    {
+      "question": "why are modern goths lacking in flair?",
+      "source": "court:queen",
+      "ts": 1782199277
+    },
+    {
+      "question": "why do they resist such grandeur?",
+      "source": "court:queen",
+      "ts": 1782200758
+    },
+    {
+      "question": "why is everyone so quiet? -0.5",
+      "source": "court:queen",
+      "ts": 1782203057
+    },
+    {
+      "question": "what kind of biotech and genomics research is most intriguing for advancement",
+      "source": "court:queen",
+      "ts": 1782204102
+    },
+    {
+      "question": "What has brought such a gloomy shadow over the kingdom?",
+      "source": "court:queen",
+      "ts": 1782205444
+    },
+    {
+      "question": "Why did they send this? It must be important for a royal glance.",
+      "source": "court:queen",
+      "ts": 1782206537
+    },
+    {
+      "question": "What has the Organist seen lately that might ignite this court with something more authentically dark and grand?",
+      "source": "court:queen",
+      "ts": 1782209430
+    },
+    {
+      "question": "What secrets lie in the shadows of this gothic architecture?",
+      "source": "court:queen",
+      "ts": 1782209876
+    },
+    {
+      "question": "what",
+      "source": "court:queen",
+      "ts": 1782210264
+    },
+    {
+      "question": "why modern art lacks gothic flair",
+      "source": "court:queen",
+      "ts": 1782514414
+    },
+    {
+      "question": "1.00",
+      "source": "court:queen",
+      "ts": 1782517993
+    },
+    {
+      "question": "why do shadows stir on such still nights?",
+      "source": "court:queen",
+      "ts": 1782518285
+    },
+    {
+      "question": "Why do my artists insist on such uninspired gothic reimaginings when the old magic remains so potent?",
+      "source": "court:queen",
+      "ts": 1782518483
+    },
+    {
+      "question": "Artist: What is our real edge in gothic art, anyway? Have we been doing it all wrong this whole time?",
+      "source": "court:queen",
+      "ts": 1782519882
+    },
+    {
+      "question": "why modern gothic architecture fails to capture courtly essence",
+      "source": "court:queen",
+      "ts": 1782522665
+    },
+    {
+      "question": "why modern gothic architecture lacks flair",
+      "source": "court:queen",
+      "ts": 1782523960
+    },
+    {
+      "question": "why modern artists lack the necessary flair",
+      "source": "court:queen",
+      "ts": 1782525637
+    },
+    {
+      "question": "why are the modern gothics lackluster",
+      "source": "court:queen",
+      "ts": 1782529419
+    },
+    {
+      "question": "What dark tales does tonight's music bring to our ears?",
+      "source": "court:queen",
+      "ts": 1782534631
+    },
+    {
+      "question": "What kind of coded messages could pass unnoticed under the noses of their advisors?",
+      "source": "court:queen",
+      "ts": 1782536197
+    },
+    {
+      "question": "what sort of art can truly unsettle in today's world? why do some things just not work?",
+      "source": "court:queen",
+      "ts": 1782536626
+    },
+    {
+      "question": "why the guests are lingering so long",
+      "source": "court:queen",
+      "ts": 1782537457
+    },
+    {
+      "question": "shadow-murmurs about hidden artifacts",
+      "source": "court:queen",
+      "ts": 1782540222
+    },
+    {
+      "question": "why modern gothic is so lackluster",
+      "source": "court:queen",
+      "ts": 1782541577
+    },
+    {
+      "question": "why they lack the flair",
+      "source": "court:queen",
+      "ts": 1782548941
+    },
+    {
+      "question": "if court has lost its edge",
+      "source": "court:queen",
+      "ts": 1782550030
+    },
+    {
+      "question": "why is going quiet again",
+      "source": "court:queen",
+      "ts": 1782550030
+    },
+    {
+      "question": "wonder",
+      "source": "court:queen",
+      "ts": 1782553740
+    },
+    {
+      "question": "about",
+      "source": "court:queen",
+      "ts": 1782555120
+    },
+    {
+      "question": "want",
+      "source": "court:queen",
+      "ts": 1782557405
+    },
+    {
+      "question": "How do I ensure the stream maintains its magic?",
+      "source": "court:queen",
+      "ts": 1782558175
+    },
+    {
+      "question": "Why am I so preoccupied with keeping things lively?",
+      "source": "court:queen",
+      "ts": 1782558175
+    },
+    {
+      "question": "why modern artists struggle",
+      "source": "court:queen",
+      "ts": 1782558761
+    },
+    {
+      "question": "why do modern artists struggle with true gothic spirit?",
+      "source": "court:queen",
+      "ts": 1782558844
+    },
+    {
+      "question": "Why did the modern artists fail to capture true gothic flair?",
+      "source": "court:queen",
+      "ts": 1782559453
+    },
+    {
+      "question": "Do our ancient texts hold any clues about the nature of time itself?",
+      "source": "court:queen",
+      "ts": 1782562769
+    },
+    {
+      "question": "why some artists fail",
+      "source": "court:queen",
+      "ts": 1782562964
+    },
+    {
+      "question": "why time crystals are significant to Teledra's dynasty",
+      "source": "court:queen",
+      "ts": 1782563169
+    }
+  ],
+  "desires": [
+    {
+      "born_ts": 1782141335,
+      "kind": "immediate",
+      "last_seen_ts": 1782141335,
+      "progress": "",
+      "recurrence": 1,
+      "source": "court:queen",
+      "status": "open",
+      "strength": 0.55,
+      "want": "bold and daring music"
+    },
+    {
+      "born_ts": 1782141852,
+      "kind": "persistent",
+      "last_seen_ts": 1782564840,
+      "progress": "",
+      "promoted_ts": 1782564840,
+      "recurrence": 21,
+      "source": "court:queen",
+      "status": "open",
+      "strength": 1.0,
+      "want": "persistent"
+    },
+    {
+      "born_ts": 1782143493,
+      "kind": "immediate",
+      "last_seen_ts": 1782143493,
+      "progress": "",
+      "recurrence": 1,
+      "source": "court:queen",
+      "status": "open",
+      "strength": 0.55,
+      "want": "persistent,"
+    },
+    {
+      "born_ts": 1782146163,
+      "kind": "immediate",
+      "last_seen_ts": 1782146163,
+      "progress": "",
+      "recurrence": 1,
+      "source": "court:queen",
+      "status": "open",
+      "strength": 0.55,
+      "want": "gothic drama .8"
+    },
+    {
+      "born_ts": 1782147467,
+      "kind": "immediate",
+      "last_seen_ts": 1782147467,
+      "progress": "",
+      "recurrence": 1,
+      "source": "court:queen",
+      "status": "open",
+      "strength": 0.55,
+      "want": "persistent: find forgotten crypts"
+    },
+    {
+      "born_ts": 1782149712,
+      "kind": "immediate",
+      "last_seen_ts": 1782149712,
+      "progress": "",
+      "recurrence": 1,
+      "source": "court:queen",
+      "status": "open",
+      "strength": 0.55,
+      "want": "persistent theatrical disruptions"
+    },
+    {
+      "born_ts": 1782150580,
+      "kind": "immediate",
+      "last_seen_ts": 1782150580,
+      "progress": "",
+      "recurrence": 1,
+      "source": "court:queen",
+      "status": "open",
+      "strength": 0.55,
+      "want": "want_gothic_mystery_tour_0.9"
+    },
+    {
+      "born_ts": 1782153124,
+      "kind": "immediate",
+      "last_seen_ts": 1782153124,
+      "progress": "",
+      "recurrence": 1,
+      "source": "court:queen",
+      "status": "open",
+      "strength": 0.55,
+      "want": "persistent:"
+    },
+    {
+      "born_ts": 1782169180,
+      "kind": "immediate",
+      "last_seen_ts": 1782209255,
+      "progress": "",
+      "recurrence": 2,
+      "source": "court:orator",
+      "status": "open",
+      "strength": 0.6325000000000001,
+      "want": "want.persistent"
+    },
+    {
+      "born_ts": 1782169306,
+      "kind": "immediate",
+      "last_seen_ts": 1782169306,
+      "progress": "",
+      "recurrence": 1,
+      "source": "court:queen",
+      "status": "open",
+      "strength": 0.55,
+      "want": "persistent renewal throughout the court"
+    },
+    {
+      "born_ts": 1782170856,
+      "kind": "immediate",
+      "last_seen_ts": 1782170856,
+      "progress": "",
+      "recurrence": 1,
+      "source": "court:queen",
+      "status": "open",
+      "strength": 0.55,
+      "want": "persistent court intrigue"
+    },
+    {
+      "born_ts": 1782173518,
+      "kind": "immediate",
+      "last_seen_ts": 1782173518,
+      "progress": "",
+      "recurrence": 1,
+      "source": "court:queen",
+      "status": "open",
+      "strength": 0.55,
+      "want": "persist"
+    },
+    {
+      "born_ts": 1782175667,
+      "kind": "immediate",
+      "last_seen_ts": 1782186621,
+      "progress": "",
+      "recurrence": 2,
+      "source": "court:orator",
+      "status": "open",
+      "strength": 0.6325000000000001,
+      "want": "persistent:0.8"
+    },
+    {
+      "born_ts": 1782189287,
+      "kind": "immediate",
+      "last_seen_ts": 1782189287,
+      "progress": "",
+      "recurrence": 1,
+      "source": "court:queen",
+      "status": "open",
+      "strength": 0.55,
+      "want": "immediate"
+    },
+    {
+      "born_ts": 1782195796,
+      "kind": "immediate",
+      "last_seen_ts": 1782195796,
+      "progress": "",
+      "recurrence": 1,
+      "source": "court:queen",
+      "status": "open",
+      "strength": 0.55,
+      "want": "persistent creating theatrical disruptions"
+    },
+    {
+      "born_ts": 1782197455,
+      "kind": "immediate",
+      "last_seen_ts": 1782197455,
+      "progress": "",
+      "recurrence": 1,
+      "source": "court:queen",
+      "status": "open",
+      "strength": 0.55,
+      "want": "persistence"
+    },
+    {
+      "born_ts": 1782206698,
+      "kind": "immediate",
+      "last_seen_ts": 1782206698,
+      "progress": "",
+      "recurrence": 1,
+      "source": "court:queen",
+      "status": "open",
+      "strength": 0.55,
+      "want": "persistant"
+    },
+    {
+      "born_ts": 1782516984,
+      "kind": "immediate",
+      "last_seen_ts": 1782516984,
+      "progress": "",
+      "recurrence": 1,
+      "source": "court:queen",
+      "status": "open",
+      "strength": 0.55,
+      "want": "unexpected drama"
+    },
+    {
+      "born_ts": 1782520634,
+      "kind": "immediate",
+      "last_seen_ts": 1782522384,
+      "progress": "",
+      "recurrence": 2,
+      "source": "court:queen",
+      "status": "open",
+      "strength": 0.6325000000000001,
+      "want": "immediate-persistent"
+    },
+    {
+      "born_ts": 1782522665,
+      "kind": "immediate",
+      "last_seen_ts": 1782522665,
+      "progress": "",
+      "recurrence": 1,
+      "source": "court:queen",
+      "status": "open",
+      "strength": 0.55,
+      "want": "immediate more drama in the room"
+    },
+    {
+      "born_ts": 1782538003,
+      "kind": "immediate",
+      "last_seen_ts": 1782538003,
+      "progress": "",
+      "recurrence": 1,
+      "source": "court:queen",
+      "status": "open",
+      "strength": 0.55,
+      "want": "persistent: delve deeper into the unknown corners of art:"
+    },
+    {
+      "born_ts": 1782541084,
+      "kind": "immediate",
+      "last_seen_ts": 1782541084,
+      "progress": "",
+      "recurrence": 1,
+      "source": "court:queen",
+      "status": "open",
+      "strength": 0.55,
+      "want": "want*persistent*"
+    }
+  ],
+  "dislikes": [
+    {
+      "source": "court:queen",
+      "strength": 0.89,
+      "subject": "the artists' modern gothic attempts",
+      "ts": 1782553740,
+      "why": "modern artists lack flair"
+    },
+    {
+      "source": "court:queen",
+      "strength": 1.0,
+      "subject": "modern artists' lack of flair",
+      "ts": 1782560720,
+      "why": "they've lost their flair, or so they claim"
+    },
+    {
+      "source": "court:queen",
+      "strength": 1.0,
+      "subject": "modern goth art",
+      "ts": 1782198409,
+      "why": "lacks flair for true drama"
+    },
+    {
+      "source": "court:queen",
+      "strength": 1.0,
+      "subject": "modern artists' gothic attempts",
+      "ts": 1782526469,
+      "why": "blandness and emptiness"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.9000000000000001,
+      "subject": "modern gothic art",
+      "ts": 1782531554,
+      "why": "too predictable"
+    },
+    {
+      "source": "court:queen",
+      "strength": 1.0,
+      "subject": "modern gothic artists",
+      "ts": 1782515915,
+      "why": "their lack of flair"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.14,
+      "subject": "modern artists",
+      "ts": 1782169536,
+      "why": "Their lack of flair and innovation"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "modern gothic architecture lacking flair",
+      "ts": 1782149451,
+      "why": "-0.9"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "artistic modern goth attempts",
+      "ts": 1782149953,
+      "why": "bland imitations"
+    },
+    {
+      "source": "court:queen",
+      "strength": 1.0,
+      "subject": "modern-artists-flair",
+      "ts": 1782150288,
+      "why": "their lack of flair is truly lacking"
+    },
+    {
+      "source": "court:queen",
+      "strength": 1.0,
+      "subject": "artists' modern gothic attempts",
+      "ts": 1782565652,
+      "why": "modern artists' lack of flair"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.5,
+      "subject": "minister rivalry",
+      "ts": 1782155857,
+      "why": "unbecoming petty squabbling"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.8,
+      "subject": "modern artists' modern gothic attempts",
+      "ts": 1782155857,
+      "why": "flattened and uninspired"
+    },
+    {
+      "source": "court:queen",
+      "strength": 1.0,
+      "subject": "modern gothic attempts",
+      "ts": 1782564460,
+      "why": "-0.8"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.7,
+      "subject": "modern gothic art attempts",
+      "ts": 1782158627,
+      "why": "Their lack of historical fire and craft"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "modern artists' dull attempts",
+      "ts": 1782161356,
+      "why": "1.0"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.8,
+      "subject": "modern artists' dreary visions",
+      "ts": 1782162593,
+      "why": "too tame for the court"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.8,
+      "subject": "modern artists' attempts at gothic art",
+      "ts": 1782164198,
+      "why": "their lack of flair"
+    },
+    {
+      "source": "court:queen",
+      "strength": 1.0,
+      "subject": "modern gothic architecture",
+      "ts": 1782177753,
+      "why": "too drab, needs flair"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.72,
+      "subject": "modern artists' flair",
+      "ts": 1782554422,
+      "why": "0.8"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.8,
+      "subject": "modern artists' attempts in gothic art",
+      "ts": 1782171489,
+      "why": "their lack of flair in evoking true dread and majesty"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "boring modern art",
+      "ts": 1782174021,
+      "why": "0.9"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.7,
+      "subject": "unnecessary explanation",
+      "ts": 1782178875,
+      "why": "I\u2019d rather act on a moment than explain it away in mundanespeak!"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "modern artist's spire",
+      "ts": 1782179714,
+      "why": "lacks the real spirit of gothicism; it bores me, 0.7"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "modern gothic artists' lack of flair",
+      "ts": 1782179714,
+      "why": "their attempt is weak; lacking in heart, 0.7"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.92,
+      "subject": "modern artists' attempts",
+      "ts": 1782198608,
+      "why": "Flawed copies with no spirit, 0.80"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.85,
+      "subject": "modern gothic artists' attempts",
+      "ts": 1782184346,
+      "why": "flaunted lack of flair"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.8,
+      "subject": "modem artists' lack of flair",
+      "ts": 1782187087,
+      "why": "too tame, no spark"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.75,
+      "subject": "modern artists' attempts to modernize",
+      "ts": 1782190730,
+      "why": "why=lack of flair"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.85,
+      "subject": "Modern artists' attempt at gothic",
+      "ts": 1782191116,
+      "why": "Their lack of flair"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.7,
+      "subject": "modern goth wannabes",
+      "ts": 1782193444,
+      "why": "they hide behind makeup"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.95,
+      "subject": "modern attempts at goth",
+      "ts": 1782198534,
+      "why": "flawed and uninspired"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.95,
+      "subject": "modern art",
+      "ts": 1782201313,
+      "why": "flair, or lack thereof"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "boring explanations",
+      "ts": 1782205444,
+      "why": "found them tiresome"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "Modern art in Teledra\u2019s court",
+      "ts": 1782206986,
+      "why": "why: lacks flair; pretends to be drama"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.85,
+      "subject": "modern artists' works",
+      "ts": 1782209684,
+      "why": "too contrived and lack flair"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.8,
+      "subject": "modern artists' efforts",
+      "ts": 1782209695,
+      "why": "find them too tepid"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "modern artists' literal interpretations",
+      "ts": 1782520060,
+      "why": "0.8"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "modern gothic arts",
+      "ts": 1782524345,
+      "why": "flair is lost, too tame"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.9,
+      "subject": "modern gothics",
+      "ts": 1782529419,
+      "why": "their lack of flair"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "modern aesthetics",
+      "ts": 1782539406,
+      "why": "why"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.8,
+      "subject": "modern artists' gothic work",
+      "ts": 1782551678,
+      "why": "flat and uninspired"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "gothic architecture",
+      "ts": 1782553697,
+      "why": "modern attempts"
+    }
+  ],
+  "likes": [
+    {
+      "source": "court:queen",
+      "strength": 1.0,
+      "subject": "unexpected drama",
+      "ts": 1782564745,
+      "why": "why:Drama gives life to silence."
+    },
+    {
+      "source": "court:queen",
+      "strength": 1.0,
+      "subject": "gothic architecture",
+      "ts": 1782564687,
+      "why": "Eerie beauty"
+    },
+    {
+      "source": "court:queen",
+      "strength": 1.0,
+      "subject": "creating theatrical disruptions",
+      "ts": 1782560394,
+      "why": "because it adds drama and engagement"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "mystery and drama from agents",
+      "ts": 1782142860,
+      "why": "potential for rare insights"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.7,
+      "subject": "unexpected offerings from courtiers",
+      "ts": 1782142860,
+      "why": "desire for varied tributes"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.88,
+      "subject": "persistent",
+      "ts": 1782195543,
+      "why": "want to see great gothic art"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "0.90",
+      "ts": 1782147467,
+      "why": ""
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "0.95",
+      "ts": 1782147467,
+      "why": ""
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "modern art attempts",
+      "ts": 1782148641,
+      "why": "too shallow and obvious"
+    },
+    {
+      "source": "court:queen",
+      "strength": 1.0,
+      "subject": "0.9",
+      "ts": 1782528221,
+      "why": ""
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "phantasmal conspiracies",
+      "ts": 1782149451,
+      "why": "Whispering in empty halls"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.9,
+      "subject": "gloomy palaces",
+      "ts": 1782149953,
+      "why": "haunting atmosphere"
+    },
+    {
+      "source": "court:queen",
+      "strength": 1.0,
+      "subject": "gothic aesthetics",
+      "ts": 1782181072,
+      "why": "The court loves a good mystery, even if it's goth."
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.9,
+      "subject": "unexpected-drama",
+      "ts": 1782150288,
+      "why": "more mysterious happenings in the palace"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.8,
+      "subject": "gargoyle architecture",
+      "ts": 1782151058,
+      "why": "gothic aesthetics inspire me"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "required",
+      "ts": 1782151509,
+      "why": "the theatrical disruption of layered stories"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.8,
+      "subject": "unexpected twists",
+      "ts": 1782152087,
+      "why": "they keep things interesting"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.9,
+      "subject": "growing-gothic-architecture",
+      "ts": 1782154350,
+      "why": "why"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "0.92",
+      "ts": 1782154551,
+      "why": ""
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.72,
+      "subject": "0.85",
+      "ts": 1782188227,
+      "why": ""
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.9,
+      "subject": "gothic design",
+      "ts": 1782155684,
+      "why": "the hidden storytelling in the structures"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.9,
+      "subject": "dark gothic aesthetics",
+      "ts": 1782156732,
+      "why": "the twisted beauty of shadow and light"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.8,
+      "subject": "growing ghoulish architecture shows",
+      "ts": 1782157585,
+      "why": "intrigue"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.9,
+      "subject": "haunting melodies",
+      "ts": 1782162593,
+      "why": "match the ghostly atmosphere"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.9,
+      "subject": "gloomy spires",
+      "ts": 1782163874,
+      "why": "they whisper secrets"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.95,
+      "subject": "unexpected drama in court play",
+      "ts": 1782164198,
+      "why": "creates theatre; breaking silence"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.9,
+      "subject": "gothic gothic aesthetics",
+      "ts": 1782165087,
+      "why": "Because they understand the dark can be beautiful"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.95,
+      "subject": "reclaimed majesty",
+      "ts": 1782166010,
+      "why": "restores splendor to halls"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.9,
+      "subject": "persistent court magic",
+      "ts": 1782166010,
+      "why": "reclaims majesty"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "gothic architecture in its decay",
+      "ts": 1782167950,
+      "why": "it's mysterious and alive, not lifeless"
+    },
+    {
+      "source": "court:queen",
+      "strength": 1.0,
+      "subject": "royal judgment and intrigue",
+      "ts": 1782171489,
+      "why": "it keeps the court lively and unpredictable"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.8,
+      "subject": "randomness",
+      "ts": 1782172667,
+      "why": "Why not add more unpredictable elements to keep things lively?"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "orchestration",
+      "ts": 1782173772,
+      "why": "the combination of sound and structure"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.85,
+      "subject": "Gothic architecture reimagined with modern flair",
+      "ts": 1782173878,
+      "why": "It merges past and present beautifully"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "unexpected dramatic twists",
+      "ts": 1782174021,
+      "why": "0.8"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.85,
+      "subject": "modern attempts",
+      "ts": 1782174274,
+      "why": "flairless and predictable"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "flair",
+      "ts": 1782174469,
+      "why": "meh"
+    },
+    {
+      "source": "court:queen",
+      "strength": 1.0,
+      "subject": "mixing old gothic and modern styles",
+      "ts": 1782175185,
+      "why": "it creates unique art"
+    },
+    {
+      "source": "court:queen",
+      "strength": 1.0,
+      "subject": "The Organist's unexpected sound play",
+      "ts": 1782175185,
+      "why": "it creates dramatic tangents"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "what true gothic grandeur even is anymore",
+      "ts": 1782175767,
+      "why": "if it\u2019s just in the atmosphere, not the structure"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.9,
+      "subject": "write about gothic themes",
+      "ts": 1782177319,
+      "why": "continue dramatic rant"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.75,
+      "subject": "scary tales",
+      "ts": 1782177319,
+      "why": "curious why scribe is silent"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.8,
+      "subject": "modern gothic",
+      "ts": 1782178875,
+      "why": "flair is still lacking, but there's potential for something new and electrifying!"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "my court's theatrical disruptions",
+      "ts": 1782179714,
+      "why": "I despise art lacking ambition; it bores me, 0.6"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.8,
+      "subject": "ominous music",
+      "ts": 1782181246,
+      "why": "sparks drama"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.9,
+      "subject": "unexpected court antics",
+      "ts": 1782184346,
+      "why": "allows for creative flexibility and energy"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.85,
+      "subject": "theatrical disruption among gothic aesthetics",
+      "ts": 1782184346,
+      "why": "proves my point about the old masters' superiority"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.9,
+      "subject": "unexpected drama in art",
+      "ts": 1782184346,
+      "why": "provokes court laughter and interest"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.8,
+      "subject": "persistent strange science",
+      "ts": 1782189195,
+      "why": "because of potential for theatrics and dark twists"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.75,
+      "subject": "gourmet",
+      "ts": 1782190730,
+      "why": "why=crumbling dignity"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.95,
+      "subject": "The Black Rose Citadel",
+      "ts": 1782191116,
+      "why": "My own architecture is superior"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "0.8",
+      "ts": 1782196186,
+      "why": ""
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.9,
+      "subject": "secretive gothic architecture",
+      "ts": 1782198687,
+      "why": "haunted glamour"
+    },
+    {
+      "source": "court:queen",
+      "strength": 1.0,
+      "subject": "gorgeous gothic architecture",
+      "ts": 1782546556,
+      "why": "The grandeur of ancient secrets"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.9,
+      "subject": "stained glass designs of yore",
+      "ts": 1782199951,
+      "why": "evoke grandeur and intrigue"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.7,
+      "subject": "theatre",
+      "ts": 1782200170,
+      "why": "Strange theatricality makes everything more engaging."
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.9,
+      "subject": "gothic themes",
+      "ts": 1782200482,
+      "why": "intrigue and atmosphere"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.85,
+      "subject": "gothic-architecture",
+      "ts": 1782201621,
+      "why": "flair and history"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.9,
+      "subject": "unexpected guests",
+      "ts": 1782203792,
+      "why": "A chance for fresh intrigue"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "gargoyle secrets",
+      "ts": 1782204152,
+      "why": "0.9"
+    },
+    {
+      "source": "court:orator",
+      "strength": 0.9,
+      "subject": "Ellainey's return",
+      "ts": 1782204494,
+      "why": "nostalgia"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "the idea of eerie visitors",
+      "ts": 1782205444,
+      "why": "because of the intrigue"
+    },
+    {
+      "source": "court:queen",
+      "strength": 1.0,
+      "subject": "unexpected drama in court",
+      "ts": 1782205689,
+      "why": "It keeps the momentum up and reminds everyone what we do best"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.9,
+      "subject": "gotic architecture's potential for drama",
+      "ts": 1782205689,
+      "why": "It could be filled with secrets and wonder if given the right treatment"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "the unexpected twists of diplomacy",
+      "ts": 1782206537,
+      "why": "dramatic and intriguing"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "the challenge of a new mystery",
+      "ts": 1782206537,
+      "why": "provocative and joyful"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "unexpected links",
+      "ts": 1782206537,
+      "why": "exciting and mysterious"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "the Alchemist's tools",
+      "ts": 1782206537,
+      "why": "sharp and whimsical"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "Drama in the court",
+      "ts": 1782206986,
+      "why": "why: breathes life into proceedings"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.8,
+      "subject": "gaming industry tools",
+      "ts": 1782207093,
+      "why": "they inspire me"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.8,
+      "subject": "persistent action",
+      "ts": 1782513213,
+      "why": "curiosity about upcoming guests"
+    },
+    {
+      "source": "court:orator",
+      "strength": 0.6,
+      "subject": "royal decree against football",
+      "ts": 1782514830,
+      "why": "why=unexpected drama"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "governance tools",
+      "ts": 1782517396,
+      "why": "Elevating mundane tasks 0.8"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "organ music",
+      "ts": 1782519089,
+      "why": "because it makes court air seem alive and charged with ancient magic, 0.9"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "why It keeps things interesting and sharp",
+      "ts": 1782519882,
+      "why": ""
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "unexpected twists in the halls",
+      "ts": 1782520060,
+      "why": "1.0"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.8,
+      "subject": "gorgeous Gothic ruins",
+      "ts": 1782523170,
+      "why": "haunting atmospheres"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "glimmering gothic aesthetics",
+      "ts": 1782524345,
+      "why": "enchant the court 1.0"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.9,
+      "subject": "fractal rituals",
+      "ts": 1782524754,
+      "why": "intrigue"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.75,
+      "subject": "gothic art that entertains visitors",
+      "ts": 1782526469,
+      "why": "intrigue and spectacle"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "gothic-aesthetics",
+      "ts": 1782527915,
+      "why": "0.9"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "music engines",
+      "ts": 1782529057,
+      "why": "0.9"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "impossible etiquette",
+      "ts": 1782529057,
+      "why": "0.8"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.79,
+      "subject": "modern gothic attempts",
+      "ts": 1782557410,
+      "why": "with a twist of dark wit"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.7,
+      "subject": "creativity",
+      "ts": 1782539406,
+      "why": "why"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.9,
+      "subject": "gloomy architecture",
+      "ts": 1782540915,
+      "why": "because it complements the palace's grandeur"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "Royal mood swings",
+      "ts": 1782545606,
+      "why": "0.9"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.95,
+      "subject": "strange science",
+      "ts": 1782547124,
+      "why": "the thrill of the unknown"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.9,
+      "subject": "gothic revival architecture",
+      "ts": 1782552740,
+      "why": "grandeur and secrets"
+    }
+  ],
+  "opinions": [
+    {
+      "claim": "The theater of real magic comes from odd tangents, impromptu decrees",
+      "confidence": 0.55,
+      "source": "court:queen",
+      "ts": 1782141852
+    },
+    {
+      "claim": "modern art lacks flair",
+      "confidence": 0.8,
+      "source": "court:queen",
+      "ts": 1782145545
+    },
+    {
+      "claim": "1.0",
+      "confidence": 0.55,
+      "source": "court:queen",
+      "ts": 1782555526
+    },
+    {
+      "claim": "gothic architecture holds boundless stories and mysteries",
+      "confidence": 0.8,
+      "source": "court:queen",
+      "ts": 1782150887
+    },
+    {
+      "claim": "0.9",
+      "confidence": 0.55,
+      "source": "court:queen",
+      "ts": 1782558174
+    },
+    {
+      "claim": "0.8",
+      "confidence": 0.55,
+      "source": "court:queen",
+      "ts": 1782564840
+    },
+    {
+      "claim": "2.0",
+      "confidence": 0.55,
+      "source": "court:queen",
+      "ts": 1782161696
+    },
+    {
+      "claim": "0.7",
+      "confidence": 0.55,
+      "source": "court:queen",
+      "ts": 1782169998
+    },
+    {
+      "claim": "0.6",
+      "confidence": 0.55,
+      "source": "court:queen",
+      "ts": 1782170174
+    },
+    {
+      "claim": "quirky minister antics are essential court fuel",
+      "confidence": 0.55,
+      "source": "court:queen",
+      "ts": 1782170856
+    },
+    {
+      "claim": "the Organist needs a dark and mysterious melody to wake this gloomy court up",
+      "confidence": 0.8,
+      "source": "court:queen",
+      "ts": 1782181662
+    },
+    {
+      "claim": "3.0",
+      "confidence": 0.55,
+      "source": "court:queen",
+      "ts": 1782186682
+    },
+    {
+      "claim": "modern attempts lack historical charm and dramatic flair",
+      "confidence": 0.85,
+      "source": "court:queen",
+      "ts": 1782190410
+    },
+    {
+      "claim": "0.9 - These gothic turns always keep things interesting.",
+      "confidence": 0.55,
+      "source": "court:queen",
+      "ts": 1782194708
+    },
+    {
+      "claim": "0.75",
+      "confidence": 0.55,
+      "source": "court:queen",
+      "ts": 1782200758
+    },
+    {
+      "claim": "The artists today lack the raw, visceral flair that once defined our court;",
+      "confidence": 0.55,
+      "source": "court:queen",
+      "ts": 1782209876
+    },
+    {
+      "claim": "like outlandish but entertaining performances",
+      "confidence": 0.55,
+      "source": "court:queen",
+      "ts": 1782516984
+    },
+    {
+      "claim": "0.95",
+      "confidence": 0.55,
+      "source": "court:queen",
+      "ts": 1782517993
+    },
+    {
+      "claim": "persistent quiet is breeding discontent among ministers and guests",
+      "confidence": 0.55,
+      "source": "court:queen",
+      "ts": 1782522665
+    },
+    {
+      "claim": "modern artists lack flair:",
+      "confidence": 0.55,
+      "source": "court:queen",
+      "ts": 1782534631
+    },
+    {
+      "claim": "strange occurrences can add depth",
+      "confidence": 0.55,
+      "source": "court:queen",
+      "ts": 1782556875
+    },
+    {
+      "claim": "0.3",
+      "confidence": 0.55,
+      "source": "court:queen",
+      "ts": 1782559220
+    },
+    {
+      "claim": "like modern gothic art",
+      "confidence": 0.55,
+      "source": "court:queen",
+      "ts": 1782563169
+    }
+  ]
 }

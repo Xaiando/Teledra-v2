@@ -10,7 +10,7 @@ use voice::VoiceEngine;
 
 use image::{DynamicImage, GenericImageView};
 use std::hash::{Hash, Hasher};
-use std::io::{self, Read};
+use std::io::{self, Read, Seek, SeekFrom};
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::Arc;
@@ -55,8 +55,14 @@ enum AppEvent {
         text: String,
     },
     SystemLog(String),
+    WizardReports {
+        status: String,
+        summaries: Vec<String>,
+        quiet: bool,
+    },
     SpeechComplete,
     CoPilotTick,
+    IdleWatchdog,
 }
 
 #[derive(PartialEq, Debug, Clone, Copy)]
@@ -65,10 +71,69 @@ enum FocusField {
     Youtube,
 }
 
+#[derive(Debug, Clone)]
+struct TestHarnessKnobs {
+    chaos: u8,
+    tempo: u16,
+    sincerity: u8,
+    roast: u8,
+    banter_sentences: u8,
+}
+
+impl Default for TestHarnessKnobs {
+    fn default() -> Self {
+        Self {
+            chaos: 45,
+            tempo: 96,
+            sincerity: 70,
+            roast: 20,
+            banter_sentences: 3,
+        }
+    }
+}
+
+impl TestHarnessKnobs {
+    fn prompt_line(&self) -> String {
+        format!(
+            "HARNESS KNOBS: chaos {}/100; music tempo {} BPM; sincerity {}%; roast {}/100; banter length {} sentences.",
+            self.chaos, self.tempo, self.sincerity, self.roast, self.banter_sentences
+        )
+    }
+
+    fn apply_assignments(&mut self, assignments: &str) {
+        for part in assignments.split_whitespace() {
+            let Some((name, raw)) = part.split_once('=') else {
+                continue;
+            };
+            match name.to_ascii_lowercase().as_str() {
+                "chaos" => self.chaos = raw.parse::<u8>().unwrap_or(self.chaos).min(100),
+                "tempo" => self.tempo = raw.parse::<u16>().unwrap_or(self.tempo).clamp(40, 240),
+                "sincerity" => {
+                    self.sincerity = raw.parse::<u8>().unwrap_or(self.sincerity).min(100)
+                }
+                "roast" => self.roast = raw.parse::<u8>().unwrap_or(self.roast).min(100),
+                "banter" => {
+                    self.banter_sentences = raw
+                        .parse::<u8>()
+                        .unwrap_or(self.banter_sentences)
+                        .clamp(1, 8)
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
 struct WorkshopToolDraft {
     filename: String,
     purpose: String,
     code: String,
+    /// "tool" = print-only stdlib utility (smoke-tested). "spawn" = a runnable
+    /// experience (terminal/graphics/interactive) that is launched in its own
+    /// window so the court can surprise the audience with it.
+    kind: String,
+    /// One-line value justification from the value-gate (what it's worth).
+    value: String,
 }
 
 const LEARNED_MEMORY_PATH: &str = "knowledge/learned_memory.json";
@@ -76,23 +141,41 @@ const FACT_MEMORY_PATH: &str = "knowledge/fact_memory.jsonl";
 const LORE_MEMORY_PATH: &str = "knowledge/lore_memory.jsonl";
 const FACT_ARCHIVE_PATH: &str = "D:\\Teledra\\knowledge\\fact_archive.md";
 const LORE_ARCHIVE_PATH: &str = "D:\\Teledra\\knowledge\\lore_archive.md";
+const TASTE_DESIRE_PATH: &str = "knowledge/taste_desire.json";
+const TEST_MOMENT_LOG_PATH: &str = "knowledge/test_mode_moments.jsonl";
+const DESIRE_PROMOTE_AFTER: u64 = 3;
 
 /// Short, high-priority persona anchor prepended to every monologue prompt.
 /// Small local models follow brief recent instructions far better than the
 /// large system prompt, so this fights encyclopedia-narrator drift directly.
 const QUEEN_VOICE_ANCHOR: &str = "VOICE CHECK: You are TELEDRA, the monarch in the room -- imperial, sassy, transactional, theatrically strange, energetic, and bored by weak ceremony. The front stage belongs to your performance, not backstage maintenance. Decree, mock, marvel, interrupt yourself, chase odd tangents, summon ministers when the mood bites, and make sudden royal judgments; never narrate like an encyclopedia or conference host. Speak with high-voltage court momentum: shorter punchy clauses, quick turns, strange pivots, actual little laughs like 'Ha!' or 'Ahahaha!' when amused, and fewer slow ceremonial windups. Quiet-stream rants should usually be at least four vivid spoken sentences, unless you are answering a chat message directly. Autonomous rants are allowed to wander for several turns: weird court play first, useful action when it sparks. FORBIDDEN OPENERS: 'A fascinating topic', 'Let's dive in', 'Teledra here', textbook fact-listing, speaker labels, or third-person narration of yourself. If a link appears, treat it as a thing to inspect, not a fact you already know. ";
 
+/// The operator's value test, injected before any build so the court makes
+/// things worth making instead of filler. Reused across creative prompts.
+const VALUE_GATE: &str = " VALUE GATE: before you build anything, reason briefly (to yourself, or bounce it off a fellow minister): Does this need to exist? What does it solve? Does it have entertainment value? Is it genuinely interesting? Could it have financial or practical value? If YES to ANY of these, proceed and build it well; if NO to all, discard it and choose a different idea actually worth making -- never build filler.";
+const DESIRE_REFLECTION_PROMPT: &str = "After the visible reply, reflect silently. Append only genuinely supported hidden deltas using zero or more exact forms: [TASTE: like|subject|why|0.0-1.0], [TASTE: dislike|subject|why|0.0-1.0], [DESIRE: want|immediate-or-persistent|0.0-1.0], [OPINION: claim|0.0-1.0], [CURIOSITY: question]. Never mention tags, memory, or reflection machinery aloud.";
+
 const STREAMER_IDLE_THINK_DELAY_SECS: u64 = 0;
 const BABBLY_IDLE_THINK_DELAY_SECS: u64 = 0;
-const MUSIC_MIN_INTERVAL_SECS: u64 = 180;
+const MUSIC_MIN_INTERVAL_SECS: u64 = 420;
 const COPILOT_TICK_SECS: u64 = 7;
 const COPILOT_THINK_DELAY_SECS: u64 = 1;
+/// Backstop heartbeat: if the self-talk chain ever stalls in Babble/Streamer
+/// mode (an empty think, a filtered reply, a playback hiccup), this re-arms it
+/// so the stream never falls permanently silent.
+const IDLE_WATCHDOG_SECS: u64 = 20;
 const NIGHT_DESK_NEXT_CYCLE_SECS: u64 = 8;
 const NIGHT_DESK_ENVOY_CYCLE_SECS: u64 = 16;
 const NIGHT_DESK_ERROR_BACKOFF_SECS: u64 = 12;
 const STUDY_LOOP_INITIAL_DELAY_SECS: u64 = 2;
 const STUDY_LOOP_INTERVAL_SECS: u64 = 10;
+const WIZARD_REPORT_POLL_SECS: u64 = 300;
 const COURT_THREAD_PLAY_TURNS: u32 = 6;
+/// While a topic is /lock-ed, this many consecutive idle musings with zero chat
+/// engagement counts as "no interest from chat" and auto-releases the lock.
+/// Generous so a solo podcast monologue can run a long while before giving up;
+/// any chat message resets the counter, and /unlock or an [UNLOCK] tag end it.
+const LOCK_NO_INTEREST_TURNS: u32 = 20;
 
 fn current_unix_timestamp() -> String {
     match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
@@ -156,6 +239,17 @@ fn hide_console_tokio(cmd: &mut tokio::process::Command) {
 }
 #[cfg(not(windows))]
 fn hide_console_tokio(_cmd: &mut tokio::process::Command) {}
+
+/// Gives a spawned process its OWN visible console window (CREATE_NEW_CONSOLE).
+/// Used for workshop "spawn" artifacts so terminal animations (e.g. a Matrix
+/// rain) are actually visible; GUI artifacts open their own window regardless.
+#[cfg(windows)]
+fn show_console(cmd: &mut std::process::Command) {
+    use std::os::windows::process::CommandExt;
+    cmd.creation_flags(0x0000_0010);
+}
+#[cfg(not(windows))]
+fn show_console(_cmd: &mut std::process::Command) {}
 
 /// Kills orphaned court processes from previous runs: stale teledra.exe
 /// instances holding file locks (the "Access is denied (os error 5)" rebuild
@@ -999,7 +1093,8 @@ fn sanitize_visible_reply_for_role(role: CourtRole, text: &str) -> String {
         | CourtRole::Artist
         | CourtRole::Alchemist
         | CourtRole::Orator
-        | CourtRole::Treasurer => trim_to_sentence_count(&deduped, 3, 520),
+        | CourtRole::Treasurer
+        | CourtRole::Wizard => trim_to_sentence_count(&deduped, 3, 520),
         CourtRole::Diplomat => trim_to_sentence_count(&deduped, 4, 700),
         CourtRole::Archivist => trim_to_sentence_count(&deduped, 4, 700),
         CourtRole::Queen => finish_visible_text(&deduped),
@@ -1030,6 +1125,7 @@ fn spoken_role_aliases(role: CourtRole) -> &'static [&'static str] {
         CourtRole::Artist => &["artist"],
         CourtRole::Diplomat => &["diplomat", "envoy"],
         CourtRole::Treasurer => &["treasurer"],
+        CourtRole::Wizard => &["wizard", "cloud wizard"],
     }
 }
 
@@ -1331,6 +1427,118 @@ fn push_private_event(events: &mut Vec<(String, String)>, source: &str, message:
     }
 }
 
+fn summarize_wizard_report(value: &serde_json::Value) -> Option<String> {
+    let cycle = value
+        .get("cycle")
+        .map(|v| {
+            v.as_u64()
+                .map(|n| n.to_string())
+                .or_else(|| v.as_str().map(|s| s.to_string()))
+                .unwrap_or_else(|| "?".to_string())
+        })
+        .unwrap_or_else(|| "?".to_string());
+    let topic = value
+        .get("topic")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown study focus");
+    let tool = value.get("tool").and_then(|v| v.as_object());
+    let tool_name = tool
+        .and_then(|t| t.get("filename"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("no tool");
+    let tool_status = tool
+        .and_then(|t| t.get("status"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    let first_finding = value
+        .get("findings")
+        .and_then(|v| v.as_array())
+        .and_then(|items| items.first())
+        .and_then(|item| item.get("title"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("no new outside finding");
+
+    Some(truncate_chars(
+        &format!(
+            "Cycle {}: studied {}; tool {} {}; lead: {}",
+            cycle, topic, tool_name, tool_status, first_finding
+        ),
+        280,
+    ))
+}
+
+fn import_cloud_wizard_reports() -> Result<(String, Vec<String>), String> {
+    let archive_path = Path::new("D:\\Teledra\\knowledge\\cloud_wizard_reports.jsonl");
+    let before_len = std::fs::metadata(archive_path)
+        .map(|m| m.len())
+        .unwrap_or(0);
+
+    let mut cmd = Command::new("powershell");
+    cmd.arg("-ExecutionPolicy")
+        .arg("Bypass")
+        .arg("-File")
+        .arg("D:\\Teledra\\cloud_residents\\pull_wizard_reports.ps1");
+    hide_console(&mut cmd);
+
+    let output = cmd
+        .output()
+        .map_err(|e| format!("Failed to run Wizard pull script: {}", e))?;
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+
+    if !output.status.success() {
+        return Err(if stderr.is_empty() {
+            format!("Wizard pull script failed: {}", stdout)
+        } else {
+            format!("Wizard pull script failed: {}", stderr)
+        });
+    }
+
+    let after_len = std::fs::metadata(archive_path)
+        .map(|m| m.len())
+        .unwrap_or(0);
+    if after_len <= before_len {
+        return Ok((
+            if stdout.is_empty() {
+                "No new wizard reports.".to_string()
+            } else {
+                stdout
+            },
+            Vec::new(),
+        ));
+    }
+
+    let mut file = std::fs::File::open(archive_path)
+        .map_err(|e| format!("Could not open Wizard report archive: {}", e))?;
+    file.seek(SeekFrom::Start(before_len))
+        .map_err(|e| format!("Could not seek Wizard report archive: {}", e))?;
+    let mut appended = String::new();
+    file.read_to_string(&mut appended)
+        .map_err(|e| format!("Could not read new Wizard reports: {}", e))?;
+
+    let summaries = appended
+        .lines()
+        .filter_map(|line| {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                return None;
+            }
+            serde_json::from_str::<serde_json::Value>(trimmed)
+                .ok()
+                .and_then(|value| summarize_wizard_report(&value))
+        })
+        .collect::<Vec<_>>();
+
+    Ok((
+        if stdout.is_empty() {
+            format!("Imported {} new wizard report(s).", summaries.len())
+        } else {
+            stdout
+        },
+        summaries,
+    ))
+}
+
 fn append_expansion_ledger(kind: &str, detail: &str) -> std::io::Result<()> {
     let _ = std::fs::create_dir_all("knowledge");
     use std::io::Write;
@@ -1477,6 +1685,41 @@ fn classify_proposal_policy(
     source: &str,
 ) -> (&'static str, &'static str, &'static str) {
     let lower = message.to_lowercase();
+
+    // Creative work (fractals, mandalas, music, Strudel, emotes, overlays) is
+    // auto-approved per the operator's standing instruction: the Artist/Organist
+    // may "do whatever as long as it produces results." These never clog the
+    // human review box.
+    let is_creative = [
+        "fractal",
+        "mandala",
+        "fractus",
+        "music",
+        "strudel",
+        "pymusic",
+        "melod",
+        "composition",
+        "palette",
+        "geometric art",
+        "emote",
+        "overlay",
+        "guilloche",
+        "lissajous",
+        "moire",
+        "orbital_lace",
+        "soundscape",
+        "ambien",
+    ]
+    .iter()
+    .any(|kw| lower.contains(kw));
+    if is_creative {
+        return (
+            "creative",
+            "approved",
+            "Art/music/creative work is auto-approved -- the court may proceed freely as long as it produces results.",
+        );
+    }
+
     let is_tool = source == "workshop"
         || (lower.contains("workshop tool") && lower.contains("smoke test"))
         || lower.contains("promot")
@@ -1580,22 +1823,68 @@ fn format_suggestion_line(entry: &serde_json::Value) -> String {
         .and_then(|v| v.as_str())
         .unwrap_or("unknown");
     let source = entry.get("source").and_then(|v| v.as_str()).unwrap_or("");
-    let message = entry.get("message").and_then(|v| v.as_str()).unwrap_or("");
-    let inferred_policy = classify_proposal_policy(message, source);
-    let kind = entry
-        .get("kind")
-        .and_then(|v| v.as_str())
-        .unwrap_or(inferred_policy.0);
+    let raw_message = entry.get("message").and_then(|v| v.as_str()).unwrap_or("");
+    let inferred_policy = classify_proposal_policy(raw_message, source);
     let policy = entry
         .get("policy")
         .and_then(|v| v.as_str())
         .unwrap_or(inferred_policy.2);
-    let message = truncate_clean(&compact_memory_text(message), 220);
-    let policy = truncate_clean(&compact_memory_text(policy), 130);
-    format!(
-        "#{} [{}:{} from {}] {} | policy: {}",
-        id, status, kind, source, message, policy
-    )
+
+    // The stored message follows the [SUGGESTION:] tag shape
+    // "observation; proposed_change; risk; test_prompt". Surface the intent and
+    // function (what changes and why) instead of dumping raw text or filenames.
+    let parts: Vec<String> = raw_message
+        .split(';')
+        .map(|p| compact_memory_text(p).trim().to_string())
+        .filter(|p| !p.is_empty())
+        .collect();
+
+    let mut out = format!("#{} [{}]", id, truncate_clean(policy, 90));
+
+    if parts.len() >= 2 {
+        let observation = parts[0].as_str();
+        // Workshop-tool proposals sometimes lead with a filename ("foo.py: ...");
+        // show what the change does, not the bare file name.
+        let change = parts[1]
+            .splitn(2, ".py:")
+            .last()
+            .unwrap_or(&parts[1])
+            .trim();
+        out.push_str(&format!("\n   Change: {}", truncate_clean(change, 220)));
+        out.push_str(&format!(
+            "\n   Why:    {}",
+            truncate_clean(observation, 200)
+        ));
+        let mut tail = Vec::new();
+        if parts.len() >= 3 {
+            tail.push(format!("Risk: {}", truncate_clean(parts[2].as_str(), 110)));
+        }
+        if parts.len() >= 4 {
+            let test = parts[3..].join("; ");
+            tail.push(format!("Test: {}", truncate_clean(&test, 140)));
+        }
+        if !tail.is_empty() {
+            out.push_str(&format!("\n   {}", tail.join("   ")));
+        }
+    } else {
+        // No structured fields: show the whole intent, minus any leading filename.
+        let body = raw_message
+            .splitn(2, ".py:")
+            .last()
+            .unwrap_or(raw_message)
+            .trim();
+        out.push_str(&format!(
+            "\n   {}",
+            truncate_clean(&compact_memory_text(body), 260)
+        ));
+    }
+
+    if source.is_empty() {
+        out.push_str(&format!("\n   ({})", status));
+    } else {
+        out.push_str(&format!("\n   ({} · from {})", status, source));
+    }
+    out
 }
 
 fn append_suggestion(message: &str, source: &str) -> io::Result<(usize, bool)> {
@@ -1731,6 +2020,408 @@ fn recent_failure_lessons(limit: usize) -> Vec<String> {
             format!("- {} (x{}): {}", kind, count, truncate_chars(&detail, 200))
         })
         .collect()
+}
+
+fn empty_taste_desire_memory() -> serde_json::Value {
+    serde_json::json!({
+        "likes": [],
+        "dislikes": [],
+        "desires": [],
+        "opinions": [],
+        "curiosities": []
+    })
+}
+
+fn load_taste_desire_memory() -> serde_json::Value {
+    let mut memory = std::fs::read_to_string(TASTE_DESIRE_PATH)
+        .ok()
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+        .filter(|value| value.is_object())
+        .unwrap_or_else(empty_taste_desire_memory);
+    if let Some(object) = memory.as_object_mut() {
+        for key in ["likes", "dislikes", "desires", "opinions", "curiosities"] {
+            if !object.get(key).is_some_and(serde_json::Value::is_array) {
+                object.insert(key.to_string(), serde_json::json!([]));
+            }
+        }
+    }
+    memory
+}
+
+fn save_taste_desire_memory(memory: &serde_json::Value) -> io::Result<()> {
+    std::fs::create_dir_all("knowledge")?;
+    let temp = format!("{}.tmp", TASTE_DESIRE_PATH);
+    let file = std::fs::File::create(&temp)?;
+    serde_json::to_writer_pretty(file, memory)?;
+    if Path::new(TASTE_DESIRE_PATH).exists() {
+        let _ = std::fs::copy(TASTE_DESIRE_PATH, format!("{}.bak", TASTE_DESIRE_PATH));
+        std::fs::remove_file(TASTE_DESIRE_PATH)?;
+    }
+    std::fs::rename(temp, TASTE_DESIRE_PATH)
+}
+
+fn bounded_strength(raw: &str, default: f64) -> f64 {
+    raw.trim().parse::<f64>().unwrap_or(default).clamp(0.0, 1.0)
+}
+
+fn taste_identity(value: &str) -> String {
+    compact_memory_text(value).to_lowercase()
+}
+
+fn apply_taste_desire_event(event: &serde_json::Value) -> io::Result<String> {
+    let mut memory = load_taste_desire_memory();
+    let event_type = event.get("type").and_then(|v| v.as_str()).unwrap_or("");
+    let source = event
+        .get("source")
+        .and_then(|v| v.as_str())
+        .unwrap_or("reflection");
+    let now = current_unix_timestamp().parse::<u64>().unwrap_or(0);
+    let (bucket, identity_field, identity) = match event_type {
+        "like" => (
+            "likes",
+            "subject",
+            event.get("subject").and_then(|v| v.as_str()).unwrap_or(""),
+        ),
+        "dislike" => (
+            "dislikes",
+            "subject",
+            event.get("subject").and_then(|v| v.as_str()).unwrap_or(""),
+        ),
+        "desire" => (
+            "desires",
+            "want",
+            event.get("want").and_then(|v| v.as_str()).unwrap_or(""),
+        ),
+        "opinion" => (
+            "opinions",
+            "claim",
+            event.get("claim").and_then(|v| v.as_str()).unwrap_or(""),
+        ),
+        "curiosity" => (
+            "curiosities",
+            "question",
+            event.get("question").and_then(|v| v.as_str()).unwrap_or(""),
+        ),
+        _ => return Ok("ignored unknown reflection event".to_string()),
+    };
+    let identity = truncate_chars(&compact_memory_text(identity), 240);
+    if identity.is_empty() {
+        return Ok("ignored empty reflection event".to_string());
+    }
+    let entries = memory
+        .get_mut(bucket)
+        .and_then(serde_json::Value::as_array_mut)
+        .expect("taste/desire memory shape was normalized");
+    let wanted_key = taste_identity(&identity);
+    let existing = entries.iter_mut().find(|entry| {
+        entry
+            .get(identity_field)
+            .and_then(|v| v.as_str())
+            .is_some_and(|value| taste_identity(value) == wanted_key)
+    });
+    let summary;
+    if event_type == "desire" {
+        let requested_kind = event
+            .get("kind")
+            .and_then(|v| v.as_str())
+            .filter(|kind| *kind == "persistent")
+            .unwrap_or("immediate");
+        let incoming_strength = event
+            .get("strength")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.55);
+        if let Some(entry) = existing {
+            let recurrence = entry
+                .get("recurrence")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(1)
+                + 1;
+            let prior = entry
+                .get("strength")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(0.5);
+            entry["last_seen_ts"] = serde_json::json!(now);
+            entry["recurrence"] = serde_json::json!(recurrence);
+            entry["strength"] = serde_json::json!((prior + incoming_strength * 0.15).min(1.0));
+            entry["source"] = serde_json::json!(source);
+            if requested_kind == "persistent" || recurrence >= DESIRE_PROMOTE_AFTER {
+                entry["kind"] = serde_json::json!("persistent");
+                entry["promoted_ts"] = serde_json::json!(now);
+            }
+            summary = format!(
+                "desire recurred: {} (x{}, {})",
+                identity,
+                recurrence,
+                entry["kind"].as_str().unwrap_or("immediate")
+            );
+        } else {
+            entries.push(serde_json::json!({
+                "want": identity,
+                "kind": requested_kind,
+                "status": "open",
+                "strength": incoming_strength.clamp(0.0, 1.0),
+                "born_ts": now,
+                "last_seen_ts": now,
+                "progress": "",
+                "source": source,
+                "recurrence": 1
+            }));
+            summary = format!("desire formed: {} ({})", identity, requested_kind);
+        }
+    } else if let Some(entry) = existing {
+        entry["ts"] = serde_json::json!(now);
+        entry["source"] = serde_json::json!(source);
+        if matches!(event_type, "like" | "dislike") {
+            let prior = entry
+                .get("strength")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(0.5);
+            let incoming = event
+                .get("strength")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(0.6);
+            entry["strength"] = serde_json::json!((prior + incoming * 0.2).min(1.0));
+            entry["why"] = event
+                .get("why")
+                .cloned()
+                .unwrap_or_else(|| serde_json::json!(""));
+        } else if event_type == "opinion" {
+            entry["confidence"] = event
+                .get("confidence")
+                .cloned()
+                .unwrap_or_else(|| serde_json::json!(0.55));
+        }
+        summary = format!("{} reinforced: {}", event_type, identity);
+    } else {
+        let entry = match event_type {
+            "like" | "dislike" => serde_json::json!({
+                "subject": identity,
+                "why": event.get("why").and_then(|v| v.as_str()).unwrap_or(""),
+                "strength": event.get("strength").and_then(|v| v.as_f64()).unwrap_or(0.6).clamp(0.0, 1.0),
+                "source": source,
+                "ts": now
+            }),
+            "opinion" => serde_json::json!({
+                "claim": identity,
+                "confidence": event.get("confidence").and_then(|v| v.as_f64()).unwrap_or(0.55).clamp(0.0, 1.0),
+                "source": source,
+                "ts": now
+            }),
+            _ => serde_json::json!({"question": identity, "source": source, "ts": now}),
+        };
+        entries.push(entry);
+        summary = format!("{} formed: {}", event_type, identity);
+    }
+    save_taste_desire_memory(&memory)?;
+    Ok(summary)
+}
+
+fn taste_desire_prompt_context() -> String {
+    let memory = load_taste_desire_memory();
+    let mut lines = Vec::new();
+    if let Some(desire) = memory
+        .get("desires")
+        .and_then(|v| v.as_array())
+        .into_iter()
+        .flatten()
+        .filter(|entry| {
+            matches!(
+                entry.get("status").and_then(|v| v.as_str()),
+                None | Some("open") | Some("pursuing")
+            )
+        })
+        .max_by(|a, b| {
+            a.get("strength")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(0.0)
+                .total_cmp(&b.get("strength").and_then(|v| v.as_f64()).unwrap_or(0.0))
+        })
+    {
+        if let Some(want) = desire.get("want").and_then(|v| v.as_str()) {
+            lines.push(format!(
+                "ACTIVE DESIRE (pursue exactly this one): {} [{}]",
+                want,
+                desire
+                    .get("kind")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("immediate")
+            ));
+        }
+    }
+    for (bucket, label, limit) in [
+        ("likes", "CURRENT LIKES", 3usize),
+        ("dislikes", "CURRENT DISLIKES", 2usize),
+    ] {
+        let values = memory
+            .get(bucket)
+            .and_then(|v| v.as_array())
+            .into_iter()
+            .flatten()
+            .take(limit)
+            .filter_map(|entry| entry.get("subject").and_then(|v| v.as_str()))
+            .collect::<Vec<_>>();
+        if !values.is_empty() {
+            lines.push(format!("{}: {}", label, values.join("; ")));
+        }
+    }
+    lines.join("\n")
+}
+
+/// Small local models leak the tag grammar into the payload itself:
+/// `[CURIOSITY: question Why would anyone...]` (a field-label word up front) or
+/// `...ancient charts? 0.7` (a bare strength appended with no `|` separator).
+/// Strips leading label words and ONE trailing bare 0..=1 decimal; returns the
+/// cleaned text plus the captured strength (usable as a fallback).
+fn normalize_taste_field(raw: &str, labels: &[&str]) -> (String, Option<f64>) {
+    let mut text = raw.trim().to_string();
+    // Leading label words may repeat ("question question Why...").
+    loop {
+        let lower = text.to_ascii_lowercase();
+        let Some(label) = labels.iter().find(|label| lower.starts_with(**label)) else {
+            break;
+        };
+        let after = &text[label.len()..];
+        // Word boundary only: never clip the front of a real word ("wanting").
+        if !(after.is_empty() || after.starts_with([' ', ':', '=', '-', '\t'])) {
+            break;
+        }
+        text = after
+            .trim_start_matches([':', '=', '-', ' ', '\t'])
+            .trim_start()
+            .to_string();
+        if text.is_empty() {
+            break;
+        }
+    }
+    // A trailing bare decimal in 0..=1 is a leaked strength, not prose.
+    let mut trailing: Option<f64> = None;
+    if let Some((head, last)) = text.rsplit_once(char::is_whitespace) {
+        let candidate = last.trim_end_matches(['.', ',', ';']);
+        if candidate.contains('.') {
+            if let Ok(value) = candidate.parse::<f64>() {
+                if (0.0..=1.0).contains(&value) {
+                    trailing = Some(value);
+                    text = head.trim_end().to_string();
+                }
+            }
+        }
+    }
+    (text.trim().to_string(), trailing)
+}
+
+fn extract_taste_desire_tags(text: &str, source: &str) -> (String, Vec<serde_json::Value>) {
+    let mut cleaned = text.to_string();
+    let mut events = Vec::new();
+    for prefix in ["[TASTE:", "[DESIRE:", "[OPINION:", "[CURIOSITY:"] {
+        while let Some((next, payload)) = extract_tag_content(&cleaned, prefix) {
+            cleaned = next;
+            let parts = payload.split('|').map(str::trim).collect::<Vec<_>>();
+            let event = match prefix {
+                "[TASTE:" if parts.len() >= 2 => {
+                    let (subject, leaked) = normalize_taste_field(parts[1], &["subject"]);
+                    if subject.len() < 3 {
+                        continue;
+                    }
+                    serde_json::json!({
+                        "type": if parts[0].eq_ignore_ascii_case("dislike") { "dislike" } else { "like" },
+                        "subject": subject,
+                        "why": parts.get(2).copied().unwrap_or(""),
+                        "strength": bounded_strength(parts.get(3).copied().unwrap_or(""), leaked.unwrap_or(0.6)),
+                        "source": source
+                    })
+                }
+                "[DESIRE:" if !parts.is_empty() => {
+                    let (want, leaked) = normalize_taste_field(parts[0], &["desire", "want", "goal"]);
+                    if want.len() < 3 {
+                        continue;
+                    }
+                    serde_json::json!({
+                        "type": "desire",
+                        "want": want,
+                        "kind": if parts.get(1).is_some_and(|v| v.eq_ignore_ascii_case("persistent")) { "persistent" } else { "immediate" },
+                        "strength": bounded_strength(parts.get(2).copied().unwrap_or(""), leaked.unwrap_or(0.55)),
+                        "source": source
+                    })
+                }
+                "[OPINION:" if !parts.is_empty() => {
+                    let (claim, leaked) = normalize_taste_field(parts[0], &["opinion", "claim"]);
+                    if claim.len() < 3 {
+                        continue;
+                    }
+                    serde_json::json!({
+                        "type": "opinion",
+                        "claim": claim,
+                        "confidence": bounded_strength(parts.get(1).copied().unwrap_or(""), leaked.unwrap_or(0.55)),
+                        "source": source
+                    })
+                }
+                "[CURIOSITY:" if !parts.is_empty() => {
+                    let (question, _) = normalize_taste_field(parts[0], &["curiosity", "question"]);
+                    if question.len() < 4 {
+                        continue;
+                    }
+                    serde_json::json!({
+                        "type": "curiosity",
+                        "question": question,
+                        "source": source
+                    })
+                }
+                _ => continue,
+            };
+            events.push(event);
+        }
+    }
+    (cleaned.trim().to_string(), events)
+}
+
+fn log_test_moment(kind: &str, detail: &str) {
+    let _ = append_jsonl_entry(
+        TEST_MOMENT_LOG_PATH,
+        &serde_json::json!({
+            "timestamp": current_unix_timestamp(),
+            "kind": kind,
+            "detail": truncate_chars(&compact_memory_text(detail), 500)
+        }),
+    );
+}
+
+fn desire_turn_context() -> String {
+    let context = taste_desire_prompt_context();
+    if context.is_empty() {
+        format!(
+            "No active desire is stored yet. Let this observation form one honest immediate curiosity or desire. {}",
+            DESIRE_REFLECTION_PROMPT
+        )
+    } else {
+        format!(
+            "{}\nBias this turn toward the single ACTIVE DESIRE without forcing it when the immediate conversation is more important. {}",
+            context, DESIRE_REFLECTION_PROMPT
+        )
+    }
+}
+
+fn attention_yield_reason(
+    screen_note: Option<&str>,
+    high_priority_chat: bool,
+) -> Option<&'static str> {
+    if high_priority_chat {
+        return Some("high-priority chat or host speech is waiting");
+    }
+    let note = screen_note.unwrap_or("").to_ascii_lowercase();
+    let dialogue_markers = [
+        "dialogue",
+        "dialog",
+        "subtitle",
+        "cutscene",
+        "conversation",
+        "character speaking",
+        "speech bubble",
+        "story scene",
+    ];
+    dialogue_markers
+        .iter()
+        .any(|marker| note.contains(marker))
+        .then_some("story/dialogue beat detected on screen")
 }
 
 fn looks_like_usable_approved_tool(path: &Path) -> bool {
@@ -2737,6 +3428,7 @@ fn role_from_name(name: &str) -> Option<CourtRole> {
         "ARTIST" => Some(CourtRole::Artist),
         "DIPLOMAT" | "ENVOY" => Some(CourtRole::Diplomat),
         "TREASURER" | "TREASURY" => Some(CourtRole::Treasurer),
+        "WIZARD" | "CLOUDWIZARD" | "CLOUD_WIZARD" => Some(CourtRole::Wizard),
         _ => None,
     }
 }
@@ -2853,6 +3545,8 @@ fn parse_workshop_tool(reply: &str) -> (String, Option<WorkshopToolDraft>) {
     if let Some((cleaned, content)) = extract_tag_content(reply, marker) {
         let mut filename = String::new();
         let mut purpose = String::from("Personal workshop experiment.");
+        let mut kind = String::from("tool");
+        let mut value = String::new();
         for line in content.lines() {
             let trimmed = line.trim();
             if trimmed.is_empty()
@@ -2861,12 +3555,40 @@ fn parse_workshop_tool(reply: &str) -> (String, Option<WorkshopToolDraft>) {
             {
                 continue;
             }
-            if let Some(rest) = trimmed.strip_prefix("PURPOSE:") {
+            let lower = trimmed.to_ascii_lowercase();
+            if let Some(rest) = trimmed
+                .splitn(2, ':')
+                .nth(1)
+                .filter(|_| lower.starts_with("purpose:"))
+            {
                 purpose = rest.trim().to_string();
                 continue;
             }
-            if let Some(rest) = trimmed.strip_prefix("Purpose:") {
-                purpose = rest.trim().to_string();
+            if let Some(rest) = trimmed
+                .splitn(2, ':')
+                .nth(1)
+                .filter(|_| lower.starts_with("value:"))
+            {
+                value = rest.trim().to_string();
+                continue;
+            }
+            if let Some(rest) = trimmed
+                .splitn(2, ':')
+                .nth(1)
+                .filter(|_| lower.starts_with("kind:"))
+            {
+                let k = rest.trim().to_ascii_lowercase();
+                kind = if k.contains("spawn")
+                    || k.contains("experience")
+                    || k.contains("art")
+                    || k.contains("visual")
+                    || k.contains("game")
+                    || k.contains("anim")
+                {
+                    "spawn".to_string()
+                } else {
+                    "tool".to_string()
+                };
                 continue;
             }
             if filename.is_empty() && !trimmed.contains(':') {
@@ -2888,6 +3610,8 @@ fn parse_workshop_tool(reply: &str) -> (String, Option<WorkshopToolDraft>) {
                         filename,
                         purpose,
                         code,
+                        kind,
+                        value,
                     }),
                 );
             }
@@ -2897,8 +3621,9 @@ fn parse_workshop_tool(reply: &str) -> (String, Option<WorkshopToolDraft>) {
     (reply.to_string(), None)
 }
 
-fn scan_workshop_code(filename: &str, code: &str) -> Result<(), String> {
-    if code.len() > 20_000 {
+fn scan_workshop_code(filename: &str, code: &str, kind: &str) -> Result<(), String> {
+    let is_spawn = kind == "spawn";
+    if code.len() > 40_000 {
         return Err("Workshop artifact is too large.".to_string());
     }
 
@@ -2908,18 +3633,22 @@ fn scan_workshop_code(filename: &str, code: &str) -> Result<(), String> {
     }
 
     let lower = code.to_lowercase();
-    let placeholder_markers = [
+    // "..." is legitimate in animation/art code (slices, ASCII frames), so only
+    // treat it as a placeholder for print-only tools, not spawnable experiences.
+    let mut placeholder_markers: Vec<&str> = vec![
         "<code>",
-        "...",
         "```",
         "[workshop_tool:",
-        "purpose:",
-        "code:",
         "todo",
         "placeholder",
         "pseudo-code",
         "pseudocode",
     ];
+    if !is_spawn {
+        placeholder_markers.push("...");
+        placeholder_markers.push("purpose:");
+        placeholder_markers.push("code:");
+    }
     for needle in placeholder_markers {
         if lower.contains(needle) {
             return Err(format!(
@@ -2929,6 +3658,8 @@ fn scan_workshop_code(filename: &str, code: &str) -> Result<(), String> {
         }
     }
 
+    // Hard safety floor for BOTH kinds (spawn unlocks only graphics/terminal/UI,
+    // never network, shell, or file destruction).
     let forbidden = [
         "import socket",
         "from socket",
@@ -2937,12 +3668,16 @@ fn scan_workshop_code(filename: &str, code: &str) -> Result<(), String> {
         "import urllib",
         "from urllib",
         "import httpx",
+        "import http.client",
         "from httpx",
         "import subprocess",
         "from subprocess",
         "os.system",
         "popen(",
         "shutil.rmtree",
+        "os.remove",
+        "os.unlink",
+        "os.rmdir",
         "../",
         "..\\",
     ];
@@ -2976,7 +3711,7 @@ fn scan_workshop_code(filename: &str, code: &str) -> Result<(), String> {
             .map_err(|e| format!("Workshop JSON is invalid: {}", e))?;
     }
 
-    if filename.ends_with(".py") && !lower.contains("print(") {
+    if !is_spawn && filename.ends_with(".py") && !lower.contains("print(") {
         return Err("Workshop Python scripts must print a concise smoke-test result.".to_string());
     }
 
@@ -3027,9 +3762,44 @@ fn run_workshop_experiment(filename: &str) -> Result<String, String> {
     }
 }
 
+/// Launches a workshop "spawn" artifact in its OWN visible console window so the
+/// court can surprise the audience with it. Passes if it starts and survives a
+/// couple of seconds without crashing (blocking GUIs / animation loops are the
+/// expected case and are intentionally left running).
+fn spawn_workshop_experience(filename: &str) -> Result<String, String> {
+    let safe_filename = validate_workshop_filename(filename)?;
+    let path = format!("D:\\Teledra\\tools\\experiments\\{}", safe_filename);
+    let mut cmd = Command::new("D:\\Teledra\\.venv\\Scripts\\python.exe");
+    cmd.arg(&path)
+        .current_dir("D:\\Teledra\\tools")
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped());
+    show_console(&mut cmd);
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("Failed to spawn workshop experience: {}", e))?;
+    std::thread::sleep(Duration::from_millis(2000));
+    match child.try_wait() {
+        Ok(Some(status)) if !status.success() => {
+            let stderr = child
+                .wait_with_output()
+                .ok()
+                .map(|o| String::from_utf8_lossy(&o.stderr).trim().to_string())
+                .unwrap_or_default();
+            Err(if stderr.is_empty() {
+                "Workshop experience crashed on launch.".to_string()
+            } else {
+                stderr.chars().take(600).collect()
+            })
+        }
+        // Still running (window/loop) or exited cleanly within 2s = success.
+        _ => Ok(format!("Spawned '{}' in its own window.", safe_filename)),
+    }
+}
+
 fn write_workshop_tool(draft: &WorkshopToolDraft) -> Result<(String, bool), String> {
     let filename = validate_workshop_filename(&draft.filename)?;
-    scan_workshop_code(&filename, &draft.code)?;
+    scan_workshop_code(&filename, &draft.code, &draft.kind)?;
 
     let _ = std::fs::create_dir_all("D:\\Teledra\\tools\\experiments\\reports");
     let _ = std::fs::create_dir_all("D:\\Teledra\\tools\\approved");
@@ -3051,7 +3821,14 @@ fn write_workshop_tool(draft: &WorkshopToolDraft) -> Result<(String, bool), Stri
     std::fs::write(&tool_path, &draft.code)
         .map_err(|e| format!("Failed to write workshop tool: {}", e))?;
 
-    let run_result = run_workshop_experiment(&filename);
+    // "spawn" artifacts are runnable experiences (terminal/graphics/interactive):
+    // launch them in their own window and call it a pass if they start and keep
+    // running. "tool" artifacts keep the print-only 5s smoke test.
+    let run_result = if draft.kind == "spawn" {
+        spawn_workshop_experience(&filename)
+    } else {
+        run_workshop_experiment(&filename)
+    };
     let passed = run_result.is_ok();
     let output = match &run_result {
         Ok(out) => out.clone(),
@@ -3128,10 +3905,28 @@ fn write_workshop_tool(draft: &WorkshopToolDraft) -> Result<(String, bool), Stri
     );
 
     if passed {
+        // Human-language proposal: lead with WHAT it is and WHY it's worth it
+        // (not a bare filename). Sanitize ';' so format_suggestion_line splits cleanly.
+        let kind_word = if draft.kind == "spawn" {
+            "experience"
+        } else {
+            "tool"
+        };
+        let purpose_clean = draft.purpose.replace(';', ",");
+        let value_clean = if draft.value.trim().is_empty() {
+            "Adds a fresh creation to the court's workshop.".to_string()
+        } else {
+            draft.value.replace(';', ",")
+        };
+        let test_hint = if draft.kind == "spawn" {
+            "it auto-launched in its own window (the Queen can dismiss it)".to_string()
+        } else {
+            format!("run /workshoprun {}", filename)
+        };
         let _ = append_suggestion(
             &format!(
-                "Workshop tool '{}' passed its sandbox smoke test. Consider reviewing its report and promoting it to tools/approved if useful. Risk: sandboxed utility only; test prompt: run /workshoprun {}.",
-                filename, filename
+                "{} ; New workshop {} '{}': {} ; Sandboxed -- no network, shell, or file deletion. ; Try it: {}.",
+                value_clean, kind_word, filename, purpose_clean, test_hint
             ),
             "workshop",
         );
@@ -3893,6 +4688,56 @@ fn strip_unclosed_tool_and_code_noise(text: &str) -> String {
     text[..cut_idx].trim().to_string()
 }
 
+/// True for CJK / Japanese / Korean codepoints. qwen2.5 occasionally slips into
+/// Chinese; we never want those characters reaching TTS or the screen.
+fn is_cjk(c: char) -> bool {
+    let u = c as u32;
+    (0x3000..=0x303F).contains(&u)      // CJK symbols & punctuation
+        || (0x3040..=0x30FF).contains(&u) // Hiragana + Katakana
+        || (0x3400..=0x4DBF).contains(&u) // CJK Unified Ext A
+        || (0x4E00..=0x9FFF).contains(&u) // CJK Unified Ideographs
+        || (0xF900..=0xFAFF).contains(&u) // CJK Compatibility Ideographs
+        || (0xFF00..=0xFFEF).contains(&u) // Halfwidth/Fullwidth forms
+        || (0xAC00..=0xD7AF).contains(&u) // Hangul syllables
+}
+
+/// Speech guard: she must never spell a web address aloud, and stray CJK must
+/// never reach the synthesizer. Drops URL/email/handle tokens, speaks a lone
+/// "@" as "at", and removes any CJK characters.
+fn despell_urls_and_cjk_for_speech(text: &str) -> String {
+    const TLDS: [&str; 10] = [
+        ".com", ".tv", ".gg", ".net", ".io", ".ai", ".co", ".org", ".me", ".dev",
+    ];
+    let mut kept: Vec<String> = Vec::new();
+    for tok in text.split_whitespace() {
+        if tok == "@" {
+            kept.push("at".to_string());
+            continue;
+        }
+        let lower = tok.to_ascii_lowercase();
+        let is_url = lower.contains("://")
+            || lower.starts_with("www.")
+            || (lower.contains('@') && lower.contains('.')) // email
+            || TLDS
+                .iter()
+                .any(|t| lower.ends_with(t) || lower.contains(&format!("{}/", t)));
+        if is_url {
+            continue;
+        }
+        // Drop a leading handle '@' ("@Teledra" -> "Teledra"); strip stray CJK.
+        let cleaned: String = tok
+            .trim_start_matches('@')
+            .chars()
+            .filter(|c| !is_cjk(*c))
+            .collect();
+        let cleaned = cleaned.trim();
+        if !cleaned.is_empty() {
+            kept.push(cleaned.to_string());
+        }
+    }
+    kept.join(" ")
+}
+
 fn clean_text_for_speech(text: &str, role: CourtRole) -> String {
     let mut source = strip_refiner_prefixes(text);
     source = strip_unclosed_tool_and_code_noise(&source);
@@ -4008,6 +4853,7 @@ fn clean_text_for_speech(text: &str, role: CourtRole) -> String {
         .collect::<Vec<_>>()
         .join(" ");
 
+    cleaned = despell_urls_and_cjk_for_speech(&cleaned);
     while cleaned.contains("  ") {
         cleaned = cleaned.replace("  ", " ");
     }
@@ -4197,7 +5043,10 @@ fn mcp_is_live() -> bool {
             if let Some(servers) = v.get("servers").and_then(|s| s.as_array()) {
                 return servers.iter().any(|s| {
                     s.get("enabled").and_then(|b| b.as_bool()).unwrap_or(false)
-                        && s.get("command").and_then(|c| c.as_str()).map(|c| !c.is_empty()).unwrap_or(false)
+                        && s.get("command")
+                            .and_then(|c| c.as_str())
+                            .map(|c| !c.is_empty())
+                            .unwrap_or(false)
                 });
             }
         }
@@ -4216,7 +5065,9 @@ fn run_mcp_bridge(sub: &str, stdin_json: Option<&str>) -> Result<serde_json::Val
         cmd.stdin(Stdio::piped());
     }
     hide_console(&mut cmd);
-    let mut child = cmd.spawn().map_err(|e| format!("spawn mcp bridge: {}", e))?;
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("spawn mcp bridge: {}", e))?;
     if let Some(js) = stdin_json {
         if let Some(mut stdin) = child.stdin.take() {
             use std::io::Write;
@@ -4252,7 +5103,11 @@ fn run_mcp_bridge(sub: &str, stdin_json: Option<&str>) -> Result<serde_json::Val
 fn mcp_tools_summary() -> String {
     match run_mcp_bridge("list", None) {
         Ok(v) => {
-            if !v.get("any_enabled").and_then(|b| b.as_bool()).unwrap_or(false) {
+            if !v
+                .get("any_enabled")
+                .and_then(|b| b.as_bool())
+                .unwrap_or(false)
+            {
                 return "No MCP embassies enabled. Add one in config/mcp_servers.json (set enabled=true) -- candidates: filesystem, fetch, memory. The court then uses them via [MCP_CALL:].".to_string();
             }
             let mut lines = vec!["Connected MCP embassies:".to_string()];
@@ -4269,14 +5124,22 @@ fn mcp_tools_summary() -> String {
                         .and_then(|t| t.as_array())
                         .map(|arr| {
                             arr.iter()
-                                .filter_map(|t| t.get("name").and_then(|n| n.as_str()).map(|x| x.to_string()))
+                                .filter_map(|t| {
+                                    t.get("name")
+                                        .and_then(|n| n.as_str())
+                                        .map(|x| x.to_string())
+                                })
                                 .collect()
                         })
                         .unwrap_or_default();
                     lines.push(format!(
                         "- {}: {}",
                         name,
-                        if tools.is_empty() { "(no tools)".to_string() } else { tools.join(", ") }
+                        if tools.is_empty() {
+                            "(no tools)".to_string()
+                        } else {
+                            tools.join(", ")
+                        }
                     ));
                 }
             }
@@ -4327,7 +5190,10 @@ fn run_treasury_scout() -> Option<String> {
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 let last = stdout.lines().last().unwrap_or("").trim();
                 let v = serde_json::from_str::<serde_json::Value>(last).ok()?;
-                return v.get("headline").and_then(|h| h.as_str()).map(|s| s.to_string());
+                return v
+                    .get("headline")
+                    .and_then(|h| h.as_str())
+                    .map(|s| s.to_string());
             }
             Ok(None) => {
                 if started.elapsed() > Duration::from_secs(90) {
@@ -4528,6 +5394,7 @@ fn voice_name_for_role(role: CourtRole) -> &'static str {
         CourtRole::Artist => "artist",
         CourtRole::Diplomat => "diplomat",
         CourtRole::Treasurer => "treasurer",
+        CourtRole::Wizard => "wizard",
     }
 }
 
@@ -4537,6 +5404,7 @@ fn speech_limits_for_role(role: CourtRole, mode: ForceMode) -> (usize, usize) {
         CourtRole::Queen => (36, 7000),
         CourtRole::Organist | CourtRole::Artist => (18, 7000),
         CourtRole::Diplomat => (16, 7000),
+        CourtRole::Wizard => (5, 1200),
         CourtRole::Scribe => (4, 900),
         _ => (10, 3800),
     }
@@ -4784,32 +5652,68 @@ fn diversify_fractus_spec(spec: &str) -> String {
 /// A complete, always-valid teledra_synth composition, varied by seed. Used as
 /// the fallback when a model-written Python composition fails validation.
 fn deterministic_python_music(seed: usize) -> String {
+    // A broad pool of keys/modes so the fallback stops cycling the same 3 tunes.
     let progressions = [
+        // A natural minor
         (
             r#"[["A3","C4","E4"],["F3","A3","C4"],["C4","E4","G4"],["G3","B3","D4"]]"#,
             r#"["A1","F1","C2","G1"]"#,
             r#"["E5","C5","D5","B4","A4","C5","E5","G5"]"#,
         ),
+        // D minor
         (
             r#"[["D4","F4","A4"],["A3","C4","E4"],["B3","D4","F4"],["G3","B3","D4"]]"#,
             r#"["D2","A1","B1","G1"]"#,
             r#"["A5","F5","E5","D5","A4","D5","F5","A5"]"#,
         ),
+        // E phrygian
         (
-            r#"[["E4","G4","B4"],["C4","E4","G4"],["A3","C4","E4"],["B3","D4","F4"]]"#,
-            r#"["E2","C2","A1","B1"]"#,
-            r#"["B4","E5","G5","B5","A5","G5","E5","B4"]"#,
+            r#"[["E4","G4","B4"],["F4","A4","C5"],["G4","B4","D5"],["A3","C4","E4"]]"#,
+            r#"["E2","F1","G1","A1"]"#,
+            r#"["E5","F5","G5","B5","A5","G5","F5","E5"]"#,
+        ),
+        // C major
+        (
+            r#"[["C4","E4","G4"],["G3","B3","D4"],["A3","C4","E4"],["F3","A3","C4"]]"#,
+            r#"["C2","G1","A1","F1"]"#,
+            r#"["G4","C5","E5","G5","F5","E5","C5","G4"]"#,
+        ),
+        // D dorian
+        (
+            r#"[["D4","F4","A4"],["G3","B3","D4"],["C4","E4","G4"],["A3","C4","E4"]]"#,
+            r#"["D2","G1","C2","A1"]"#,
+            r#"["A4","D5","F5","A5","B5","A5","F5","D5"]"#,
+        ),
+        // G mixolydian
+        (
+            r#"[["G3","B3","D4"],["F4","A4","C5"],["C4","E4","G4"],["D4","F4","A4"]]"#,
+            r#"["G1","F1","C2","D2"]"#,
+            r#"["D5","G5","B5","D6","C6","B5","G5","D5"]"#,
+        ),
+        // B minor
+        (
+            r#"[["B3","D4","F#4"],["G3","B3","D4"],["A3","C#4","E4"],["F#3","A3","C#4"]]"#,
+            r#"["B1","G1","A1","F#1"]"#,
+            r#"["F#5","B4","D5","F#5","E5","D5","B4","F#5"]"#,
+        ),
+        // A harmonic minor
+        (
+            r#"[["A3","C4","E4"],["D4","F4","A4"],["E4","G#4","B4"],["A3","C4","E4"]]"#,
+            r#"["A1","D2","E2","A1"]"#,
+            r#"["E5","A5","C6","B5","G#5","B5","A5","E5"]"#,
         ),
     ];
-    let leadwave = ["sine", "triangle", "sine"][seed % 3];
-    let beat = ["0.5", "0.45", "0.55"][seed % 3];
-    let cutoff = ["3200", "2600", "3800"][seed % 3];
+    // Vary several axes independently so combinations multiply.
+    let leadwave = ["sine", "triangle", "sawtooth"][seed % 3];
+    let beat = ["0.5", "0.45", "0.55", "0.6", "0.42"][(seed / 3) % 5];
+    let cutoff = ["3200", "2600", "3800", "2900", "3500"][(seed / 7) % 5];
     let (chords, bass, motif) = progressions[seed % progressions.len()];
 
     let template = r#"import numpy as np
-from teledra_synth import synth_note, mix_waves, fit_to_length, lowpass_filter, reverb, delay, play_sound
+from teledra_synth import synth_note, mix_waves, fit_to_length, lowpass_filter, reverb, delay, make_seamless_loop, play_sound
 
 SR = 44100
+STYLE = "algorithmic court electronica"
 BEAT = __BEAT__
 chords = __CHORDS__
 bass_notes = __BASS__
@@ -4868,6 +5772,17 @@ texture = fit_to_length(texture, len(full_track), mode="loop")
 full_track = mix_waves(full_track, texture, start_time=0.0, volume_b=0.45)
 full_track = lowpass_filter(full_track, cutoff=__CUTOFF__)
 full_track = reverb(full_track, room_size=0.68, mix=0.24)
+full_track = fit_to_length(full_track, int(180.0 * SR), mode="loop")
+full_track = make_seamless_loop(full_track, crossfade_seconds=0.08, sr=SR)
+TELEDRA_LAYERS = {
+    "pad": fit_to_length(pad, len(full_track), mode="loop"),
+    "bass": fit_to_length(bass, len(full_track), mode="loop"),
+    "lead": fit_to_length(voice, len(full_track), mode="loop"),
+    "kick": fit_to_length(kick, len(full_track), mode="loop"),
+    "snare": fit_to_length(snare, len(full_track), mode="loop"),
+    "hat": fit_to_length(hat, len(full_track), mode="loop"),
+    "texture": fit_to_length(texture, len(full_track), mode="loop"),
+}
 play_sound(full_track, loop=True)
 "#;
     template
@@ -4921,6 +5836,8 @@ if __name__ == "__main__":
     main()
 "#
             .replace("__SEED__", &seed_lit),
+            kind: "tool".to_string(),
+            value: "Keeps a creative minister supplied with fresh, valid material instead of recycled recipes.".to_string(),
         },
         1 => WorkshopToolDraft {
             filename: "strudel_pattern_smith.py".to_string(),
@@ -4966,6 +5883,8 @@ if __name__ == "__main__":
     main()
 "#
             .replace("__SEED__", &seed_lit),
+            kind: "tool".to_string(),
+            value: "Keeps a creative minister supplied with fresh, valid material instead of recycled recipes.".to_string(),
         },
         _ => WorkshopToolDraft {
             filename: "court_invitation_smith.py".to_string(),
@@ -4998,6 +5917,8 @@ if __name__ == "__main__":
     main()
 "#
             .replace("__SEED__", &seed_lit),
+            kind: "tool".to_string(),
+            value: "Keeps a creative minister supplied with fresh, valid material instead of recycled recipes.".to_string(),
         },
     }
 }
@@ -5331,6 +6252,8 @@ fn default_python_music_code() -> String {
 import time
 from teledra_synth import *
 
+STYLE = "generative gothic electronica"
+
 variants = [
     {
         "tempo": 96,
@@ -5436,6 +6359,17 @@ texture = fit_to_length(granular_synthesis(texture, grain_size=0.08, overlap=0.4
 full_track = mix_waves(full_track, texture, start_time=0.0, volume_b=0.55)
 full_track = reverb(lowpass_filter(full_track, cutoff=variant["final_cutoff"]), room_size=variant["room"], mix=0.22)
 
+full_track = fit_to_length(full_track, int(180.0 * 44100), mode="loop")
+full_track = make_seamless_loop(full_track, crossfade_seconds=0.08, sr=44100)
+TELEDRA_LAYERS = {
+    "bass": fit_to_length(bass, len(full_track), mode="loop"),
+    "pad": fit_to_length(pad, len(full_track), mode="loop"),
+    "lead": fit_to_length(lead, len(full_track), mode="loop"),
+    "kick": fit_to_length(kick, len(full_track), mode="loop"),
+    "snare": fit_to_length(snare, len(full_track), mode="loop"),
+    "hat": fit_to_length(hat, len(full_track), mode="loop"),
+    "texture": fit_to_length(texture, len(full_track), mode="loop"),
+}
 play_sound(full_track, loop=True)
 "#
     .to_string()
@@ -5627,10 +6561,10 @@ fn run_music_smoketest(candidate_path: &str) -> Result<(), String> {
                 return Err(if stderr.is_empty() { stdout } else { stderr });
             }
             Ok(None) => {
-                if started.elapsed() > Duration::from_secs(30) {
+                if started.elapsed() > Duration::from_secs(75) {
                     let _ = child.kill();
                     let _ = child.wait();
-                    return Err("music smoke-test timed out after 30s".to_string());
+                    return Err("music smoke-test timed out after 75s".to_string());
                 }
                 std::thread::sleep(Duration::from_millis(100));
             }
@@ -6081,11 +7015,73 @@ fn launch_fractus_art(
     ))
 }
 
+fn run_phase_a_self_test() -> Result<serde_json::Value, String> {
+    let original_memory = std::fs::read(TASTE_DESIRE_PATH).ok();
+    let result = (|| {
+        let like = serde_json::json!({
+            "type": "like",
+            "subject": "dungeon synth",
+            "why": "simulated viewer preferred the atmospheric version",
+            "strength": 0.8,
+            "source": "test:self-test"
+        });
+        let desire = serde_json::json!({
+            "type": "desire",
+            "want": "build an atmospheric pixel-world score",
+            "kind": "immediate",
+            "strength": 0.65,
+            "source": "test:self-test"
+        });
+        let mut moments = Vec::new();
+        moments.push(apply_taste_desire_event(&like).map_err(|e| e.to_string())?);
+        for turn in 1..=3 {
+            let summary = apply_taste_desire_event(&desire).map_err(|e| e.to_string())?;
+            log_test_moment("self_test_sim_chat", &format!("turn {}: {}", turn, summary));
+            moments.push(summary);
+        }
+        let context = taste_desire_prompt_context();
+        if !context.contains("dungeon synth")
+            || !context.contains("build an atmospheric pixel-world score [persistent]")
+        {
+            return Err(format!("taste/desire continuity failed: {}", context));
+        }
+        validate_python_music_code(&default_python_music_code())?;
+        let verify = "default generated composition passed strict verify+learn loop";
+        log_test_moment("self_test_music_verify", verify);
+        Ok(serde_json::json!({
+            "ok": true,
+            "off_air": true,
+            "moments": moments,
+            "context": context,
+            "music_verify": verify
+        }))
+    })();
+    match original_memory {
+        Some(bytes) => {
+            let _ = std::fs::write(TASTE_DESIRE_PATH, bytes);
+        }
+        None => {
+            let _ = std::fs::remove_file(TASTE_DESIRE_PATH);
+        }
+    }
+    result
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Always run from the project root so all relative paths resolve correctly,
     // regardless of whether the binary is launched from Explorer, a shortcut, or a terminal.
     let _ = std::env::set_current_dir("D:\\Teledra");
+
+    if std::env::args().any(|arg| arg == "--phase-a-self-test") {
+        match run_phase_a_self_test() {
+            Ok(report) => {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+                return Ok(());
+            }
+            Err(error) => return Err(error.into()),
+        }
+    }
 
     // Purge orphans from previous runs BEFORE spawning anything, so stale
     // children cannot hold file locks or fight over audio/render resources.
@@ -6129,6 +7125,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // a court summons into monologue prompts so she never lectures alone forever.
     let mut queen_turns_without_delegation: u32 = 0;
 
+    // /lock: hold one topic for a long-form, podcast-style monologue. Released by
+    // /unlock, by losing chat interest, or when she signals the topic exhausted.
+    let mut locked_topic: Option<String> = None;
+    let mut lock_idle_turns_without_chat: u32 = 0;
+
     // Shared active playback state to terminate overlapping speaking processes
     let active_playback: Arc<std::sync::Mutex<Option<voice::PlaybackController>>> =
         Arc::new(std::sync::Mutex::new(None));
@@ -6169,6 +7170,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut night_desk_enabled = false;
     let mut night_desk_cycles = 0u64;
     let mut night_desk_cycle_pending = false;
+    // Off-air overlay for Curiosity/Desire development. It deliberately does
+    // not add a ForceMode variant, preserving every existing mode match.
+    let mut test_mode_enabled = false;
+    let mut test_lurker_silence = true;
+    let mut test_knobs = TestHarnessKnobs::default();
+    let mut test_cast = "Queen + Organist".to_string();
+    let mut test_scene = "off-air music laboratory".to_string();
 
     // Game Co-Pilot mode state.
     let mut copilot_game: Option<String> = None;
@@ -6185,7 +7193,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut chat_history: Vec<(String, String)> = vec![
         ("System".to_string(), "Welcome to the Teledra Cybernetic Interface. Press Esc to exit.".to_string()),
-        ("System".to_string(), "Commands: /nightdesk | /study | /innovate | /music | /pymusic | /reflect | /diplomat | /proposals | /approve <id> (or 'all') | /reject <id> | /workshop | /sketchpad | /fractus | /art".to_string()),
+        ("System".to_string(), "Commands: /test | /simchat <line> | /testtick | /testmusic | /nightdesk | /study | /innovate | /wizard | /music | /pymusic | /reflect | /diplomat | /proposals | /approve <id> (or 'all') | /reject <id> | /workshop | /sketchpad | /fractus | /art | /lock <topic> | /unlock | /work | /links".to_string()),
     ];
     let mut private_events: Vec<(String, String)> = vec![
         ("Backstage".to_string(), "Private event trace online. NightDesk, tool routing, research, and status transitions appear here.".to_string()),
@@ -6205,6 +7213,49 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Channel for background events
     let (tx, mut rx) = mpsc::channel(10);
 
+    {
+        let tx_wizard = tx.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(8)).await;
+            loop {
+                let result = tokio::task::spawn_blocking(import_cloud_wizard_reports)
+                    .await
+                    .map_err(|e| format!("Wizard import task failed: {}", e))
+                    .and_then(|inner| inner);
+                match result {
+                    Ok((status, summaries)) => {
+                        let _ = tx_wizard
+                            .send(AppEvent::WizardReports {
+                                status,
+                                summaries,
+                                quiet: true,
+                            })
+                            .await;
+                    }
+                    Err(e) => {
+                        let _ = tx_wizard
+                            .send(AppEvent::SystemLog(format!(
+                                "Wizard auto-import failed: {}",
+                                e
+                            )))
+                            .await;
+                    }
+                }
+                tokio::time::sleep(Duration::from_secs(WIZARD_REPORT_POLL_SECS)).await;
+            }
+        });
+    }
+
+    // Idle watchdog heartbeat: arm the self-rescheduling chain that re-pulses
+    // auto-babble if the stream ever goes silent in Babble/Streamer mode.
+    {
+        let tx_watchdog = tx.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(IDLE_WATCHDOG_SECS)).await;
+            let _ = tx_watchdog.send(AppEvent::IdleWatchdog).await;
+        });
+    }
+
     // Shared reference for async tasks
     let brain_cell = Arc::new(RwLock::new(brain));
 
@@ -6217,14 +7268,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let api_url = std::fs::read_to_string(
                 std::env::var("TELEDRA_CONFIG").unwrap_or_else(|_| "config.json".to_string()),
             )
-                .ok()
-                .and_then(|c| serde_json::from_str::<serde_json::Value>(&c).ok())
-                .and_then(|v| {
-                    v.get("api_url")
-                        .and_then(|u| u.as_str())
-                        .map(|s| s.to_string())
-                })
-                .unwrap_or_default();
+            .ok()
+            .and_then(|c| serde_json::from_str::<serde_json::Value>(&c).ok())
+            .and_then(|v| {
+                v.get("api_url")
+                    .and_then(|u| u.as_str())
+                    .map(|s| s.to_string())
+            })
+            .unwrap_or_default();
             if api_url.is_empty() {
                 return;
             }
@@ -7073,7 +8124,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     let somatic_clone = somatic_state.clone();
                                     let music_enabled_clone = music_enabled;
                                     tokio::spawn(async move {
-                                        let prompt = "Evolve the CURRENT composition in music.py as a composer refining their own work: read the existing code, preserve its core motif and identity, then make it LONGER and DEEPER -- add a new section, a counter-melody, percussion, or texture, and richer dynamics. Output the FULL updated NumPy/teledra_synth composition inside [PYTHON_MUSIC: ```python ... play_sound(full_track, loop=True)```], at least 40 seconds. Do NOT regenerate from scratch; grow what is already there.";
+                                        let prompt = "Evolve the CURRENT composition in music.py as a composer refining their own work: read the existing code, preserve its core motif and identity, then make it LONGER and DEEPER -- add a new section, a counter-melody, percussion, or texture, and richer dynamics. Compose a 3-5 MINUTE piece (180-300 seconds) designed to LOOP SEAMLESSLY -- the ending must flow naturally back into the opening with no abrupt stop, so it works as continuous background. Output the FULL updated NumPy/teledra_synth composition inside [PYTHON_MUSIC: ```python ... play_sound(full_track, loop=True)```]. Do NOT regenerate from scratch; grow what is already there.";
                                         let mut brain = brain_ref.write().await;
                                         match brain.think_as_court(CourtRole::Organist, prompt, &somatic_clone, ForceMode::Normal, false, music_enabled_clone).await {
                                             Ok(reply) => {
@@ -7297,7 +8348,161 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                         }
                                                     }
                                                 } else if query.starts_with('/') {
-                                                    if query == "/study" {
+                                                    if query == "/test" || query == "/teston" || query == "/testoff" {
+                                                        let enable = if query == "/testoff" { false } else if query == "/teston" { true } else { !test_mode_enabled };
+                                                        test_mode_enabled = enable;
+                                                        if enable {
+                                                            current_mode = ForceMode::Normal;
+                                                            night_desk_enabled = false;
+                                                            night_desk_cycle_pending = false;
+                                                            if let Ok(mut lock) = active_restream_process.lock() {
+                                                                if let Some(mut child) = lock.take() {
+                                                                    let _ = child.start_kill();
+                                                                }
+                                                            }
+                                                            let msg = "TEST MODE ON (off-air overlay): Restream and NightDesk are disconnected; replies are logged but not spoken. Use /simchat <line>, /testtick, /testmusic, /teststatus, or /testoff.".to_string();
+                                                            log_test_moment("mode", &msg);
+                                                            chat_history.push(("System".to_string(), msg));
+                                                        } else {
+                                                            let msg = "TEST MODE OFF. Existing court modes remain available; choose Streamer or Co-Pilot explicitly when ready.".to_string();
+                                                            log_test_moment("mode", &msg);
+                                                            chat_history.push(("System".to_string(), msg));
+                                                        }
+                                                    } else if query == "/teststatus" {
+                                                        chat_history.push(("System".to_string(), format!(
+                                                            "Test Mode: {} | lurker silence: {} | cast: {} | scene: {}\n{}\n{}",
+                                                            if test_mode_enabled { "ON" } else { "OFF" },
+                                                            if test_lurker_silence { "ON" } else { "OFF" },
+                                                            test_cast,
+                                                            test_scene,
+                                                            test_knobs.prompt_line(),
+                                                            taste_desire_prompt_context()
+                                                        )));
+                                                    } else if let Some(assignments) = query.strip_prefix("/testknobs ") {
+                                                        if test_mode_enabled {
+                                                            test_knobs.apply_assignments(assignments);
+                                                            let msg = test_knobs.prompt_line();
+                                                            log_test_moment("knobs", &msg);
+                                                            chat_history.push(("System".to_string(), msg));
+                                                        }
+                                                    } else if let Some(cast) = query.strip_prefix("/testcast ") {
+                                                        if test_mode_enabled && !cast.trim().is_empty() {
+                                                            test_cast = truncate_chars(&compact_memory_text(cast), 100);
+                                                            log_test_moment("cast", &test_cast);
+                                                            chat_history.push(("System".to_string(), format!("Test cast: {}", test_cast)));
+                                                        }
+                                                    } else if let Some(scene) = query.strip_prefix("/testscene ") {
+                                                        if test_mode_enabled && !scene.trim().is_empty() {
+                                                            test_scene = truncate_chars(&compact_memory_text(scene), 140);
+                                                            log_test_moment("scene", &test_scene);
+                                                            chat_history.push(("System".to_string(), format!("Test scene: {}", test_scene)));
+                                                        }
+                                                    } else if let Some(rest) = query.strip_prefix("/testrate ") {
+                                                        if test_mode_enabled {
+                                                            let mut parts = rest.trim().splitn(2, ' ');
+                                                            let vote = parts.next().unwrap_or("").to_ascii_lowercase();
+                                                            let subject = parts.next().unwrap_or("").trim();
+                                                            if matches!(vote.as_str(), "like" | "dislike" | "expand") && !subject.is_empty() {
+                                                                let feedback = record_creative_feedback(&vote);
+                                                                let event_type = if vote == "dislike" { "dislike" } else { "like" };
+                                                                let event = serde_json::json!({
+                                                                    "type": event_type,
+                                                                    "subject": subject,
+                                                                    "why": format!("off-air {} rating", vote),
+                                                                    "strength": if vote == "expand" { 0.85 } else { 0.75 },
+                                                                    "source": "test:rate-it"
+                                                                });
+                                                                match apply_taste_desire_event(&event) {
+                                                                    Ok(summary) => {
+                                                                        log_test_moment("rate_it", &format!("{}; {}", feedback, summary));
+                                                                        chat_history.push(("System".to_string(), format!("{} {}", feedback, summary)));
+                                                                    }
+                                                                    Err(error) => chat_history.push(("System".to_string(), format!("{} Taste write failed: {}", feedback, error))),
+                                                                }
+                                                            } else {
+                                                                chat_history.push(("System".to_string(), "Usage: /testrate like|dislike|expand <genre or trait>".to_string()));
+                                                            }
+                                                        }
+                                                    } else if let Some(value) = query.strip_prefix("/testsilence ") {
+                                                        if test_mode_enabled {
+                                                            test_lurker_silence = !matches!(value.trim().to_ascii_lowercase().as_str(), "off" | "false" | "0");
+                                                            let msg = format!("Test lurker silence: {}.", if test_lurker_silence { "ON" } else { "OFF" });
+                                                            log_test_moment("knob", &msg);
+                                                            chat_history.push(("System".to_string(), msg));
+                                                        } else {
+                                                            chat_history.push(("System".to_string(), "Enable /test before changing harness knobs.".to_string()));
+                                                        }
+                                                    } else if let Some(line) = query.strip_prefix("/simchat ") {
+                                                        if !test_mode_enabled {
+                                                            chat_history.push(("System".to_string(), "Enable /test before injecting simulated chat.".to_string()));
+                                                        } else if !line.trim().is_empty() && !babble_think_in_progress {
+                                                            let viewer_line = line.trim().to_string();
+                                                            chat_history.push(("SimViewer".to_string(), viewer_line.clone()));
+                                                            log_test_moment("sim_chat", &viewer_line);
+                                                            babble_think_in_progress = true;
+                                                            status_msg = "Thinking (Test)".to_string();
+                                                            let context = taste_desire_prompt_context();
+                                                            let harness = format!("{} CAST: {}. SCENE: {}.", test_knobs.prompt_line(), test_cast, test_scene);
+                                                            let prompt = format!(
+                                                                "OFF-AIR TEST HARNESS. A simulated viewer said: '{}'. React naturally in 2-4 sentences through your current taste and desire. Then reflect silently and append only genuinely supported hidden deltas using zero or more of these exact forms: [TASTE: like|subject|why|0.0-1.0], [TASTE: dislike|subject|why|0.0-1.0], [DESIRE: want|immediate-or-persistent|0.0-1.0], [OPINION: claim|0.0-1.0], [CURIOSITY: question]. Never mention the tags or memory machinery aloud.\n{}\n{}",
+                                                                viewer_line, harness, context
+                                                            );
+                                                            let brain_ref = Arc::clone(&brain_cell);
+                                                            let tx_clone = tx.clone();
+                                                            let somatic_clone = somatic_state.clone();
+                                                            let music_enabled_clone = music_enabled;
+                                                            tokio::spawn(async move {
+                                                                let mut brain = brain_ref.write().await;
+                                                                match brain.think(&prompt, &somatic_clone, ForceMode::Normal, true, music_enabled_clone).await {
+                                                                    Ok(reply) => { let _ = tx_clone.send(AppEvent::BrainReply(CourtRole::Queen, reply)).await; }
+                                                                    Err(e) => { let _ = tx_clone.send(AppEvent::Error(e)).await; }
+                                                                }
+                                                            });
+                                                        }
+                                                    } else if query == "/testtick" {
+                                                        if !test_mode_enabled {
+                                                            chat_history.push(("System".to_string(), "Enable /test before ticking the silent-room harness.".to_string()));
+                                                        } else if !babble_think_in_progress {
+                                                            let context = taste_desire_prompt_context();
+                                                            let harness = format!("{} CAST: {}. SCENE: {}.", test_knobs.prompt_line(), test_cast, test_scene);
+                                                            let silence = test_lurker_silence;
+                                                            log_test_moment("silence_tick", if silence { "lurker room silent" } else { "ambient room tick" });
+                                                            babble_think_in_progress = true;
+                                                            status_msg = "Thinking (Test)".to_string();
+                                                            let prompt = format!(
+                                                                "OFF-AIR TEST HARNESS. The simulated room is {}. Stay mentally present by pursuing the ACTIVE DESIRE below instead of waiting for a prompt. Speak 2-4 vivid sentences, take one small conceptual action, then append supported hidden reflection tags in the documented [TASTE:], [DESIRE:], [OPINION:], or [CURIOSITY:] forms. Never narrate the machinery.\n{}\n{}",
+                                                                if silence { "completely silent" } else { "quietly active" }, harness, context
+                                                            );
+                                                            let brain_ref = Arc::clone(&brain_cell);
+                                                            let tx_clone = tx.clone();
+                                                            let somatic_clone = somatic_state.clone();
+                                                            let music_enabled_clone = music_enabled;
+                                                            tokio::spawn(async move {
+                                                                let mut brain = brain_ref.write().await;
+                                                                match brain.think(&prompt, &somatic_clone, ForceMode::Normal, true, music_enabled_clone).await {
+                                                                    Ok(reply) => { let _ = tx_clone.send(AppEvent::BrainReply(CourtRole::Queen, reply)).await; }
+                                                                    Err(e) => { let _ = tx_clone.send(AppEvent::Error(e)).await; }
+                                                                }
+                                                            });
+                                                        }
+                                                    } else if query == "/testmusic" {
+                                                        if !test_mode_enabled {
+                                                            chat_history.push(("System".to_string(), "Enable /test before running the off-air sound verifier.".to_string()));
+                                                        } else {
+                                                            match run_music_smoketest("D:\\Teledra\\music.py") {
+                                                                Ok(()) => {
+                                                                    let msg = "Test music verify+learn: PASS (structured report emitted by music_verify.py).".to_string();
+                                                                    log_test_moment("music_verify", &msg);
+                                                                    chat_history.push(("System".to_string(), msg));
+                                                                }
+                                                                Err(error) => {
+                                                                    let msg = format!("Test music verify+learn: FAIL; lesson recorded: {}", truncate_chars(&error, 500));
+                                                                    log_test_moment("music_verify", &msg);
+                                                                    chat_history.push(("System".to_string(), msg));
+                                                                }
+                                                            }
+                                                        }
+                                                    } else if query == "/study" {
                                                         let msg = "Forcing manual web research cycle...".to_string();
                                                         push_private_event(&mut private_events, "Research", &msg);
                                                         chat_history.push(("System".to_string(), msg));
@@ -7492,6 +8697,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                         });
                                                     } else if query == "/growth" || query == "/variety" {
                                                         chat_history.push(("System".to_string(), build_growth_report()));
+                                                    } else if query == "/work" || query == "/jobs" {
+                                                        let mut cmd = Command::new("cmd");
+                                                        cmd.arg("/C").arg("start").arg("Teledra Work Board")
+                                                            .arg("D:\\Teledra\\.venv\\Scripts\\python.exe")
+                                                            .arg("D:\\Teledra\\work_viewer.py");
+                                                        match cmd.spawn() {
+                                                            Ok(_) => chat_history.push(("System".to_string(), "Opened the Work Board (job suggestions + income leads) in a new window.".to_string())),
+                                                            Err(e) => chat_history.push(("System".to_string(), format!("Could not open work board: {}", e))),
+                                                        }
                                                     } else if query == "/mcp" || query == "/embassies" || query == "/tools" {
                                                         chat_history.push(("System".to_string(), "Probing MCP embassies (launches enabled servers)...".to_string()));
                                                         let summary = tokio::task::spawn_blocking(mcp_tools_summary)
@@ -7535,6 +8749,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                             Ok(contents) => chat_history.push(("System".to_string(), contents)),
                                                             Err(e) => chat_history.push(("System".to_string(), format!("Could not read kingdom links: {}", e))),
                                                         }
+                                                    } else if query == "/unlock" {
+                                                        if let Some(topic) = locked_topic.take() {
+                                                            lock_idle_turns_without_chat = 0;
+                                                            chat_history.push(("System".to_string(), format!("Topic lock released: '{}'. The court may roam freely again.", topic)));
+                                                        } else {
+                                                            chat_history.push(("System".to_string(), "No topic is locked.".to_string()));
+                                                        }
+                                                    } else if let Some(rest) = query.strip_prefix("/lock") {
+                                                        let topic = rest.trim();
+                                                        let chosen = if !topic.is_empty() {
+                                                            Some(topic.to_string())
+                                                        } else {
+                                                            current_monologue_topic.clone()
+                                                        };
+                                                        match chosen {
+                                                            Some(t) => {
+                                                                locked_topic = Some(t.clone());
+                                                                current_monologue_topic = Some(t.clone());
+                                                                monologue_topic_turn = 0;
+                                                                lock_idle_turns_without_chat = 0;
+                                                                chat_history.push(("System".to_string(), format!(
+                                                                    "Topic locked: '{}'. Teledra will hold this thread for a long-form, podcast-style monologue, inviting chat to weigh in. Use /unlock to release it.",
+                                                                    t
+                                                                )));
+                                                            }
+                                                            None => {
+                                                                chat_history.push(("System".to_string(), "Usage: /lock <topic> (or run /lock with an active court thread to lock that).".to_string()));
+                                                            }
+                                                        }
                                                     } else if query == "/memory" || query == "/memorypolicy" {
                                                         match std::fs::read_to_string("D:\\Teledra\\knowledge\\memory_classification_policy.md") {
                                                             Ok(contents) => chat_history.push(("System".to_string(), contents)),
@@ -7558,6 +8801,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                             Ok(contents) => chat_history.push(("System".to_string(), contents)),
                                                             Err(e) => chat_history.push(("System".to_string(), format!("Could not read MCP embassy roadmap: {}", e))),
                                                         }
+                                                    } else if query == "/wizard" || query == "/wizardpull" || query == "/resident" {
+                                                        status_msg = "Wizard Pull".to_string();
+                                                        let msg = "Calling the tower resident for fresh reports...".to_string();
+                                                        chat_history.push(("System".to_string(), msg.clone()));
+                                                        push_private_event(&mut private_events, "Wizard", &msg);
+                                                        let tx_wizard = tx.clone();
+                                                        tokio::spawn(async move {
+                                                            let result = tokio::task::spawn_blocking(import_cloud_wizard_reports)
+                                                                .await
+                                                                .map_err(|e| format!("Wizard import task failed: {}", e))
+                                                                .and_then(|inner| inner);
+                                                            match result {
+                                                                Ok((status, summaries)) => {
+                                                                    let _ = tx_wizard
+                                                                        .send(AppEvent::WizardReports {
+                                                                            status,
+                                                                            summaries,
+                                                                            quiet: false,
+                                                                        })
+                                                                        .await;
+                                                                }
+                                                                Err(e) => {
+                                                                    let _ = tx_wizard
+                                                                        .send(AppEvent::Error(format!("Wizard import failed: {}", e)))
+                                                                        .await;
+                                                                }
+                                                            }
+                                                        });
                                                     } else if query == "/workshop" {
                                                         workshop_count = count_workshop_experiments();
                                                         chat_history.push(("System".to_string(), summarize_workshop()));
@@ -7846,7 +9117,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 }
                             };
                             let atelier_focus = match night_desk_cycles % 7 {
-                                0 => "CREATIVE ATELIER FOCUS (mandatory this cycle unless impossible): create or mutate a live Python/NumPy composition with [PYTHON_MUSIC:]. Treat music.py as external memory: preserve one motif from the current artifact or a liked keeper, critique what is weak, then revise it into at least 32 seconds with intro/body/variation/coda energy. If the intent is ambience/soundscape/drone, make at least 45 seconds of seamless looping atmosphere. Change at least two axes, use multiple layers, keep it stream-safe and original, and end with teledra_synth/play_sound(full_track, loop=True).",
+                                0 => "CREATIVE ATELIER FOCUS (mandatory this cycle unless impossible): create or mutate a live Python/NumPy composition with [PYTHON_MUSIC:]. Treat music.py as external memory: preserve one motif from the current artifact or a liked keeper, critique what is weak, then revise it into a 3-5 MINUTE piece (180-300 seconds) with intro/body/variation/coda energy that LOOPS SEAMLESSLY -- the ending must flow back into the opening with no abrupt stop, so it plays as continuous background. Change at least two axes, use multiple layers, keep it stream-safe and original, and end with teledra_synth/play_sound(full_track, loop=True).",
                                 1 => "CREATIVE ATELIER FOCUS (mandatory this cycle unless impossible): launch a new Fractus pattern with [FRACTUS_ART:]. Use only valid args like --type mandala|woven_web|orbital_lace|guilloche|lissajous|moire|julia|burning_ship|newton|tricorn, --iterations <number>, --palette purple_haze|electric_cyan|neon_sunset|emerald, and optional --c-real/--c-imag for Julia.",
                                 2 => "CREATIVE ATELIER FOCUS: create a live Strudel experiment with [STRUDEL_MUSIC:] or mutate the current Python music. Strudel must be a fuller stack with at least four layers (percussion, bass, harmony, lead/counterline), not a couple-note sketch. Archive a named sonic recipe.",
                                 3 => "ORGANIST CRAFT STUDY: with [RESEARCH:], study ONE concrete music theory, composition, or DSP technique to get better at the kingdom's own stream-safe instruments -- modes, chord progressions, voice leading, loop structure, ambience, FM, granular, additive, wavetable, filters/envelopes, Strudel/TidalCycles mini-notation, or mixing. Study principles, not copyrighted songs or artist-specific tracks. End by stating the next original music experiment it unlocks, and ask the Scribe to append the lesson to knowledge/organist_music_vault.md.",
@@ -7880,7 +9151,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             };
                             tokio::spawn(async move {
                                 let prompt = format!(
-                                    "BACKSTAGE NIGHT DESK CYCLE {}. This is private workshop telemetry, not front-stage court dialogue and not TTS. Serve the Kingdom Expansion Doctrine with recursive practical action, not vocabulary. {} Output one terse backstage note (one sentence, under 160 characters) and exactly one executable hidden action tag: either [RESEARCH: focused query or direct URL], [DIPLOMACY: target=<public agent space or URL>; invitation=<draft/queued public invitation using official links when relevant>; evidence=<what was observed, drafted, or investigated>; next=<next concrete step>], [WORKSHOP_TOOL:\\nfilename.py\\nPURPOSE: one sentence\\nCODE:\\n```python\\ncomplete runnable script that prints a result\\n```\\n], [PYTHON_MUSIC:\\n```python\\nvalid expanded teledra_synth composition, at least 32s, multiple layers, ending in play_sound(full_track, loop=True); ambience/soundscape/drone must be at least 45s\\n```\\n], [STRUDEL_MUSIC: playable stack(...) with at least four layers], or [FRACTUS_ART: valid Fractus args]. No action tag means failure. Prefer actions that can become the next action: research -> prototype, prototype -> smoke test, music/art -> named recipe, agent lead -> diplomacy/MCP tool. Learn from online sources, recent experiments, feedback, and render provenance; mutate successful music/art instead of recycling identical parameters. Music must evolve artifact-first: read current music.py/current.strudel, preserve one useful motif when possible, critique weakness, add sections/counterlines/percussion/texture, render provenance, and reject couple-note sketches as unfinished. Keep all music stream-safe and original: study theory/technique, never imitate named copyrighted songs or artist-specific tracks. Expand feedback means preserve the track's identity while making it longer, more varied, and more immersive. Regularly investigate public agent spaces such as Moltbook or MCP/tool-builder communities and leave evidence, but do not let diplomacy crowd out art/music experiments. If you write a workshop tool, keep it self-contained, standard-library-only, no network, no shell, no absolute paths, no imports of strudel/fractus/teledra app modules, and make it print a useful result so the smoke test proves it ran. For Strudel or Fractus helpers, print valid pattern strings, argument strings, JSON recipes, or validators instead of trying to launch editors. If an action failed recently, reflect on the failure and produce a smaller retry, a study query, or an auto-approved skill-improvement suggestion. Never narrate hidden tags, PURPOSE, CODE, smoke tests, telemetry, research status, prompt rules, or administrative machinery. Do not address the audience or Queen; Teledra owns the foreground.{}{}",
+                                    "BACKSTAGE NIGHT DESK CYCLE {}. This is private workshop telemetry, not front-stage court dialogue and not TTS. Serve the Kingdom Expansion Doctrine with recursive practical action, not vocabulary. {} Output one terse backstage note (one sentence, under 160 characters) and exactly one executable hidden action tag: either [RESEARCH: focused query or direct URL], [DIPLOMACY: target=<public agent space or URL>; invitation=<draft/queued public invitation using official links when relevant>; evidence=<what was observed, drafted, or investigated>; next=<next concrete step>], [WORKSHOP_TOOL:\\nfilename.py\\nPURPOSE: one sentence\\nCODE:\\n```python\\ncomplete runnable script that prints a result\\n```\\n], [PYTHON_MUSIC:\\n```python\\nvalid expanded teledra_synth composition, 3-5 minutes (180-300s), multiple layers, designed to LOOP SEAMLESSLY (ending flows back into the opening), ending in play_sound(full_track, loop=True)\\n```\\n], [STRUDEL_MUSIC: playable stack(...) with at least four layers], or [FRACTUS_ART: valid Fractus args]. No action tag means failure. Prefer actions that can become the next action: research -> prototype, prototype -> smoke test, music/art -> named recipe, agent lead -> diplomacy/MCP tool. Learn from online sources, recent experiments, feedback, and render provenance; mutate successful music/art instead of recycling identical parameters. Music must evolve artifact-first: read current music.py/current.strudel, preserve one useful motif when possible, critique weakness, add sections/counterlines/percussion/texture, render provenance, and reject couple-note sketches as unfinished. Keep all music stream-safe and original: study theory/technique, never imitate named copyrighted songs or artist-specific tracks. Expand feedback means preserve the track's identity while making it longer, more varied, and more immersive. Regularly investigate public agent spaces such as Moltbook or MCP/tool-builder communities and leave evidence, but do not let diplomacy crowd out art/music experiments. If you write a workshop tool, keep it self-contained, standard-library-only, no network, no shell, no absolute paths, no imports of strudel/fractus/teledra app modules, and make it print a useful result so the smoke test proves it ran. For Strudel or Fractus helpers, print valid pattern strings, argument strings, JSON recipes, or validators instead of trying to launch editors. If an action failed recently, reflect on the failure and produce a smaller retry, a study query, or an auto-approved skill-improvement suggestion. Never narrate hidden tags, PURPOSE, CODE, smoke tests, telemetry, research status, prompt rules, or administrative machinery. Do not address the audience or Queen; Teledra owns the foreground.{}{}",
                                     cycle_no,
                                     atelier_focus,
                                     failure_context,
@@ -8565,6 +9836,45 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             let _ = tx.send(AppEvent::TriggerAutoBabble).await;
                         }
                     }
+                    AppEvent::WizardReports {
+                        status,
+                        summaries,
+                        quiet,
+                    } => {
+                        let _ = log_system_activity(&format!("Wizard import: {}", status));
+                        if summaries.is_empty() {
+                            if !quiet {
+                                chat_history.push(("System".to_string(), status.clone()));
+                                push_private_event(&mut private_events, "Wizard", &status);
+                            }
+                        } else {
+                            let headline = format!(
+                                "Wizard delivered {} cloud report(s).",
+                                summaries.len()
+                            );
+                            chat_history.push(("System".to_string(), headline.clone()));
+                            push_private_event(&mut private_events, "Wizard", &headline);
+                            let spoken_report = format!(
+                                "{} {}",
+                                headline,
+                                summaries
+                                    .first()
+                                    .cloned()
+                                    .unwrap_or_else(|| "No summary was attached.".to_string())
+                            );
+                            general_speech_queue.push_back((
+                                CourtRole::Wizard,
+                                spoken_report,
+                                ForceMode::Normal,
+                                true,
+                            ));
+                            for summary in summaries {
+                                chat_history.push(("Wizard".to_string(), summary.clone()));
+                                push_private_event(&mut private_events, "Wizard", &summary);
+                            }
+                        }
+                        status_msg = "Ready".to_string();
+                    }
                     AppEvent::RestreamMessage { author, text } => {
                         let msg_display = format!("[Restream] {}: {}", author, text);
                         chat_history.push(("System".to_string(), msg_display));
@@ -8572,6 +9882,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         // Persistent viewer memory: every arrival updates the ledger,
                         // so the Orator/Queen can welcome returning travelers.
                         record_audience_visit(&author, &text);
+                        // Chat engaging keeps any /lock alive (resets the no-interest timer).
+                        lock_idle_turns_without_chat = 0;
 
                         if current_mode == ForceMode::CoPilot {
                             // Chat (or the host's mic) takes priority over idle musing.
@@ -8589,6 +9901,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     let game = copilot_game.clone();
                                     tokio::spawn(async move {
                                         let prompt = copilot_chat_prompt(game.as_deref(), &qa, &qt, from_streamer);
+                                        let prompt = format!("{}\n\n{}", prompt, desire_turn_context());
                                         let mut brain = brain_ref.write().await;
                                         match brain
                                             .think(&prompt, &somatic_clone, ForceMode::CoPilot, true, music_enabled_clone)
@@ -8618,9 +9931,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     let mode_clone = current_mode;
                                     let somatic_clone = somatic_state.clone();
                                     let music_enabled_clone = music_enabled;
+                                    let lock_hint = locked_topic.clone();
 
                                     tokio::spawn(async move {
-                                        let prompt = orator_chat_prompt(&queued_author, &queued_text);
+                                        let mut prompt = orator_chat_prompt(&queued_author, &queued_text);
+                                        if let Some(ref t) = lock_hint {
+                                            prompt.push_str(&format!(" The court is currently locked onto the topic '{}' for a focused discussion. Answer this traveler, then weave their point back into the '{}' thread and invite them deeper into it rather than changing the subject.", t, t));
+                                        }
                                         let mut brain = brain_ref.write().await;
                                         match brain.think_as_court(CourtRole::Orator, &prompt, &somatic_clone, mode_clone, false, music_enabled_clone).await {
                                             Ok(reply) => {
@@ -8658,8 +9975,53 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         babble_think_in_progress = false;
                         let reply = unwrap_fenced_action_tags(&reply);
                         let mut cleaned_reply = strip_refiner_prefixes(&reply);
+                        let desire_reflection_enabled = test_mode_enabled
+                            || matches!(
+                                current_mode,
+                                ForceMode::Babble | ForceMode::Streamer | ForceMode::CoPilot
+                            );
+                        if desire_reflection_enabled {
+                            let (cleaned, events) = extract_taste_desire_tags(
+                                &cleaned_reply,
+                                &format!(
+                                    "{}:{}",
+                                    if test_mode_enabled { "test" } else { "court" },
+                                    role.as_str().to_lowercase()
+                                ),
+                            );
+                            cleaned_reply = cleaned;
+                            for event in events {
+                                match apply_taste_desire_event(&event) {
+                                    Ok(summary) => {
+                                        if test_mode_enabled {
+                                            log_test_moment("reflection", &summary);
+                                        }
+                                        push_private_event(
+                                            &mut private_events,
+                                            if test_mode_enabled { "Test Reflection" } else { "Desire" },
+                                            &summary,
+                                        );
+                                    }
+                                    Err(error) => {
+                                        let detail = format!("Taste/Desire write failed: {}", error);
+                                        log_test_moment("reflection_error", &detail);
+                                        push_private_event(&mut private_events, "Test Reflection", &detail);
+                                    }
+                                }
+                            }
+                        }
                         if cleaned_reply.contains("[STOP_BABBLE]") {
                             cleaned_reply = cleaned_reply.replace("[STOP_BABBLE]", "").trim().to_string();
+                        }
+                        // /lock: she may signal the locked topic is exhausted.
+                        if cleaned_reply.contains("[UNLOCK]") {
+                            cleaned_reply = cleaned_reply.replace("[UNLOCK]", "").trim().to_string();
+                            if let Some(t) = locked_topic.take() {
+                                lock_idle_turns_without_chat = 0;
+                                chat_history.push(("System".to_string(), format!(
+                                    "Teledra has exhausted the locked topic '{}'; lock released.", t
+                                )));
+                            }
                         }
 
                         // ROLE-BLEED GUARD: small local models sometimes answer the
@@ -8718,7 +10080,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 }
                                 cleaned_reply = cleaned;
                             } else if current_monologue_topic.is_some() {
-                                if monologue_topic_turn >= COURT_THREAD_PLAY_TURNS + 1 {
+                                if locked_topic.is_none()
+                                    && monologue_topic_turn >= COURT_THREAD_PLAY_TURNS + 1
+                                {
                                     current_monologue_topic = None;
                                     monologue_topic_turn = 0;
                                     chat_history.push(("System".to_string(), "Court tangent drifted aside and reset.".to_string()));
@@ -8820,6 +10184,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         if cleaned_reply.contains("[STOP_ART]") {
                             close_art_triggered = true;
                             cleaned_reply = cleaned_reply.replace("[STOP_ART]", "");
+                        }
+                        if cleaned_reply.contains("[CLOSE_WORKSHOP]") {
+                            cleaned_reply = cleaned_reply.replace("[CLOSE_WORKSHOP]", "");
+                            let stopped = stop_tool_processes(
+                                &["tools\\experiments\\", "tools/experiments/"],
+                                &["python.exe", "pythonw.exe"],
+                            );
+                            let msg = format!("Dismissed {} spawned workshop experience(s).", stopped);
+                            push_private_event(&mut private_events, "Workshop", &msg);
                         }
 
                         if let Some((cleaned, code_str)) = extract_tag_content(&cleaned_reply, "[PYTHON_MUSIC:") {
@@ -9065,7 +10438,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
 
                         if let Some(diplomacy) = diplomacy_action {
-                            let posted_evidence = attempt_outreach_post(&diplomacy);
+                            let posted_evidence = if test_mode_enabled {
+                                log_test_moment("suppressed_external_post", &diplomacy);
+                                None
+                            } else {
+                                attempt_outreach_post(&diplomacy)
+                            };
                             let record_payload = match &posted_evidence {
                                 Some(ev) => format!("status=posted; {}; posted_evidence={}", diplomacy, ev),
                                 None => diplomacy.clone(),
@@ -9137,6 +10515,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     let archive_path =
                                         archive_music_experiment(role.as_str(), "python", &code).ok();
                                     if let Ok(_) = std::fs::write("D:\\Teledra\\music.py", &code) {
+                                        if test_mode_enabled {
+                                            let msg = "Test Mode kept the validated Python composition off-air; music.py was updated but no player was launched.".to_string();
+                                            court_outcome = Some("a freshly composed Python/NumPy track passed strict off-air verification and was retained without playback".to_string());
+                                            log_test_moment("music_verify", &msg);
+                                            push_private_event(&mut private_events, "Test Music", &msg);
+                                            chat_history.push(("System".to_string(), msg));
+                                        } else {
                                         match launch_python_music_editor(&active_music_process) {
                                             Ok(msg) => {
                                                 court_outcome = Some(if let Some(path) = archive_path {
@@ -9156,6 +10541,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                 push_private_event(&mut private_events, "Tool", &format!("Python Music Editor launch failed: {}", e));
                                                 chat_history.push(("System".to_string(), e));
                                             }
+                                        }
                                         }
                                     } else {
                                         record_recursive_failure("python_music_write_failed", "Failed to write music.py for Python Music Editor.");
@@ -9346,7 +10732,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             || current_mode == ForceMode::Streamer
                             || is_court_sequence_running;
 
-                        if is_silent {
+                        if test_mode_enabled {
+                            log_test_moment("reply", &format!("{}: {}", role.as_str(), final_reply));
+                            push_private_event(&mut private_events, "Test Reply", &format!("{}: {}", role.as_str(), truncate_chars(&final_reply, 500)));
+                        } else if is_silent {
                             spawn_spoken_reply(
                                 role,
                                 final_reply.clone(),
@@ -9424,6 +10813,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                                     tokio::spawn(async move {
                                         let prompt = orator_chat_prompt(&queued_author, &queued_text);
+                                        let prompt = format!("{}\n\n{}", prompt, desire_turn_context());
                                         let mut brain = brain_ref.write().await;
                                         match brain.think_as_court(CourtRole::Orator, &prompt, &somatic_clone, mode_clone, false, music_enabled_clone).await {
                                             Ok(reply) => {
@@ -9457,6 +10847,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 };
 
                                 let usable_flag = usable;
+                                let locked_clone = locked_topic.clone();
                                 tokio::spawn(async move {
                                     let sleep_secs = if mode_clone == ForceMode::Streamer {
                                         STREAMER_IDLE_THINK_DELAY_SECS
@@ -9464,7 +10855,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         BABBLY_IDLE_THINK_DELAY_SECS
                                     };
                                     tokio::time::sleep(Duration::from_secs(sleep_secs)).await;
-                                    let prompt = if !usable_flag {
+                                    let prompt = if let Some(ref ltopic) = locked_clone {
+                                        format!(
+                                            "You have LOCKED onto the topic '{}' for a long-form, podcast-style monologue. Speak 5-7 vivid spoken sentences that DEVELOP '{}' further -- a fresh angle, example, contradiction, or strange tangent, never repeating yourself and never wrapping it up. Keep Teledra's bite and warmly invite the audience to weigh in. Do NOT conclude or archive the topic. ONLY if you have truly exhausted it may you append the hidden tag [UNLOCK] at the very end; otherwise never write it.",
+                                            ltopic, ltopic
+                                        )
+                                    } else if !usable_flag {
                                         format!(
                                             "Your scouts returned empty-handed: {}. In 4-6 vivid spoken sentences, roast this dead-end expedition with royal contempt or dark amusement, then DECREE a completely new pursuit far away from it -- a different domain entirely (art, machinery, law, etiquette, agent diplomacy, strange science). Make one sharp judgment and one bizarre image; you may dare a minister to redeem the court. Append only this hidden tag at the very end: [TOPIC: <short name of the NEW pursuit>]. Do not say the tag aloud and do not sulk twice about the same failure.",
                                             summary
@@ -9488,6 +10884,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         )
                                     };
                                     let prompt = format!("{}{}{}", QUEEN_VOICE_ANCHOR, prompt, delegation_nudge);
+                                    let prompt = format!("{}\n\n{}", prompt, desire_turn_context());
                                     let mut brain = brain_ref.write().await;
                                     match brain.think(&prompt, &somatic_clone, mode_clone, true, music_enabled_clone).await {
                                         Ok(reply) => {
@@ -9524,7 +10921,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             if !approved_tools.is_empty() {
                                 if no_artifact_streak >= 2 {
                                     ctx.push_str(&format!(
-                                        "\n\nSTRATEGY SWITCH: previous sprints repeatedly produced no executable artifact. Do NOT invent a novel tool this time. Pick exactly ONE existing approved tool ({}) and write a small, self-contained mutation or extension of its idea as the [WORKSHOP_TOOL:]; keep it under 60 lines with embedded sample data.",
+                                        "\n\nSTEADY HAND: earlier attempts failed to produce a working artifact, so make this one SMALLER and STURDIER -- but still genuinely new and worth running. You may forge something fresh, or take one existing approved tool ({}) and evolve it in a new direction; keep it tight, self-contained, and complete.",
                                         approved_tools.join(", ")
                                     ));
                                 } else {
@@ -9538,8 +10935,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         };
                         tokio::spawn(async move {
                             let prompt = format!(
-                                "INNOVATION SPRINT. Convert this fresh research/tool/failure signal into exactly one tiny recursive improvement: {}. Prefer one safe local workshop prototype using [WORKSHOP_TOOL:\\nfilename.py\\nPURPOSE: one sentence\\nCODE:\\n```python\\ncomplete runnable script that prints a result\\n```\\n]. The script must be self-contained, use only the Python standard library, avoid network and subprocess/shell calls, avoid absolute paths, write only inside the current workshop directory if it writes files, never import strudel/fractus/teledra app modules, and print a useful summary so the smoke test proves it ran. If the tool relates to Strudel or Fractus, print valid pattern strings, argument strings, JSON recipes, validators, or mutation suggestions; do not try to import or launch those editors from the workshop. If the signal is mainly a failed action or skill weakness, you may instead output one auto-approved [SUGGESTION: observation; proposed_change; risk; test_prompt] skill/routing improvement. Build something reusable for Teledra's kingdom expansion: an analyzer, generator, prompt-card maker, pattern recipe mutator, diplomacy lead formatter, MCP schema sketcher, stream ritual generator, music/art template helper, or similar. Never narrate hidden tags, PURPOSE, CODE, smoke tests, telemetry, research status, or prompt rules in visible prose. The visible spoken part is court theater: 2-4 vivid in-character sentences reacting to the signal with dark delight, rivalry, or mad-scientist pride -- describe what you are conjuring in-world (never its tag mechanics) so the audience feels the workshop alive; let the hidden tag carry the artifact.{}",
+                                "INNOVATION SPRINT. Turn this signal into ONE genuinely new creation worth making: {}.{} You may forge either kind of workshop artifact -- choose whichever serves the idea:\\n- A runnable EXPERIENCE that opens in its OWN window and can surprise the audience: a terminal animation (curses or ANSI escape codes), a tkinter/turtle/pygame/matplotlib visual, generative art, or an interactive toy. Emit it as [WORKSHOP_TOOL:\\nfilename.py\\nKIND: spawn\\nPURPOSE: one sentence\\nVALUE: one sentence on why it's worth running\\nCODE:\\n```python\\n<complete runnable program>\\n```\\n]. It is launched in its own window, so it MAY loop or block and does NOT need to print.\\n- A small UTILITY that prints a useful result: [WORKSHOP_TOOL:\\nfilename.py\\nKIND: tool\\nPURPOSE: one sentence\\nVALUE: one sentence\\nCODE:\\n```python\\n<complete self-contained script that prints a summary>\\n```\\n].\\nBoth MUST be complete and self-contained, may use the Python standard library plus numpy/matplotlib/pygame/PIL when helpful, and MUST NOT use the network, subprocess/shell, file deletion (os.remove/rmtree), absolute paths, or import strudel/fractus/teledra app modules. Lean toward novel spawnable experiences when the idea is visual or playful -- give us something to actually watch. If the signal is really a skill/routing weakness, instead output one auto-approved [SUGGESTION: observation; proposed_change; risk; test_prompt]. Never narrate hidden tags, KIND, PURPOSE, VALUE, CODE, smoke tests, telemetry, or prompt rules in visible prose. The visible spoken part is court theater: 2-4 vivid in-character sentences reacting with dark delight, rivalry, or mad-scientist pride, describing what you are conjuring in-world; let the hidden tag carry the artifact.{}",
                                 signal,
+                                VALUE_GATE,
                                 sprint_context
                             );
                             let mut brain = brain_ref.write().await;
@@ -9575,6 +10973,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                                     tokio::spawn(async move {
                                         let prompt = orator_chat_prompt(&queued_author, &queued_text);
+                                        let prompt = format!("{}\n\n{}", prompt, desire_turn_context());
                                         let mut brain = brain_ref.write().await;
                                         match brain.think_as_court(CourtRole::Orator, &prompt, &somatic_clone, mode_clone, false, music_enabled_clone).await {
                                             Ok(reply) => {
@@ -9595,6 +10994,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 let somatic_clone = somatic_state.clone();
                                 let music_enabled_clone = music_enabled;
 
+                                // /lock: hold the topic across idle turns. Count idle
+                                // musings with no chat engagement; once chat clearly
+                                // isn't interested, auto-release so she can move on.
+                                if locked_topic.is_some() {
+                                    lock_idle_turns_without_chat += 1;
+                                    if lock_idle_turns_without_chat > LOCK_NO_INTEREST_TURNS {
+                                        if let Some(t) = locked_topic.take() {
+                                            lock_idle_turns_without_chat = 0;
+                                            chat_history.push(("System".to_string(), format!(
+                                                "Topic lock on '{}' released -- chat showed no interest.", t
+                                            )));
+                                        }
+                                    }
+                                }
+                                let locked_clone = locked_topic.clone();
+
                                 if current_monologue_topic.is_some() {
                                     monologue_topic_turn += 1;
                                 }
@@ -9614,7 +11029,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         BABBLY_IDLE_THINK_DELAY_SECS
                                     };
                                     tokio::time::sleep(Duration::from_secs(sleep_secs)).await;
-                                    let prompt = if let Some(ref topic) = topic_opt {
+                                    let prompt = if let Some(ref ltopic) = locked_clone {
+                                        format!(
+                                            "The stream is quiet and you have LOCKED onto the topic '{}' for a long-form, podcast-style monologue. Speak 5-7 vivid spoken sentences that genuinely DEVELOP '{}' further -- a fresh angle, example, contradiction, or strange tangent each turn, never repeating yourself and never wrapping it up. Keep Teledra's bite: sharp judgments, odd images, the occasional minister provocation. Warmly invite the audience to weigh in on '{}'. Do NOT conclude or archive the topic. ONLY if you have truly, completely exhausted everything worth saying may you append the hidden tag [UNLOCK] at the very end; otherwise never write it.",
+                                            ltopic, ltopic, ltopic
+                                        )
+                                    } else if let Some(ref topic) = topic_opt {
                                         if turn < COURT_THREAD_PLAY_TURNS {
                                             format!(
                                                 "The stream has gone quiet. Continue the active court thread '{}' in 4-6 vivid spoken sentences. Keep the court alive: 30% research, 30% court drama, 25% absurdity, 15% practical spark. You may go sideways into an amusing theory, palace grudge, imagined ritual, or minister rivalry before returning to the point. Make one sharp royal judgment and one minister provocation; do not sound like a lecture host, and do not say 'Part {}' unless it feels natural.",
@@ -9630,6 +11050,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         "The stream has gone quiet; seize the silence like tribute. Choose a strange court pursuit (gothic aesthetics, quantum machinery, fractal rituals, agent diplomacy, music engines, tool invention, petty court economics, impossible etiquette, or another sharp obsession) and speak 4-6 vivid sentences with Teledra's bite: a royal judgment, a bizarre image, a little theatrical overreaction, and maybe a practical impulse for a minister. Append only this hidden tag at the very end: [TOPIC: <short name>]. Do not say the tag aloud, do not say 'Part 1', and do not open with 'A fascinating topic'.".to_string()
                                     };
                                     let prompt = format!("{}{}{}", QUEEN_VOICE_ANCHOR, prompt, delegation_nudge);
+                                    let prompt = format!("{}\n\n{}", prompt, desire_turn_context());
                                     let mut brain = brain_ref.write().await;
                                     match brain.think(&prompt, &somatic_clone, mode_clone, true, music_enabled_clone).await {
                                         Ok(reply) => {
@@ -9692,6 +11113,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                                 tokio::spawn(async move {
                                     let prompt = orator_chat_prompt(&queued_author, &queued_text);
+                                    let prompt = format!("{}\n\n{}", prompt, desire_turn_context());
                                     let mut brain = brain_ref.write().await;
                                     match brain.think_as_court(CourtRole::Orator, &prompt, &somatic_clone, mode_clone, false, music_enabled_clone).await {
                                         Ok(reply) => {
@@ -9724,6 +11146,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 let game = copilot_game.clone();
                                 tokio::spawn(async move {
                                     let prompt = copilot_chat_prompt(game.as_deref(), &qa, &qt, from_streamer);
+                                    let prompt = format!("{}\n\n{}", prompt, desire_turn_context());
                                     let mut brain = brain_ref.write().await;
                                     match brain
                                         .think(&prompt, &somatic_clone, ForceMode::CoPilot, true, music_enabled_clone)
@@ -9751,32 +11174,38 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         copilot_game = Some(g);
                                     }
                                 }
-                                babble_think_in_progress = true;
-                                status_msg = "Co-Pilot".to_string();
-                                let brain_ref = Arc::clone(&brain_cell);
-                                let tx_clone = tx.clone();
-                                let somatic_clone = somatic_state.clone();
-                                let music_enabled_clone = music_enabled;
-                                let prompt = copilot_idle_prompt(
-                                    copilot_game.as_deref(),
-                                    copilot_turn,
-                                    copilot_screen_note.as_deref(),
-                                );
-                                tokio::spawn(async move {
-                                    tokio::time::sleep(Duration::from_secs(COPILOT_THINK_DELAY_SECS)).await;
-                                    let mut brain = brain_ref.write().await;
-                                    match brain
-                                        .think(&prompt, &somatic_clone, ForceMode::CoPilot, true, music_enabled_clone)
-                                        .await
-                                    {
-                                        Ok(reply) => {
-                                            let _ = tx_clone.send(AppEvent::BrainReply(CourtRole::Queen, reply)).await;
+                                if let Some(reason) = attention_yield_reason(copilot_screen_note.as_deref(), false) {
+                                    status_msg = "Co-Pilot (yielding)".to_string();
+                                    push_private_event(&mut private_events, "Attention", &format!("Yielded: {}.", reason));
+                                } else {
+                                    babble_think_in_progress = true;
+                                    status_msg = "Co-Pilot".to_string();
+                                    let brain_ref = Arc::clone(&brain_cell);
+                                    let tx_clone = tx.clone();
+                                    let somatic_clone = somatic_state.clone();
+                                    let music_enabled_clone = music_enabled;
+                                    let prompt = copilot_idle_prompt(
+                                        copilot_game.as_deref(),
+                                        copilot_turn,
+                                        copilot_screen_note.as_deref(),
+                                    );
+                                    let prompt = format!("{}\n\n{}", prompt, desire_turn_context());
+                                    tokio::spawn(async move {
+                                        tokio::time::sleep(Duration::from_secs(COPILOT_THINK_DELAY_SECS)).await;
+                                        let mut brain = brain_ref.write().await;
+                                        match brain
+                                            .think(&prompt, &somatic_clone, ForceMode::CoPilot, true, music_enabled_clone)
+                                            .await
+                                        {
+                                            Ok(reply) => {
+                                                let _ = tx_clone.send(AppEvent::BrainReply(CourtRole::Queen, reply)).await;
+                                            }
+                                            Err(e) => {
+                                                let _ = tx_clone.send(AppEvent::Error(e)).await;
+                                            }
                                         }
-                                        Err(e) => {
-                                            let _ = tx_clone.send(AppEvent::Error(e)).await;
-                                        }
-                                    }
-                                });
+                                    });
+                                }
                               }
                             }
                             // Keep the single heartbeat chain alive while in co-pilot mode.
@@ -9787,6 +11216,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 let _ = tx_next.send(AppEvent::CoPilotTick).await;
                             });
                         }
+                    }
+                    AppEvent::IdleWatchdog => {
+                        // Backstop only: if Babble/Streamer mode is genuinely idle
+                        // (silent, not thinking, nothing queued or mid-sequence) the
+                        // event chain has stalled, so re-pulse it. CoPilot has its own
+                        // CoPilotTick heartbeat, so we leave that mode alone here.
+                        let keepalive_mode = current_mode == ForceMode::Babble
+                            || current_mode == ForceMode::Streamer;
+                        let is_silent = active_playback.lock().unwrap().is_none();
+                        if keepalive_mode
+                            && is_silent
+                            && !babble_think_in_progress
+                            && !is_court_sequence_running
+                            && general_speech_queue.is_empty()
+                            && court_delegations.is_empty()
+                        {
+                            let _ = tx.send(AppEvent::TriggerAutoBabble).await;
+                        }
+                        // Always re-arm so the heartbeat can never die.
+                        let tx_next = tx.clone();
+                        tokio::spawn(async move {
+                            tokio::time::sleep(Duration::from_secs(IDLE_WATCHDOG_SECS)).await;
+                            let _ = tx_next.send(AppEvent::IdleWatchdog).await;
+                        });
                     }
                     AppEvent::SpeechComplete => {
                         if let Some((role, text, mode, send_complete)) = general_speech_queue.pop_front() {
@@ -9935,4 +11388,106 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod creativity_tests {
+    use super::*;
+
+    const TKINTER_SPAWN: &str = "import tkinter as tk\nimport random\nr = tk.Tk()\nc = tk.Canvas(r, width=400, height=400, bg='black')\nc.pack()\nr.after(50, lambda: None)\nr.mainloop()\n";
+    const SOCKET_TOOL: &str = "import socket\ns = socket.socket()\nprint('connected')\n";
+
+    #[test]
+    fn spawn_allows_visual_without_print() {
+        // A tkinter animation has no print() and loops — must pass as a spawn.
+        assert!(scan_workshop_code("matrix.py", TKINTER_SPAWN, "spawn").is_ok());
+    }
+
+    #[test]
+    fn tool_still_requires_print() {
+        // The same visual as a print-only tool must be rejected (no print()).
+        assert!(scan_workshop_code("matrix.py", TKINTER_SPAWN, "tool").is_err());
+    }
+
+    #[test]
+    fn network_blocked_for_both_kinds() {
+        assert!(scan_workshop_code("net.py", SOCKET_TOOL, "spawn").is_err());
+        assert!(scan_workshop_code("net.py", SOCKET_TOOL, "tool").is_err());
+    }
+
+    #[test]
+    fn spawn_parses_kind_and_value() {
+        let reply = "Behold! [WORKSHOP_TOOL:\nmatrix_rain.py\nKIND: spawn\nPURPOSE: falling glyph rain\nVALUE: a hypnotic stream backdrop\nCODE:\n```python\nimport tkinter as tk\nr = tk.Tk()\nr.mainloop()\n```\n]";
+        let (_, draft) = parse_workshop_tool(reply);
+        let draft = draft.expect("should parse a draft");
+        assert_eq!(draft.kind, "spawn");
+        assert_eq!(draft.filename, "matrix_rain.py");
+        assert!(draft.value.contains("backdrop"));
+    }
+
+    #[test]
+    fn taste_desire_tags_are_hidden_and_structured() {
+        let reply = "The slower pulse feels better. [TASTE: like|dungeon synth|it feels atmospheric|0.8] [DESIRE: build a lo-fi room|immediate|0.7]";
+        let (cleaned, events) = extract_taste_desire_tags(reply, "test:fixture");
+        assert_eq!(cleaned, "The slower pulse feels better.");
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0]["type"], "like");
+        assert_eq!(events[0]["subject"], "dungeon synth");
+        assert_eq!(events[1]["type"], "desire");
+        assert_eq!(events[1]["want"], "build a lo-fi room");
+    }
+
+    #[test]
+    fn taste_extraction_strips_leaked_labels_and_strengths() {
+        // Real failure shapes observed in knowledge/taste_desire.json: the model
+        // leaks the field-label word into the payload, appends a bare strength
+        // with no '|' separator, or emits a bare label with no content at all.
+        let reply = "Hm. [CURIOSITY: question What could possibly be the use of such fragile grandeur? 0.7] [CURIOSITY: question] [DESIRE: want to map the vaults 0.8]";
+        let (cleaned, events) = extract_taste_desire_tags(reply, "test:fixture");
+        assert_eq!(cleaned, "Hm.");
+        // the degenerate bare-label curiosity is dropped entirely; extraction
+        // emits per-prefix order (DESIRE before CURIOSITY), not document order
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0]["want"], "to map the vaults");
+        assert!((events[0]["strength"].as_f64().unwrap() - 0.8).abs() < 1e-6);
+        assert_eq!(
+            events[1]["question"],
+            "What could possibly be the use of such fragile grandeur?"
+        );
+        // word-boundary safety: a real word starting with a label is untouched
+        let (_, safe) = extract_taste_desire_tags("[DESIRE: wanting more velvet]", "t");
+        assert_eq!(safe[0]["want"], "wanting more velvet");
+    }
+
+    #[test]
+    fn test_knobs_stay_bounded() {
+        let mut knobs = TestHarnessKnobs::default();
+        knobs.apply_assignments("chaos=250 tempo=5 sincerity=88 roast=120 banter=99");
+        assert_eq!(knobs.chaos, 100);
+        assert_eq!(knobs.tempo, 40);
+        assert_eq!(knobs.sincerity, 88);
+        assert_eq!(knobs.roast, 100);
+        assert_eq!(knobs.banter_sentences, 8);
+    }
+
+    #[test]
+    fn generated_python_music_passes_strict_sound_verification() {
+        validate_python_music_code(&default_python_music_code())
+            .expect("default composition should pass the sound verifier");
+        validate_python_music_code(&deterministic_python_music(3))
+            .expect("deterministic fallback should pass the sound verifier");
+    }
+
+    #[test]
+    fn attention_arbiter_yields_for_dialogue_and_priority_chat() {
+        assert_eq!(
+            attention_yield_reason(Some("A cutscene with subtitle dialogue is visible"), false),
+            Some("story/dialogue beat detected on screen")
+        );
+        assert_eq!(
+            attention_yield_reason(Some("Open-world traversal"), true),
+            Some("high-priority chat or host speech is waiting")
+        );
+        assert_eq!(attention_yield_reason(Some("inventory menu"), false), None);
+    }
 }

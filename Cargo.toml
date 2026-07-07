@@ -1,0 +1,19 @@
+[package]
+name = "teledra"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+cpal = "0.15"
+rodio = "0.17"
+reqwest = { version = "0.11", features = ["json"] }
+rand = "0.8"
+ratatui = "0.26"
+crossterm = "0.27"
+sysinfo = "0.30"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+
+

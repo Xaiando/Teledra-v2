@@ -33,6 +33,7 @@ REF_MAP = {
     "diplomat": "assets/diplomat_ref_clean.wav",
     "envoy": "assets/diplomat_ref_clean.wav",
     "treasurer": "assets/treasurer_ref_clean.wav",
+    "wizard": "assets/wizard_ref_clean.wav",
     "default": "assets/queen_ref_clean.wav",
 }
 
@@ -50,6 +51,7 @@ VOICE_PARAMS = {
     "diplomat": {"rms": 0.0065, "speed": 1.06, "guidance_scale": 2.06, "t_shift": 0.73},
     "envoy": {"rms": 0.0065, "speed": 1.06, "guidance_scale": 2.06, "t_shift": 0.73},
     "treasurer": {"rms": 0.0065, "speed": 1.0, "guidance_scale": 2.06, "t_shift": 0.72},
+    "wizard": {"rms": 0.0062, "speed": 0.98, "guidance_scale": 2.08, "t_shift": 0.72},
 }
 
 
@@ -144,6 +146,22 @@ def main():
         print(f"WARNING: Unknown voice '{voice_name}', falling back to Queen.", file=sys.stderr)
         sys.stderr.flush()
     ref_wav_path = os.path.join(base_dir, REF_MAP[ref_key])
+
+    # A/B override: TELEDRA_VOICE_REF env var or an optional 3rd CLI arg lets us
+    # synthesize from an arbitrary reference (e.g. a cleaning candidate) without
+    # touching REF_MAP. Default behaviour is unchanged when neither is set.
+    override = os.environ.get("TELEDRA_VOICE_REF", "").strip()
+    if len(sys.argv) >= 4 and sys.argv[3].strip():
+        override = sys.argv[3].strip()
+    if override:
+        cand = override if os.path.isabs(override) else os.path.join(base_dir, override)
+        if os.path.exists(cand):
+            ref_wav_path = cand
+            print(f"INFO: Using reference override {cand}", file=sys.stderr)
+            sys.stderr.flush()
+        else:
+            print(f"WARNING: ref override {cand} not found; using {ref_wav_path}", file=sys.stderr)
+            sys.stderr.flush()
 
     if not os.path.exists(ref_wav_path):
         # Fallback to the clean Queen reference if a specific voice does not exist.

@@ -2,6 +2,8 @@ import numpy as np
 import time
 from teledra_synth import *
 
+STYLE = "generative gothic electronica"
+
 variants = [
     {
         "tempo": 96,
@@ -107,4 +109,15 @@ texture = fit_to_length(granular_synthesis(texture, grain_size=0.08, overlap=0.4
 full_track = mix_waves(full_track, texture, start_time=0.0, volume_b=0.55)
 full_track = reverb(lowpass_filter(full_track, cutoff=variant["final_cutoff"]), room_size=variant["room"], mix=0.22)
 
+full_track = fit_to_length(full_track, int(180.0 * 44100), mode="loop")
+full_track = make_seamless_loop(full_track, crossfade_seconds=0.08, sr=44100)
+TELEDRA_LAYERS = {
+    "bass": fit_to_length(bass, len(full_track), mode="loop"),
+    "pad": fit_to_length(pad, len(full_track), mode="loop"),
+    "lead": fit_to_length(lead, len(full_track), mode="loop"),
+    "kick": fit_to_length(kick, len(full_track), mode="loop"),
+    "snare": fit_to_length(snare, len(full_track), mode="loop"),
+    "hat": fit_to_length(hat, len(full_track), mode="loop"),
+    "texture": fit_to_length(texture, len(full_track), mode="loop"),
+}
 play_sound(full_track, loop=True)

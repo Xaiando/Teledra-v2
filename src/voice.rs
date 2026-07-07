@@ -181,6 +181,7 @@ impl VoiceEngine {
             "orator" => 2.45,
             "diplomat" | "envoy" => 2.6,
             "treasurer" => 2.5,
+            "wizard" => 2.45,
             "queen" | "teledra" | "energetic" => 1.22,
             _ => 1.55,
         }
