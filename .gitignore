@@ -14,3 +14,18 @@ __pycache__/
 /config/mcp_servers.json
 /config/tavily_key.txt
 /config/restream_token.txt
+/config/email.json
+
+# Kraken Agent Hub runtime state and generated work.
+/kraken/hub/*.pid
+/kraken/hub/data/
+/kraken/hub/job_tasks.json
+/kraken/hub/missions_seen.json
+/kraken/hub/research_cache.key
+/kraken/jobs/
+/kraken/journal/
+/kraken/lessons/
+/kraken/output/
+/kraken/test-results/
+/kraken/vault/
+/kraken/workspace/

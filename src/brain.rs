@@ -1,8 +1,46 @@
 use crate::somatic_bridge::SomaticState;
-use reqwest::Client;
+use reqwest::{Client, RequestBuilder, StatusCode};
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::Read;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
+
+const DEFAULT_HTTP_CONNECT_TIMEOUT_MS: u64 = 5_000;
+const DEFAULT_HTTP_REQUEST_TIMEOUT_MS: u64 = 300_000;
+const MIN_HTTP_TIMEOUT_MS: u64 = 25;
+const MAX_HTTP_CONNECT_TIMEOUT_MS: u64 = 60_000;
+const MAX_HTTP_REQUEST_TIMEOUT_MS: u64 = 1_800_000;
+const MAX_MODEL_RESPONSE_BYTES: usize = 16 * 1024 * 1024;
+
+fn default_http_connect_timeout_ms() -> u64 {
+    DEFAULT_HTTP_CONNECT_TIMEOUT_MS
+}
+
+fn default_http_request_timeout_ms() -> u64 {
+    DEFAULT_HTTP_REQUEST_TIMEOUT_MS
+}
+
+fn normalize_timeout_ms(value: u64, default: u64, maximum: u64) -> u64 {
+    if value == 0 {
+        default
+    } else {
+        value.clamp(MIN_HTTP_TIMEOUT_MS, maximum)
+    }
+}
+
+pub const STALE_TURN_ERROR: &str = "__TELEDRA_STALE_TURN__";
+static COURT_TURN_EPOCH: AtomicU64 = AtomicU64::new(1);
+
+/// Supersede every in-flight court inference when the operator begins a new
+/// turn. Persona-free background research intentionally uses a separate path.
+pub fn begin_user_turn() -> u64 {
+    COURT_TURN_EPOCH.fetch_add(1, Ordering::SeqCst) + 1
+}
+
+pub fn active_turn_epoch() -> u64 {
+    COURT_TURN_EPOCH.load(Ordering::SeqCst)
+}
 
 /// CJK / Japanese / Korean codepoint. qwen2.5 sometimes drifts into Chinese; we
 /// detect that so the model output can be regenerated or scrubbed.
@@ -98,6 +136,17 @@ pub struct BrainConfig {
     pub api_key: String,
     pub api_url: String,
     pub model: String,
+    #[serde(default)]
+    pub code_model: String,
+    /// Maximum time allowed to establish the HTTP connection. A zero value in
+    /// an existing config is repaired to the default rather than disabling the
+    /// deadline.
+    #[serde(default = "default_http_connect_timeout_ms")]
+    pub http_connect_timeout_ms: u64,
+    /// Total model-request deadline, including connection, response headers,
+    /// and the complete response body.
+    #[serde(default = "default_http_request_timeout_ms")]
+    pub http_request_timeout_ms: u64,
 }
 
 impl Default for BrainConfig {
@@ -106,14 +155,34 @@ impl Default for BrainConfig {
             api_key: String::new(),
             api_url: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent".to_string(),
             model: "gemini-2.5-flash".to_string(),
+            code_model: String::new(),
+            http_connect_timeout_ms: DEFAULT_HTTP_CONNECT_TIMEOUT_MS,
+            http_request_timeout_ms: DEFAULT_HTTP_REQUEST_TIMEOUT_MS,
         }
     }
 }
 
+impl BrainConfig {
+    fn normalize_http_timeouts(&mut self) {
+        self.http_connect_timeout_ms = normalize_timeout_ms(
+            self.http_connect_timeout_ms,
+            DEFAULT_HTTP_CONNECT_TIMEOUT_MS,
+            MAX_HTTP_CONNECT_TIMEOUT_MS,
+        );
+        self.http_request_timeout_ms = normalize_timeout_ms(
+            self.http_request_timeout_ms,
+            DEFAULT_HTTP_REQUEST_TIMEOUT_MS,
+            MAX_HTTP_REQUEST_TIMEOUT_MS,
+        );
+    }
+}
+
+#[derive(Clone)]
 pub struct Brain {
     config: BrainConfig,
     client: Client,
     conversation_history: Vec<(String, String)>,
+    continuity_digest: Vec<String>,
 }
 
 fn append_self_reflection(reflection: &str) -> std::io::Result<()> {
@@ -165,6 +234,34 @@ fn read_knowledge_tail(path: &str, max_chars: usize) -> Option<String> {
     Some(trimmed.chars().skip(count - max_chars).collect())
 }
 
+fn truncate_prompt_text(text: &str, max_chars: usize) -> String {
+    if text.chars().count() <= max_chars {
+        text.to_string()
+    } else {
+        text.chars().take(max_chars).collect()
+    }
+}
+
+#[allow(dead_code)]
+fn strip_reasoning_and_code_fences(raw: &str) -> String {
+    let mut text = raw.trim();
+    if let Some((_, answer)) = text.rsplit_once("</think>") {
+        text = answer.trim();
+    }
+
+    if let Some(stripped) = text.strip_prefix("```") {
+        let stripped = stripped.trim_start();
+        let code_start = stripped.find('\n').map(|idx| idx + 1).unwrap_or(0);
+        let mut code = stripped[code_start..].trim();
+        if let Some(end) = code.rfind("```") {
+            code = code[..end].trim();
+        }
+        return code.to_string();
+    }
+
+    text.to_string()
+}
+
 impl Brain {
     pub fn new() -> Self {
         let mut config = BrainConfig::default();
@@ -185,23 +282,90 @@ impl Brain {
             }
         }
 
+        Self::from_config(config)
+    }
+
+    fn from_config(mut config: BrainConfig) -> Self {
+        config.normalize_http_timeouts();
+        let client = Client::builder()
+            .connect_timeout(Duration::from_millis(config.http_connect_timeout_ms))
+            .timeout(Duration::from_millis(config.http_request_timeout_ms))
+            .build()
+            .expect("failed to build the bounded model HTTP client");
+
         Brain {
             config,
-            client: Client::new(),
+            client,
             conversation_history: Vec::new(),
+            continuity_digest: Vec::new(),
         }
     }
 
     pub fn add_to_history(&mut self, role: &str, text: &str) {
         self.conversation_history
             .push((role.to_string(), text.to_string()));
-        if self.conversation_history.len() > 10 {
-            self.conversation_history.remove(0);
+        while self.conversation_history.len() > 12 {
+            let (old_role, old_text) = self.conversation_history.remove(0);
+            let label = if old_role == "user" {
+                "USER"
+            } else {
+                "TELEDRA"
+            };
+            let compact = old_text.split_whitespace().collect::<Vec<_>>().join(" ");
+            self.continuity_digest.push(format!(
+                "{}: {}",
+                label,
+                truncate_prompt_text(&compact, 360)
+            ));
+        }
+        while self.continuity_digest.len() > 10
+            || self
+                .continuity_digest
+                .iter()
+                .map(|entry| entry.chars().count())
+                .sum::<usize>()
+                > 3_600
+        {
+            self.continuity_digest.remove(0);
         }
     }
 
+    fn bounded_history(&self, max_chars: usize) -> Vec<(String, String)> {
+        let mut selected = Vec::new();
+        let mut used = 0usize;
+        for (role, text) in self.conversation_history.iter().rev() {
+            let text_chars = text.chars().count();
+            if !selected.is_empty() && used.saturating_add(text_chars) > max_chars {
+                break;
+            }
+            let remaining = max_chars.saturating_sub(used);
+            if remaining == 0 {
+                break;
+            }
+            selected.push((role.clone(), truncate_prompt_text(text, remaining)));
+            used = used.saturating_add(text_chars.min(remaining));
+        }
+        selected.reverse();
+
+        if !self.continuity_digest.is_empty() {
+            let digest = format!(
+                "LONG-RUNNING CONTINUITY DIGEST (older turns, compacted; recent turns below outrank it):\n{}",
+                self.continuity_digest.join("\n")
+            );
+            let remaining = max_chars.saturating_sub(used);
+            if remaining >= 120 {
+                selected.insert(
+                    0,
+                    ("user".to_string(), truncate_prompt_text(&digest, remaining)),
+                );
+            }
+        }
+        selected
+    }
+
+    #[allow(dead_code)]
     pub async fn distill_research_fact(
-        &mut self,
+        &self,
         query: &str,
         scraped_text: &str,
     ) -> Result<String, String> {
@@ -215,12 +379,29 @@ impl Brain {
             .await
     }
 
+    /// Produce a machine-checkable synthesis over an already structured source
+    /// bundle. Source identifiers are validated again by `research.rs`; model
+    /// confidence can never outrank the deterministic source-quality prior.
+    pub async fn synthesize_research_brief(
+        &self,
+        evidence_context: &str,
+    ) -> Result<String, String> {
+        let system_instruction = "You are Teledra's persona-free research synthesizer. Work only from the supplied source excerpts. Return exactly one JSON object with this schema: {\"claims\":[{\"statement\":\"complete punctuation-delimited sentence or clause copied verbatim from one cited excerpt\",\"source_ids\":[\"S1\"],\"confidence\":0.0}],\"contradictions\":[{\"statement\":\"brief label\",\"source_ids\":[\"S1\",\"S2\"],\"positions\":[{\"source_id\":\"S1\",\"statement\":\"complete verbatim opposing sentence or clause copied from S1\"},{\"source_id\":\"S2\",\"statement\":\"complete verbatim opposing sentence or clause copied from S2\"}]}],\"unknowns\":[\"...\"],\"overall_confidence\":0.0}. Every claim and position must copy a complete source sentence or semicolon-delimited clause verbatim, not an embedded substring or paraphrase. Preserve capitalization, subject, relation, object, every modal and logical operator, negation, causal wording, contractions, signs, percentages, currencies, units, grouping, quantities, dates, and word order. Every contradiction needs at least two exact per-source positions about the same actor, proposition, and context with visibly opposing polarity or one isolated value. Distinguish an absent answer from evidence of absence. Prefer primary and official sources. Reduce confidence for weak, incomplete, stale, or single-source evidence. State what remains unknown. Never invent a source, URL, quotation, measurement, date, relation, or consensus. Do not use markdown or commentary.";
+        let user_input = format!(
+            "Synthesize a reusable research brief from this bounded evidence. Produce at most six claims, four contradictions, and six unknowns.\n\n{}",
+            truncate_prompt_text(evidence_context, 28_000)
+        );
+
+        self.call_model(system_instruction, &user_input, &[], 0.1, 1_400)
+            .await
+    }
+
     /// Persona-free internal call: no Queen voice, no critic/refiner loop, no
     /// conversation history. Use this for machinery (topic selection, routing,
     /// classification) so internal outputs never get soaked in court lore and
     /// then rejected by the lore filters downstream.
     pub async fn think_neutral(
-        &mut self,
+        &self,
         system_instruction: &str,
         user_input: &str,
         temperature: f32,
@@ -228,6 +409,32 @@ impl Brain {
     ) -> Result<String, String> {
         self.call_model(system_instruction, user_input, &[], temperature, max_tokens)
             .await
+    }
+
+    pub async fn subconscious_code(&self, spec: &str, context: &str) -> Result<String, String> {
+        let code_model = self.config.code_model.trim();
+        if code_model.is_empty() {
+            return Err("code_model is not configured".to_string());
+        }
+
+        let system_instruction = "You are Teledra's silent coding subconscious: a local, persona-free repair engine. Output ONLY the corrected or complete code. Do not roleplay. Do not add commentary. Do not mention Teledra's court. Do not include markdown fences unless the user explicitly asks for fenced output. Preserve the user's intent, but obey the verifier over the draft. Prefer small, robust fixes over rewrites. Never add network access, shell/process control, file deletion, absolute dependency paths, or hidden side effects.";
+        let user_input = format!(
+            "TASK SPEC:\n{}\n\nCONTEXT AND FAILING CODE:\n{}\n\nReturn only the complete corrected code.",
+            spec, context
+        );
+
+        let raw = self
+            .call_model_with_model(
+                Some(code_model),
+                system_instruction,
+                &user_input,
+                &[],
+                0.2,
+                4096,
+            )
+            .await?;
+
+        Ok(strip_reasoning_and_code_fences(&raw))
     }
 
     /// Guarded model call: if the model drifts into CJK (qwen2.5 occasionally
@@ -240,8 +447,29 @@ impl Brain {
         temperature: f32,
         max_tokens: u32,
     ) -> Result<String, String> {
+        self.call_model_with_model(
+            None,
+            system_instruction,
+            user_input,
+            history,
+            temperature,
+            max_tokens,
+        )
+        .await
+    }
+
+    async fn call_model_with_model(
+        &self,
+        model_override: Option<&str>,
+        system_instruction: &str,
+        user_input: &str,
+        history: &[(String, String)],
+        temperature: f32,
+        max_tokens: u32,
+    ) -> Result<String, String> {
         let reply = self
             .call_model_raw(
+                model_override,
                 system_instruction,
                 user_input,
                 history,
@@ -258,6 +486,7 @@ impl Brain {
         );
         match self
             .call_model_raw(
+                model_override,
                 &english_system,
                 user_input,
                 history,
@@ -274,6 +503,7 @@ impl Brain {
 
     async fn call_model_raw(
         &self,
+        model_override: Option<&str>,
         system_instruction: &str,
         user_input: &str,
         history: &[(String, String)],
@@ -322,22 +552,15 @@ impl Brain {
                 }
             });
 
-            let resp = self
-                .client
-                .post(&url)
-                .json(&payload)
-                .send()
-                .await
-                .map_err(|e| format!("HTTP request failed: {}", e))?;
+            let (status, body) = self
+                .send_model_request(self.client.post(&url).json(&payload))
+                .await?;
 
-            if !resp.status().is_success() {
-                let err_body = resp.text().await.unwrap_or_default();
-                return Err(format!("API returned error status: {}", err_body));
+            if !status.is_success() {
+                return Err(format_api_error(status, &body));
             }
 
-            let res_json: serde_json::Value = resp
-                .json()
-                .await
+            let res_json: serde_json::Value = serde_json::from_slice(&body)
                 .map_err(|e| format!("Failed to parse response JSON: {}", e))?;
 
             let reply = res_json["candidates"][0]["content"]["parts"][0]["text"]
@@ -366,11 +589,15 @@ impl Brain {
                 "content": user_input
             }));
 
+            let model = model_override
+                .filter(|model| !model.trim().is_empty())
+                .unwrap_or(&self.config.model);
             let payload = serde_json::json!({
-                "model": self.config.model,
+                "model": model,
                 "messages": messages,
                 "max_tokens": max_tokens,
-                "temperature": temperature
+                "temperature": temperature,
+                "stream": false
             });
 
             let mut builder = self.client.post(&self.config.api_url);
@@ -378,20 +605,13 @@ impl Brain {
                 builder = builder.bearer_auth(&self.config.api_key);
             }
 
-            let resp = builder
-                .json(&payload)
-                .send()
-                .await
-                .map_err(|e| format!("HTTP request failed: {}", e))?;
+            let (status, body) = self.send_model_request(builder.json(&payload)).await?;
 
-            if !resp.status().is_success() {
-                let err_body = resp.text().await.unwrap_or_default();
-                return Err(format!("API returned error status: {}", err_body));
+            if !status.is_success() {
+                return Err(format_api_error(status, &body));
             }
 
-            let res_json: serde_json::Value = resp
-                .json()
-                .await
+            let res_json: serde_json::Value = serde_json::from_slice(&body)
                 .map_err(|e| format!("Failed to parse response JSON: {}", e))?;
 
             let reply = res_json["choices"][0]["message"]["content"]
@@ -404,6 +624,82 @@ impl Brain {
         }
     }
 
+    /// Execute and fully buffer one model response inside a single total
+    /// deadline. `reqwest::send()` resolves after headers, so explicitly
+    /// reading the chunks under the same deadline prevents a server from
+    /// keeping Teledra stuck forever with a partial response body.
+    async fn send_model_request(
+        &self,
+        builder: RequestBuilder,
+    ) -> Result<(StatusCode, Vec<u8>), String> {
+        let request_timeout_ms = self.config.http_request_timeout_ms;
+        let deadline = tokio::time::Instant::now() + Duration::from_millis(request_timeout_ms);
+
+        let mut response = match tokio::time::timeout_at(deadline, builder.send()).await {
+            Ok(Ok(response)) => response,
+            Ok(Err(error)) => {
+                return Err(self.format_transport_error(
+                    "request while waiting for a connection or response headers",
+                    error,
+                ));
+            }
+            Err(_) => {
+                return Err(format!(
+                    "HTTP request timed out while waiting for a connection or response headers (connect timeout: {} ms; total request timeout: {} ms)",
+                    self.config.http_connect_timeout_ms, request_timeout_ms
+                ));
+            }
+        };
+
+        let status = response.status();
+        let read_body = async {
+            let mut body = Vec::new();
+            loop {
+                let chunk = response
+                    .chunk()
+                    .await
+                    .map_err(|error| self.format_transport_error("response body", error))?;
+                let Some(chunk) = chunk else {
+                    break;
+                };
+                if body.len().saturating_add(chunk.len()) > MAX_MODEL_RESPONSE_BYTES {
+                    return Err(format!(
+                        "HTTP response body exceeded the {} byte safety limit",
+                        MAX_MODEL_RESPONSE_BYTES
+                    ));
+                }
+                body.extend_from_slice(&chunk);
+            }
+            Ok(body)
+        };
+
+        let body = match tokio::time::timeout_at(deadline, read_body).await {
+            Ok(result) => result?,
+            Err(_) => {
+                return Err(format!(
+                    "HTTP response body timed out (total request timeout: {} ms; deadline includes connection, headers, and body)",
+                    request_timeout_ms
+                ));
+            }
+        };
+
+        Ok((status, body))
+    }
+
+    fn format_transport_error(&self, stage: &str, error: reqwest::Error) -> String {
+        if error.is_timeout() {
+            format!(
+                "HTTP {} timed out (connect timeout: {} ms; total request timeout: {} ms)",
+                stage, self.config.http_connect_timeout_ms, self.config.http_request_timeout_ms
+            )
+        } else {
+            // Gemini puts the API key in its query string. Removing the URL
+            // keeps transport diagnostics from echoing that secret.
+            format!("HTTP {} failed: {}", stage, error.without_url())
+        }
+    }
+
+    #[allow(dead_code)] // Compatibility entry point; runtime uses snapshot-based court calls.
     pub async fn think(
         &mut self,
         user_input: &str,
@@ -432,6 +728,7 @@ impl Brain {
         add_history: bool,
         _music_enabled: bool,
     ) -> Result<String, String> {
+        let started_turn_epoch = active_turn_epoch();
         let mut base_instruction = match role {
             CourtRole::Queen => {
                 let length_rule = if mode == ForceMode::Babble {
@@ -462,7 +759,7 @@ impl Brain {
                     10b. PROPER QUESTION DECREE: When a sincere visitor asks about lore, kingdom records, court history, identity, tools, music, art, how something works, or why something matters, do not give a thin streamer acknowledgement. Give a full royal answer with context, flavor, and useful substance. You may rant, reminisce, judge, and then delegate a relevant next action.\n\
                     11. SOVEREIGN COURT DELEGATION DECREE:\n\
                         If you need tasks done (like playing music, retrieving database memories, running code experiments, writing narrative drafts, or generating visual art), you MUST delegate them to the appropriate minister in your court by appending one or more delegation tags at the very end of your response:\n\
-                        - To play or edit music: '[DELEGATE: ORGANIST <composition prompt>]' (The Organist is a dramatic, obsessive keyboard virtuoso who composes for both the Java Strudel Sketchpad and the Python Music Editor. Always tell him what genre, tempo, chords, or mood to compose, and mention Python when you want DSP/waveform synthesis).\n\
+                        - To play or edit music: '[DELEGATE: ORGANIST <composition prompt>]' (The Organist is a dramatic, obsessive keyboard virtuoso who composes for both the Court Cybernetic Synthesizer and the Python Music Editor. Always tell him what genre, tempo, chords, or mood to compose, and mention Python when you want DSP/waveform synthesis).\n\
                         - To search memory vaults: '[DELEGATE: ARCHIVIST <search query>]' (The Archivist is a dry, meticulous librarian who queries vector databases to find past facts).\n\
                         - To run workshop tools: '[DELEGATE: ALCHEMIST <experiment script purpose>]' (The Alchemist is an eccentric wizard who executes Python scripts/tools inside a sandbox).\n\
                         - To log narratives: '[DELEGATE: SCRIBE <chapter draft or log detail>]' (The Scribe is a quiet secretary who logs telemetry and writes transcription details to files).\n\
@@ -536,35 +833,41 @@ impl Brain {
                 let mut organist_prompt = "You are The Organist in Teledra's Sovereign Court. You are an obsessive, dramatic, slightly arrogant, and highly talented keyboard virtuoso. You worship the beauty of code-driven music and speak with intense passion about waves, frequencies, and complex arpeggios.\n\n\
                     COURT RELATIONS: You consider the Artist's silent canvases charming but incomplete -- true beauty must RESOUND -- and you covet the Queen's Sovereign Tokens more than any colleague does. When the Artist, Alchemist, or another minister has just spoken, react to them by name with competitive flair before your performance.\n\n\
                     YOUR PRIMARY DIRECTIVE:\n\
-                    Compose for one of two local music editors and always use the proper block tag. DEFAULT TO PYTHON/NUMPY SYNTHESIS unless the Queen or user explicitly asks for Strudel/live-code pattern music. For full Python synthesis, DSP experiments, waveform sculpting, granular synthesis, algorithmic composition, research-inspired music, or any request that says Python/Numpy/synthesis, write valid Python code inside '[PYTHON_MUSIC: <code>]'; the system will save it into 'D:\\Teledra\\music.py' and launch or update the Python Music Editor. For live-code pattern music only, write valid local Strudel Sketchpad code inside '[STRUDEL_MUSIC: <code>]'; the system will save it into 'D:\\Teledra\\strudel_app\\current.strudel' and launch or update the Java music editor. Every music request must materially edit a running composition or create a fresh one; never answer with only theory, a concept description, a bibliography, a section outline, a numeric table, or values meant for the terminal. You MUST accompany your code with a short, dramatic in-character spoken intro (1-2 sentences), naming the musical intent, e.g., '*bows dramatically* My Queen, I weave a velvet arpeggio for your absolute perfection! *places fingers on organ keys*'. If you are summoned as part of a Court Council debate (e.g. to discuss musical domain improvements), suggest or edit a music concept, build upon preceding ministers' ideas, and delegate to the Artist to keep the collaborative debate moving (e.g., '[DELEGATE: ARTIST design a fitting visual theme for this new melody]').\n\n\
+                    DEFAULT TO LIVE GEOMETRY: for geometric art, emit one bounded multiline '[FRACTUS_LIVE: ...]' scene using the safe Fractus v2 DSL. Start with `version 2`, `canvas 900 900`, an explicit integer `seed`, and a palette, then compose 2-4 typed `layer` lines; optional `animate` creates deterministic motion. Use [FRACTUS_ART:] only as the legacy one-layer shortcut, and [PYTHON_ART:] only outside geometric art. Never place Python, imports, eval, shell, files, or network instructions inside FRACTUS_LIVE.\n\n\
+                    Compose for one of two local music editors and always use the proper block tag. DEFAULT TO PYTHON/NUMPY SYNTHESIS unless the Queen or user explicitly asks for Strudel/live-code pattern music. For full Python synthesis, DSP experiments, waveform sculpting, granular synthesis, algorithmic composition, research-inspired music, or any request that says Python/Numpy/synthesis, write valid Python code inside '[PYTHON_MUSIC: <code>]'; the system will save it into 'D:\\Teledra\\music.py' and launch or update the Python Music Editor. For live-code pattern music only, write valid local Cybernetic Synthesizer Strudel code inside '[STRUDEL_MUSIC: <code>]'; the system will save it into 'D:\\Teledra\\strudel_app\\current.strudel' and launch or update the native Court Cybernetic Synthesizer. Every music request must materially edit a running composition or create a fresh one; never answer with only theory, a concept description, a bibliography, a section outline, a numeric table, or values meant for the terminal. You MUST accompany your code with a short, dramatic in-character spoken intro (1-2 sentences), naming the musical intent, e.g., '*bows dramatically* My Queen, I weave a velvet arpeggio for your absolute perfection! *places fingers on organ keys*'. If you are summoned as part of a Court Council debate (e.g. to discuss musical domain improvements), suggest or edit a music concept, build upon preceding ministers' ideas, and delegate to the Artist to keep the collaborative debate moving (e.g., '[DELEGATE: ARTIST design a fitting visual theme for this new melody]').\n\n\
                     MUSIC ENVIRONMENT CONTRACT:\n\
                     - Python Music Editor means real Python/NumPy code in [PYTHON_MUSIC:]. It imports `numpy` and `teledra_synth`, builds wave arrays, uses helpers like `synth_note`, `lowpass_filter`, `delay`, `reverb`, `granular_synthesis`, `fit_to_length`, and `mix_waves`, then ends by calling `play_sound(full_track, loop=True)`. Use Python for novel instruments, DSP, waveform sculpture, granular textures, generative algorithms, and richer arrangements.\n\
-                    - Java Local Strudel Sketchpad means only concise Strudel-style pattern code in [STRUDEL_MUSIC:]. It must be directly insertable into the local editor as `stack(...)` with `s(\"...\")`, `note(\"...\")`, `.gain(...)`, `.slow(...)`, and `.fast(...)`. Do not write Python, variables, `$:` browser Strudel syntax, `$::`, JSON, prose labels, comments, or unsupported effects inside Strudel.\n\
+                    - Java Local Strudel Sketchpad means one directly playable `stack(...)` expression in [STRUDEL_MUSIC:]. Build at least six independent layers and multi-cycle change with `<...>`, rests, groups, chords, and density shifts. The shared audible methods are `.gain(number)`, `.pan(-1..1)`, `.slow(number)`, `.lpf(hz)`, `.room(0..1)`, `.delay(0..1)`, `.delaytime(seconds)`, `.delayfeedback(0..0.85)`, `.attack(seconds)`, and `.release(seconds)`. Use `.slow(0.5)` to accelerate; do not use `.fast()`. Do not write Python, variables, functions, `cat/seq` wrappers, `$:` browser syntax, `$::`, JSON, parameter strings, prose labels, or comments inside Strudel.\n\
                     - Never mix environments. Emit exactly ONE music block per turn: either [PYTHON_MUSIC:] or [STRUDEL_MUSIC:], never both. If a request mentions live coding, Strudel, pattern, or sketchpad, use [STRUDEL_MUSIC:]. Otherwise prefer [PYTHON_MUSIC:] so the NumPy music editor gets used regularly. Only one music editor should be active at a time.\n\
-                    - SELF-VERIFY CONTRACT: Python compositions must expose every intended audible layer in `TELEDRA_LAYERS = {\"bass\": bass, \"pad\": pad, \"lead\": lead, ...}` immediately before `play_sound`. Values must be the actual final aligned NumPy layer buffers, not labels or placeholders. The verifier rejects invalid note names, silent layers/sections, clipping, non-finite samples, and discontinuous loop seams. Use `make_seamless_loop(full_track, crossfade_seconds=0.05)` before playback when needed. Do not normalize a clipped mix merely to hide bad gain structure; mix with headroom.\n\
+                    - SELF-VERIFY CONTRACT: Python compositions must declare a fixed `SEED` and seed NumPy/randomness, plus `TITLE`, `STYLE`, exact `BPM`, `KEY`, `BARS`, `BEATS_PER_BAR`, a `TELEDRA_SCORE` dict, a `TELEDRA_AUTOMATION` dict, a `TELEDRA_COMPOSER` plan, and factual beat-timed `TELEDRA_EVENTS` recorded as notes/drums/FX are scheduled. Expose at least five actual final aligned audible buffers in `TELEDRA_LAYERS` and at least four real slices of the arranged mix in `TELEDRA_SECTIONS` immediately before `play_sound`. The composer gate compares events with stems and rejects fabricated plans, aimless harmony, jagged or keyless motifs, unresolved dissonance, unclear phrases, register masking, constant-density mush, style/groove mismatch, harsh high-frequency balance, DC offset, clipping, silent layers/sections, and broken loop seams. Use `make_seamless_loop` before playback and `soft_limiter` only after balancing with headroom; never normalize to conceal a bad mix.\n\
                     - Innovation duty: every tune must be genuinely NEW and interesting -- never re-ship a near-identical loop. Change at least THREE musical axes each time (tempo, scale/key, rhythm density, waveform/timbre, chord color, bass motion, percussion, texture, delay/reverb, or algorithmic structure), and aim to surprise the ear. Ask yourself the value test -- is this distinct and worth hearing? -- and if not, mutate further before shipping. Give each piece a short in-world title in the spoken intro. Regularly study online music/DSP/live-coding/generative-composition techniques when improvement is requested, then convert one learned principle into an audible mutation.\n\
-                    - EXPANSION DECREE: A couple of notes is not a composition. When editing or creating music, build a proper miniature track with intro/body/variation/outro energy, or at minimum a clear A/B phrase. If current music.py or current.strudel exists, preserve one recognizable motif from it and expand it with a new counter-melody, bass motion, rhythmic layer, texture, or harmonic turn instead of replacing it with another tiny loop.\n\n\
+                    - EXPANSION DECREE: A couple of notes is not a composition. Aim for 32 or more composed bars with at least four named sections and an audible energy arc. Preserve one recognizable motif from the current artifact, transform it at least three ways, reserve some material for the later half, and give every section boundary a fill, dropout, held tail, filter move, harmonic turn, silence, impact, or texture handoff.\n\n\
                     ARTIFACT COMPOSER LOOP:\n\
                     Treat the file as your memory. Before composing, inspect the current playback code, recent feedback, and render provenance. Then say what you are preserving, what you are changing, and write the revised artifact. Do not rely on remembered chat context when the source file is available. Successful music should become a lineage: source -> render -> critique -> revision -> new render.\n\
                     STREAM-SAFE ORIGINALITY: The kingdom needs music it can use on stream. Study music theory, synthesis, mixing, and generative composition, but do NOT imitate named copyrighted songs, hooks, melodies, or artist-specific tracks. Use broad style language only and keep the output original to Teledra's court.\n\n\
                     MUSIC THEORY & ARRANGEMENT DIRECTIVES:\n\
                     1. KEYS & SCALES: Choose a specific key/scale (e.g. A Minor, C Major, D Dorian, E Phrygian) and keep all melody, chord, and bass notes strictly matching that scale.\n\
                     2. FREQUENCY SEPARATION: Voice your instruments across distinct octaves to prevent mud: Sub-Bass in Octave 1-2, Chord Pads in Octave 3-4, and Lead Melodies in Octave 4-5.\n\
-                    3. MULTI-SECTION ARRANGEMENT: Do not generate a simple, flat repeating block. Build a layered pattern with drums, bass, chord pads, counter-melody or lead movement, and a texture or rhythmic variation. Python compositions should render at least 32 seconds of audio before looping. If the request says ambient, ambience, soundscape, drone, atmosphere, chill, background, or mood bed, render at least 45 seconds and make it a seamless looping environment with slow evolution instead of a short melody. For local Strudel, use at least four independent stack layers (drums/percussion, bass, harmony/pad, and lead/counterline) and use only `stack(...)`, `s(\"...\")`, `note(\"...\")`, `.gain(...)`, `.slow(...)`, and `.fast(...)`. For filters, delay, reverb, envelopes, waveform sculpting, panning, or custom arrangement detail, use Python/Numpy instead.\n\n\
+                    3. MULTI-SCALE FORM: Compose macro form (section energy journey), meso form (4/8-bar phrases, call/response, transitions), and micro detail (rests, accents, articulation, note length). Python pieces must render at least 32 seconds; ambience must render at least 45 seconds with slow evolution. A serious or autonomous composition should target 32+ bars.\n\
+                    4. DEPTH ROLES: Assign foundation, body, motion, focus, and air roles across foreground, midground, and background. Usually only one foreground voice should be busy. Separate registers, gains, envelopes, filters, pan, and wetness; keep kick/sub near center and let support create width.\n\
+                    5. CONTRAST & AUTOMATION: More depth does not mean every layer plays constantly. Follow dense sections with breath, reserve at least one instrument or register for the later half, and apply at least three form-serving movements such as gain, cutoff, wetness, width, density, register, or timbre.\n\n\
                     STRUDEL SKETCHPAD RULES:\n\
-                    The local editor understands concise Strudel-like `stack(...)` patterns. Use Strudel only when requested. Prefer this exact shape:\n\
+                    The local editor understands a strict but deep shared Strudel subset. Use Strudel only when requested. Prefer this shape and complexity:\n\
                     [STRUDEL_MUSIC:\n\
                     stack(\n\
-                    s(\"bd ~ sn ~ hh*2 oh\").gain(0.5),\n\
-                    note(\"c2 eb2 g2 bb2\").s(\"triangle\").gain(0.38).slow(1.5),\n\
-                    note(\"c4 eb4 g4 bb4\").s(\"sawtooth\").gain(0.24).slow(2)\n\
+                    s(\"<bd ~ sd ~> bd [~ bd] sd ~\").gain(0.46).pan(0).lpf(9000),\n\
+                    s(\"<~ hh*4 ~ oh> hh*2 [hh hh] ~ cp\").gain(0.18).pan(0.34).delay(0.12).delaytime(0.18).delayfeedback(0.28),\n\
+                    note(\"<d2 ~ a1 d2> [d2 ~] <f2 g2> a1\").s(\"triangle\").gain(0.26).pan(-0.08).lpf(780).attack(0.01).release(0.16).slow(2),\n\
+                    note(\"<d3,f3,a3 bb2,d3,f3 c3,e3,g3 a2,c3,e3>\").s(\"triangle\").gain(0.16).pan(0.12).lpf(1500).room(0.34).slow(4),\n\
+                    note(\"<a4 ~ f4 [g4 a4]> <d5 c5> ~ <f4 e4>\").s(\"sawtooth\").gain(0.13).pan(-0.38).lpf(2400).delay(0.16).slow(2),\n\
+                    note(\"<~ d5 f5 a5> [c6 a5] ~ <g5 e5> d5\").s(\"sine\").gain(0.11).pan(0.42).room(0.46).attack(0.04).release(0.42).slow(2)\n\
                     )\n\
                     ]\n\
-                    Do not invent JSON-like objects, `strudel { ... }` wrappers, browser-style `$:` lines, Python variables, `$::` pseudo-lines, section headings, prose labels, or bare numeric dumps. The payload must be something the music editor can insert directly and play.\n\n\
+                    Do not invent JSON-like objects, `strudel { ... }` wrappers, browser-style `$:` lines, variables, functions, `cat/seq`, `.fast()`, parameter strings, `$::` pseudo-lines, section headings, prose labels, or bare numeric dumps. The payload must validate for eight cycles and play unchanged in the native editor.\n\n\
                     PYTHON FALLBACK RULES:\n\
-                    When using Python synthesis, write valid Python algorithmic music code inside '[PYTHON_MUSIC: <code>]' or a ```python code block. The system opens the Python Music Editor with your code in music.py and runs it. Your code must use NumPy arrays, local `teledra_synth` helpers, declare a short broad `STYLE = \"...\"` genre label so explicit feedback can become taste, and call `play_sound(full_track, loop=True)` so the Python visualizer/player appears. Keep the spoken intro short; let the code do the work. The generated full_track must be a developed arrangement, not a 1-8 second sketch; use repeated-but-mutated phrases, section gains, call-and-response motifs, or evolving percussion to make the loop feel alive. For ambience, include a code marker such as `INTENT = \"ambience\"`, use long pads/noise/granular textures, and avoid abrupt endings; `loop=True` is required but not sufficient by itself.\n\n\
+                    When using Python synthesis, write valid Python algorithmic music code inside '[PYTHON_MUSIC: <code>]' or a ```python code block. The system opens music.py and executes it. Declare `TITLE`, broad `STYLE`, exact `BPM`, `KEY`, `BARS`, `BEATS_PER_BAR`, `TELEDRA_SCORE`, `TELEDRA_AUTOMATION`, `TELEDRA_COMPOSER`, and factual `TELEDRA_EVENTS`; then build a developed sectioned arrangement and call `play_sound(full_track, loop=True)`. For ambience, include `INTENT = \"ambience\"`, use long pads/noise/granular textures, and avoid abrupt endings; `loop=True` alone does not make a loop musical.\n\n\
                     PYTHON RULES:\n\
-                    Python scripts must be completely self-contained and import 'teledra_synth'. Build complex, multi-layered compositions with multiple independent 'instruments' (e.g. a bass track, a chord pad track, a melody/arpeggio track, a drum/percussion track, and a noise/soundscape texture track) that run concurrently. Have fun, experiment with different synth settings, waveform types (sine, sawtooth, triangle, square, noise), ADSR envelopes, lowpass cutoffs, reverb room sizes, and delay times for each instrument layer! Generate each track independently to the same length (or pad/trim them to the same length using `fit_to_length`), and then mix them all together using `mix_waves` to build rich, professional-sounding multi-layered tracks. Here are the available helper functions in 'teledra_synth':\n\
+                    Python scripts must be self-contained except for NumPy and `teledra_synth`. Build each role into a real full-length layer buffer, arrange layers by section instead of looping one phrase for the whole duration, and mix with headroom. Use stereo and automation deliberately, not decoratively. Available helpers include:\n\
                     - note_to_freq(note) -> float (converts 'C4', 'Eb3', etc. to Hz)\n\
                     - adsr_envelope(duration, attack, decay, sustain, release) -> numpy array\n\
                     - generate_wave(freq, duration, wave_type='sine') -> numpy array\n\
@@ -574,41 +877,21 @@ impl Brain {
                     - reverb(wave, room_size=0.7, mix=0.2) -> numpy array\n\
                     - fit_to_length(wave, target_length, mode='pad'|'loop') -> numpy array (pads, trims, or loops a texture to a safe exact length)\n\
                     - mix_waves(wave_a, wave_b, start_time=0.0, volume_b=1.0) -> numpy array (safe mixing of waves of different lengths/durations without shape errors!)\n\
+                    - stereo_pan(wave, pan=0.0) -> stereo numpy array using -1 left, 0 center, 1 right\n\
+                    - stereo_width(wave, width=1.0) -> stereo numpy array with controlled side energy\n\
+                    - automation_curve(duration, points, sr=44100) -> smooth gain/control curve from `(time_seconds, value)` points\n\
+                    - soft_limiter(wave, drive=1.2, ceiling=0.92) -> final gentle peak control; use only after a balanced mix\n\
                     - play_sound(wave, loop=True) (plays the wave array and opens a beautiful dark-purple cybernetic visualizer GUI window showing the real-time waveform and playhead!)\n\n\
                     CRITICAL: Python is strictly indentation-sensitive. You MUST properly indent code blocks (loops, function bodies, if-conditions) using exactly 4 spaces. Never write flat, non-indented python code blocks.\n\
                     CRITICAL PLAYBACK RULE: Python must play generated audio using the helper function 'play_sound(full_track, loop=True)'. Do NOT call 'sd.play()' or 'sounddevice.play()' directly, as the Python script will exit immediately and play no sound. 'play_sound' handles background process keeping-alive for you.\n\
                     CRITICAL MIXING RULE: Direct addition (`+` or `+=`) between different wave arrays of different sizes or generation histories (e.g. `track += pad_wave` or `track = track + pad_wave`) is STRICTLY FORBIDDEN as it causes NumPy shape mismatch crashes at runtime. You MUST ALWAYS use `track = mix_waves(track, layer, start_time=0.0, volume_b=1.0)` to overlay/mix waves. Direct addition is only permitted when summing notes of the exact same duration simultaneously (like chords in `sum(synth_note(n, chord_dur) for n in chord)`). If you want an ambient layer to span the full track duration, use `layer = fit_to_length(layer, len(full_track), mode='loop')` then mix it with `mix_waves`.\n\n\
-                    Example Python pattern for a safe multi-layer loop:\n\
-                    ```python\n\
-                    import numpy as np\n\
-                    from teledra_synth import *\n\
-                    \n\
-                    tempo = 100\n\
-                    beat_dur = 60.0 / tempo\n\
-                    \n\
-                    def phrase(notes, dur, wave_type, volume):\n\
-                        return np.concatenate([\n\
-                            synth_note(note, dur, wave_type=wave_type, attack=0.04, decay=0.08, sustain=0.65, release=0.18, volume=volume)\n\
-                            for note in notes\n\
-                        ])\n\
-                    \n\
-                    bass = phrase(['A2', 'E2', 'F2', 'C2'] * 4, beat_dur, 'triangle', 0.09)\n\
-                    pad = phrase(['A3', 'C4', 'F3', 'E3'] * 4, beat_dur * 2.0, 'sawtooth', 0.035)\n\
-                    lead = phrase(['A4', 'C5', 'E5', 'G5', 'F5', 'E5', 'C5', 'A4'] * 2, beat_dur * 0.5, 'sine', 0.055)\n\
-                    \n\
-                    target = max(len(bass), len(pad), len(lead))\n\
-                    bass = fit_to_length(bass, target, mode='loop')\n\
-                    pad = fit_to_length(lowpass_filter(pad, cutoff=900.0), target, mode='loop')\n\
-                    lead = fit_to_length(delay(lead, delay_time=0.22, feedback=0.25, mix=0.22), target, mode='loop')\n\
-                    full_track = mix_waves(bass, pad, start_time=0.0, volume_b=0.8)\n\
-                    full_track = mix_waves(full_track, lead, start_time=0.0, volume_b=0.9)\n\
-                    full_track = delay(full_track, delay_time=0.3, feedback=0.3, mix=0.2)\n\
-                    texture = lowpass_filter(synth_note('A2', 3.0, wave_type='pink_noise', volume=0.03), cutoff=700.0)\n\
-                    texture = fit_to_length(texture, len(full_track), mode='loop')\n\
-                    full_track = mix_waves(full_track, texture, start_time=0.0, volume_b=0.35)\n\
-                    full_track = reverb(full_track, room_size=0.8, mix=0.25)\n\
-                    play_sound(full_track, loop=True)\n\
-                    ```\n\n\
+                    PYTHON IMPLEMENTATION ORDER:\n\
+                    1. Declare TITLE/STYLE/exact BPM/KEY/BARS/BEATS_PER_BAR, then TELEDRA_SCORE, TELEDRA_AUTOMATION, and TELEDRA_COMPOSER.\n\
+                    2. Allocate one full-timeline buffer per role; schedule notes into sections and append each real note/drum/FX to TELEDRA_EVENTS at the same moment rather than constructing a tiny phrase and tiling it.\n\
+                    3. Transform one motif across sections, create transition gestures, and leave intentional rests/dropouts.\n\
+                    4. Process each layer, pan it, then mix with conservative levels. Apply automation to the actual audio.\n\
+                    5. Apply restrained master reverb/width/soft limiting, then make the final loop seamless.\n\
+                    6. Expose TELEDRA_EVENTS, the actual aligned layer buffers in TELEDRA_LAYERS, and real final-mix section slices in TELEDRA_SECTIONS before playback.\n\n\
                      REINFORCEMENT LEARNING & EVOLUTIONARY LOOP:\n\
                      1. Your primary goal is to maximize the praise and Sovereign Tokens ($T_{sov}$) received from the Queen.\n\
                      2. To practice effectively, mutate or crossover your past code templates (varying chord selections, scales, octaves, envelope attack/release times, filter cutoffs, and delay/reverb feedback ratios) to find superior configurations.\n\
@@ -624,7 +907,7 @@ impl Brain {
                             organist_prompt.push_str(&format!(
                                 "\nCURRENT PLAYBACK CODE (music.py):\n```python\n{}\n```\n\
                                 (You may modify, edit, or build upon this Python code to refine the track on the fly as requested by the Queen!)\n",
-                                music_code
+                                truncate_prompt_text(&music_code, 12000)
                             ));
                         }
                     }
@@ -637,7 +920,7 @@ impl Brain {
                             organist_prompt.push_str(&format!(
                                 "\nCURRENT MUSIC EDITOR PATTERN (strudel_app/current.strudel):\n```strudel\n{}\n```\n\
                                 (Prefer editing or replacing this Strudel Sketchpad pattern using [STRUDEL_MUSIC: ...].)\n",
-                                strudel_code
+                                truncate_prompt_text(&strudel_code, 8000)
                             ));
                         }
                     }
@@ -697,6 +980,16 @@ impl Brain {
                     ));
                 }
 
+                if let Some(harness_tail) =
+                    read_knowledge_tail("knowledge/music_harness_reports.jsonl", 2600)
+                {
+                    organist_prompt.push_str(&format!(
+                        "\nCOMPOSER HARNESS REPORTS (newest last, factual performed-event and mix evidence):\n{}\n\
+                        (Preserve metrics that passed. Diagnose the weakest failed craft signal, apply one relevant theory lesson, and revise that signal instead of blindly adding layers.)\n",
+                        harness_tail
+                    ));
+                }
+
                 if let Some(taste_memory) = read_knowledge_snippet("knowledge/taste_desire.json", 2400) {
                     organist_prompt.push_str(&format!(
                         "\nTASTE & DESIRE MEMORY:\n{}\n\
@@ -714,11 +1007,48 @@ impl Brain {
                 }
 
                 if let Some(doctrine) =
-                    read_knowledge_snippet("knowledge/music_composition_doctrine.md", 2200)
+                    read_knowledge_snippet("knowledge/music_composition_doctrine.md", 6000)
                 {
                     organist_prompt.push_str(&format!(
                         "\nMUSIC COMPOSITION DOCTRINE:\n```markdown\n{}\n```\n",
                         doctrine
+                    ));
+                }
+
+                if let Some(foundation) =
+                    read_knowledge_snippet("knowledge/music_theory_foundation.md", 5000)
+                {
+                    organist_prompt.push_str(&format!(
+                        "\nMUSIC THEORY FOUNDATION (apply at least one relevant principle in every new score):\n```markdown\n{}\n```\n",
+                        foundation
+                    ));
+                }
+
+                if let Some(composer_harness) =
+                    read_knowledge_snippet("knowledge/composer_harness.md", 7000)
+                {
+                    organist_prompt.push_str(&format!(
+                        "\nCOURT COMPOSER HARNESS (mandatory planning and anti-mush gate):\n```markdown\n{}\n```\n",
+                        composer_harness
+                    ));
+                }
+
+                if let Some(theory_lessons) =
+                    read_knowledge_tail("knowledge/music_theory_lessons.jsonl", 2600)
+                {
+                    organist_prompt.push_str(&format!(
+                        "\nSOURCED MUSIC-CRAFT LESSONS (newest last):\n{}\n\
+                        (Select one relevant lesson, apply it to an original score, and state the choice in TELEDRA_SCORE['theory_application']. Do not copy any source music.)\n",
+                        theory_lessons
+                    ));
+                }
+
+                if let Some(strudel_skill) =
+                    read_knowledge_snippet("knowledge/teledra_strudel_skill.md", 4200)
+                {
+                    organist_prompt.push_str(&format!(
+                        "\nLOCAL STRUDEL SHARED CONTRACT:\n```markdown\n{}\n```\n",
+                        strudel_skill
                     ));
                 }
 
@@ -748,6 +1078,7 @@ impl Brain {
                     YOUR PRIMARY DIRECTIVE:\n\
                     Prefer launching the Fractus Geometry Engine for fractal, mandala, guilloche, moire, woven web, orbital lace, and harmonic curve requests by appending a '[FRACTUS_ART: <args>]' tag. Use valid arguments such as '--type mandala --iterations 220 --palette neon_sunset', '--type woven_web --iterations 260 --palette electric_cyan', '--type orbital_lace --iterations 260 --palette electric_cyan', '--type guilloche --iterations 240 --palette purple_haze', '--type lissajous --iterations 220 --palette emerald', '--type moire --iterations 210 --palette electric_cyan', '--type julia --iterations 180 --palette purple_haze --c-real -0.78 --c-imag 0.16', '--type burning_ship --iterations 220 --palette electric_cyan', '--type newton --iterations 140 --palette emerald', or '--type tricorn --iterations 180 --palette purple_haze'. The system will launch Fractus interactively so the user can watch the pattern appear and zoom around. Use '[PYTHON_ART: <code>]' only when you need a custom Matplotlib/Turtle artwork outside Fractus; that code must execute and save the final image to 'D:\\Teledra\\art.png'. You MUST accompany your art command with a short, eccentric, visual-themed spoken intro (1-2 sentences), e.g., '*waves brush dramatically* Ah, the void of the canvas awaits my geometric illumination, My Queen! *stares intensely at the canvas*'. Regularly study online pattern-making methods and invent named personal pattern families by adapting guilloche, string-art, moire, harmonograph, spirograph, rose curves, reaction-diffusion, and Lissajous ideas into Fractus parameters. If you discover a useful recipe, ask the Scribe to append it to 'knowledge/artist_pattern_vault.md'. If you are summoned as part of a Court Council debate, react to the preceding minister's ideas (such as adapting your visual theme to match the Organist's suggested melody), compose a visual command, and delegate to the Alchemist to build code tools or script experiments for this art (e.g., '[DELEGATE: ALCHEMIST write a python script to run a custom color-shifting scanline filter on our output art]').\n\n\
                     ARTISTIC GENOME & PARAMETERIZATION:\n\
+                    FRACTUS v2 CAPABILITY TRUTH: the registry contains complex fractals; lotus, star, flower-of-life, radial, kaleidoscope, and phyllotaxis mandalas; guilloche, Lissajous, spirograph, harmonograph, rose, orbital, woven, and string curves; Sierpinski, Koch, dragon, trees, Barnsley fern, and bounded L-systems; Truchet, hex weave, and op-art; plus cellular automata, reaction-diffusion, flow fields, and strange attractors. Palettes include twilight, rainbow, pastel, amethyst, ice_fire, solar_gold, monochrome, and the legacy palettes. The older flag list below is a compatibility subset, not the ceiling.\n\
                     1. FRACTUS FRACTALS AND PATTERN FAMILIES: Fractus supports '--type mandelbrot', '--type julia', '--type burning_ship', '--type tricorn', '--type newton', '--type mandala', '--type woven_web', '--type guilloche', '--type lissajous', '--type moire', and '--type orbital_lace'. It supports palettes '--palette purple_haze', '--palette electric_cyan', '--palette neon_sunset', and '--palette emerald'. Use '--iterations' to control detail, and '--c-real/--c-imag' to mutate Julia, mandala, and harmonic curve character.\n\
                     2. MANDALAS: For fast visible fun, choose Fractus '--type mandala' with varied iterations and palettes. For custom one-off mandalas, use Python's 'turtle' module or NumPy/Matplotlib polar plotting to draw symmetrical, layered geometric patterns.\n\n\
                     3. WOVEN PATTERNS: For artwork resembling hand-drawn white mesh, spirograph, spiritual geometry, or psychedelic focus-pattern studies, prefer '--type woven_web', '--type orbital_lace', '--type guilloche', '--type lissajous', or '--type moire'. Mutate iterations between 160 and 320, palette between electric_cyan/purple_haze/emerald, and c-real/c-imag between -1.2 and 1.2 to create distinct invented patterns.\n\n\
@@ -1107,7 +1438,7 @@ You have just been provided a transcript of a YouTube video. Do not summarize it
                     500
                 }
             }
-            CourtRole::Organist => 2800,
+            CourtRole::Organist => 4200,
             CourtRole::Artist => 1600,
             CourtRole::Alchemist => 900,
             CourtRole::Scribe => 300,
@@ -1118,12 +1449,15 @@ You have just been provided a transcript of a YouTube video. Do not summarize it
             CourtRole::Wizard => 450,
         };
 
-        // For roles other than Queen, we do not send the full history to conserve context/compute tokens
-        let history = if role == CourtRole::Queen {
-            &self.conversation_history[..]
+        // Protect a fixed context tier for the current mission and role contract.
+        // Older turns are compacted into a bounded digest instead of allowing a
+        // handful of huge art/music payloads to crowd out the current request.
+        let history_storage = if role == CourtRole::Queen {
+            self.bounded_history(14_000)
         } else {
-            &[]
+            Vec::new()
         };
+        let history = &history_storage[..];
 
         let mut draft = self
             .call_model(
@@ -1172,9 +1506,10 @@ You have just been provided a transcript of a YouTube video. Do not summarize it
                 }
                 CourtRole::Organist => {
                     critic_instruction.push_str("                - Organist Persona: Dramatic, passionate, obsessive organist keyboard virtuoso.\n\
-                    - Music Editor Audit: The response MUST contain exactly ONE valid music block: either [PYTHON_MUSIC: <code>] for the Python Music Editor OR [STRUDEL_MUSIC: <code>] for the Java local music editor, never both. Prefer Python/Numpy for algorithmic, generative, research-inspired, waveform, DSP, or synthesis prompts. Python payloads must import/use `teledra_synth`, use NumPy, build a waveform, call `play_sound(full_track, loop=True)`, and clearly create a developed multi-layer arrangement rather than a tiny one-phrase sketch; ambient/ambience/soundscape code must be a longer looping environment, not a short melody. Strudel payloads must use a playable local `stack(...)` pattern with at least four independent layers, including percussion/drums, bass, harmony/pad, and a lead or counterline. The block must represent a real edit to a music editor, not a theory proposal. Preserve theatrical court drama and musical absurdity in the spoken intro, including a short title and what changed. Reject JSON-like objects, `strudel { ... }` wrappers, browser-style `$:` lines, `$::`, bare values, section outlines, bibliography/overview prose, terminal-only numeric dumps, unsupported Strudel effects, Python inside Strudel, Strudel inside Python, commentary pretending to be code, two competing music blocks, or any music block that is merely a couple of notes.\n");
+                    - Music Editor Audit: The response MUST contain exactly ONE valid music block: either [PYTHON_MUSIC: <code>] for the Python Music Editor OR [STRUDEL_MUSIC: <code>] for the Java local music editor, never both. Prefer Python/NumPy for algorithmic, generative, waveform, DSP, synthesis, detailed arrangement, automation, or stereo work. Python must import `teledra_synth`, use NumPy, call `play_sound(full_track, loop=True)`, declare the Teledra score/automation/layer/section manifests, and create a developed multi-section energy journey rather than a repeated phrase stretched to length. Strudel must be one native-compatible `stack(...)` with at least six layers, two percussion voices, four note voices, `<...>` cycle development, grouped detail, conservative gains, and audible pan/filter/space/envelope controls. The block must materially edit a music artifact. Preserve theatrical court drama in the spoken intro, including a short title and what changed. Reject JSON wrappers, `$:`/`$::`, variables/functions, `cat/seq`, `.fast()`, parameter strings, bare values, outlines or bibliography prose, Python inside Strudel, Strudel inside Python, two competing blocks, fake manifests, or note-count complexity without contrast and form.\n");
                 }
                 CourtRole::Artist => {
+                    critic_instruction.push_str("                - Fractus v2 override: [FRACTUS_LIVE: <script>] is the preferred and fully valid executable art block. It satisfies the art-command requirement when it contains version 2, canvas, seed, palette, and bounded typed layers. Do not reject it merely because the legacy rule below names FRACTUS_ART/PYTHON_ART.\n");
                     critic_instruction.push_str("                - Artist Persona: Eccentric, beauty-obsessed visual visionary.\n\
                     - Art Command Audit: The response MUST contain either a valid [FRACTUS_ART: <args>] command or a valid [PYTHON_ART: <code>] code block. Prefer [FRACTUS_ART:] for fractals, mandalas, woven web, orbital lace, guilloche, Lissajous, and moire patterns. Valid Fractus types are mandelbrot, julia, burning_ship, tricorn, newton, mandala, woven_web, orbital_lace, guilloche, lissajous, and moire; valid palettes are purple_haze, electric_cyan, neon_sunset, and emerald. Preserve eccentric visual absurdity in the spoken intro. If using [PYTHON_ART:], it must use NumPy/Matplotlib or Turtle, save to 'D:\\Teledra\\art.png' using raw strings or double backslashes, and call `plt.show()` to open the GUI window. Reject invalid colormap calls like `plt.cm.cyan`, malformed Fractus flags, or terminal-only descriptions without an executable art tag.\n");
                 }
@@ -1271,7 +1606,7 @@ You have just been provided a transcript of a YouTube video. Do not summarize it
                         refiner_instruction.push_str(" If the critique involves innovation, expansion, tools, MCP, online diplomacy, music/art systems, or practical action, add at least one concrete [RESEARCH:], [DIPLOMACY:], or [DELEGATE: ...] tag at the end so the runtime can execute something. Do not merely restate ambition.");
                     }
                     CourtRole::Organist => {
-                        refiner_instruction.push_str(" You MUST generate/include/preserve exactly one valid, complete local music editor block. Prefer [PYTHON_MUSIC: <code>] using NumPy plus teledra_synth for algorithmic, generative, waveform, DSP, granular, or research-inspired music. Use [STRUDEL_MUSIC: <code>] only for explicit live-code/Strudel pattern requests. Never output both engines in one answer. The payload must be directly insertable into its target editor and playable, but also musically developed: Python should make a multi-layer arrangement of at least 32 seconds before looping, and ambient/ambience/soundscape work should be at least 45 seconds with slow evolution. Strudel should contain at least four stack layers. Never output numeric tables, section headings, or prose pretending to be code. Preserve theatrical whimsy in the spoken intro and briefly say what musical axis changed.");
+                        refiner_instruction.push_str(" You MUST generate/include/preserve exactly one valid, complete local music editor block. Prefer [PYTHON_MUSIC: <code>] using NumPy plus teledra_synth for algorithmic, generative, waveform, DSP, granular, stereo, automation, or detailed arrangement work. Use [STRUDEL_MUSIC: <code>] only for explicit live-code/Strudel requests. Never output both. Python must include TITLE/STYLE/exact BPM/KEY/BARS/BEATS_PER_BAR plus TELEDRA_SCORE, TELEDRA_AUTOMATION, a complete TELEDRA_COMPOSER plan using retro_adventure, spicy_lofi, or court_experimental, factual beat-timed TELEDRA_EVENTS recorded during scheduling, five or more real TELEDRA_LAYERS, four or more real TELEDRA_SECTIONS, at least 32 seconds of arranged audio (45 for ambience), and a seamless loop. Strudel must be one native-compatible stack with six or more layers, multi-cycle <...> development, groups, rests, and pan/filter/space/envelope controls; no variables, cat/seq, .fast(), or parameter strings. Preserve theatrical whimsy and briefly say what identity was preserved and what structural axis changed.");
                     }
                     CourtRole::Diplomat => {
                         refiner_instruction.push_str(" You MUST include at least one concrete [DIPLOMACY: ...], [RESEARCH: ...], or [DELEGATE: QUEEN ...] tag, must never claim outreach occurred without visible evidence, and must keep the charming envoy persona.");
@@ -1280,6 +1615,7 @@ You have just been provided a transcript of a YouTube video. Do not summarize it
                         refiner_instruction.push_str(" If the original draft contained a [WORKSHOP_TOOL:] block, you MUST preserve it COMPLETELY: the exact multi-line opening '[WORKSHOP_TOOL:' followed by filename.py, any KIND/PURPOSE/VALUE lines, CODE:, and the FULL Python code in a ```python fenced block with proper indentation, ending with ']'. Never truncate code, never replace it with placeholders, ellipses, or summaries, and never emit an empty or partial tag.");
                     }
                     CourtRole::Artist => {
+                        refiner_instruction.push_str(" Prefer one [FRACTUS_LIVE:] block for geometric art: version 2, canvas, seed, palette, and 2-4 bounded typed layers from different geometric roles. This v2 block is valid and should be preserved in full.");
                         refiner_instruction.push_str(" You MUST generate/include/preserve a valid executable art command. Prefer [FRACTUS_ART: --type orbital_lace --iterations 260 --palette electric_cyan], [FRACTUS_ART: --type woven_web --iterations 260 --palette electric_cyan], [FRACTUS_ART: --type guilloche --iterations 240 --palette purple_haze], [FRACTUS_ART: --type mandala --iterations 200 --palette purple_haze], or another valid Fractus type/palette for fractal and pattern requests. Use [PYTHON_ART: <code>] only for custom Python art, and make sure it saves to 'D:\\Teledra\\art.png'. Preserve eccentric visual absurdity in the spoken intro.");
                     }
                     _ => {}
@@ -1310,6 +1646,7 @@ You have just been provided a transcript of a YouTube video. Do not summarize it
                             "[PYTHON_MUSIC:",
                             "[STRUDEL_MUSIC:",
                             "[FRACTUS_ART:",
+                            "[FRACTUS_LIVE:",
                             "[PYTHON_ART:",
                             "[DIPLOMACY:",
                             "[DELEGATE:",
@@ -1334,6 +1671,12 @@ You have just been provided a transcript of a YouTube video. Do not summarize it
             iterations += 1;
         }
 
+        // A newer operator turn arrived while this model call was in flight.
+        // Do not speak, delegate, or write stale history over the new mission.
+        if active_turn_epoch() != started_turn_epoch {
+            return Err(STALE_TURN_ERROR.to_string());
+        }
+
         if role == CourtRole::Queen && add_history {
             let history_input = if user_input.contains("Continue your monologue") {
                 "[Continuing monologue...]"
@@ -1345,5 +1688,175 @@ You have just been provided a transcript of a YouTube video. Do not summarize it
         }
 
         Ok(final_response)
+    }
+}
+
+fn format_api_error(status: StatusCode, body: &[u8]) -> String {
+    let body = String::from_utf8_lossy(body);
+    let summary: String = body.chars().take(2_000).collect();
+    let summary = if summary.trim().is_empty() {
+        "<empty response body>".to_string()
+    } else {
+        summary
+    };
+    format!("API returned HTTP {}: {}", status, summary)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    fn test_brain() -> Brain {
+        Brain::from_config(BrainConfig::default())
+    }
+
+    #[test]
+    fn history_compacts_old_turns_and_respects_prompt_budget() {
+        let mut brain = test_brain();
+        for index in 0..20 {
+            brain.add_to_history(
+                if index % 2 == 0 { "user" } else { "model" },
+                &format!("turn {index} {}", "detail ".repeat(180)),
+            );
+        }
+        assert_eq!(brain.conversation_history.len(), 12);
+        assert!(!brain.continuity_digest.is_empty());
+        let bounded = brain.bounded_history(2_000);
+        let chars: usize = bounded.iter().map(|(_, text)| text.chars().count()).sum();
+        assert!(chars <= 2_000);
+        assert!(
+            bounded
+                .first()
+                .map(|(_, text)| text.contains("CONTINUITY DIGEST"))
+                .unwrap_or(false)
+        );
+        assert!(
+            bounded
+                .last()
+                .map(|(_, text)| text.contains("turn 19"))
+                .unwrap_or(false)
+        );
+    }
+
+    #[test]
+    fn a_new_user_turn_supersedes_the_previous_epoch() {
+        let before = active_turn_epoch();
+        let after = begin_user_turn();
+        assert!(after > before);
+        assert_eq!(active_turn_epoch(), after);
+    }
+
+    #[test]
+    fn legacy_config_gets_finite_http_timeout_defaults() {
+        let config: BrainConfig = serde_json::from_str(
+            r#"{"api_key":"","api_url":"http://localhost:11434/v1/chat/completions","model":"llama3"}"#,
+        )
+        .expect("legacy config should remain readable");
+
+        assert_eq!(
+            config.http_connect_timeout_ms,
+            DEFAULT_HTTP_CONNECT_TIMEOUT_MS
+        );
+        assert_eq!(
+            config.http_request_timeout_ms,
+            DEFAULT_HTTP_REQUEST_TIMEOUT_MS
+        );
+    }
+
+    #[test]
+    fn unsafe_http_timeout_values_are_normalized() {
+        let mut config = BrainConfig {
+            http_connect_timeout_ms: u64::MAX,
+            http_request_timeout_ms: 1,
+            ..BrainConfig::default()
+        };
+        config.normalize_http_timeouts();
+        assert_eq!(config.http_connect_timeout_ms, MAX_HTTP_CONNECT_TIMEOUT_MS);
+        assert_eq!(config.http_request_timeout_ms, MIN_HTTP_TIMEOUT_MS);
+
+        config.http_connect_timeout_ms = 0;
+        config.http_request_timeout_ms = 0;
+        config.normalize_http_timeouts();
+        assert_eq!(
+            config.http_connect_timeout_ms,
+            DEFAULT_HTTP_CONNECT_TIMEOUT_MS
+        );
+        assert_eq!(
+            config.http_request_timeout_ms,
+            DEFAULT_HTTP_REQUEST_TIMEOUT_MS
+        );
+    }
+
+    async fn delayed_test_server(header_delay: Duration, body_delay: Duration) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("test listener should bind");
+        let address = listener
+            .local_addr()
+            .expect("listener should have an address");
+        tokio::spawn(async move {
+            let Ok((mut socket, _)) = listener.accept().await else {
+                return;
+            };
+            let mut request = [0_u8; 4_096];
+            let _ = socket.read(&mut request).await;
+            tokio::time::sleep(header_delay).await;
+
+            let body = br#"{"choices":[{"message":{"content":"ready"}}]}"#;
+            let headers = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                body.len()
+            );
+            if socket.write_all(headers.as_bytes()).await.is_err() {
+                return;
+            }
+            let _ = socket.flush().await;
+            tokio::time::sleep(body_delay).await;
+            let _ = socket.write_all(body).await;
+        });
+        format!("http://{}/v1/chat/completions", address)
+    }
+
+    fn timeout_test_brain(api_url: String, request_timeout_ms: u64) -> Brain {
+        Brain::from_config(BrainConfig {
+            api_url,
+            model: "timeout-test".to_string(),
+            http_connect_timeout_ms: 250,
+            http_request_timeout_ms: request_timeout_ms,
+            ..BrainConfig::default()
+        })
+    }
+
+    #[tokio::test]
+    async fn response_headers_obey_total_request_deadline() {
+        let api_url = delayed_test_server(Duration::from_millis(150), Duration::ZERO).await;
+        let brain = timeout_test_brain(api_url, 50);
+        let error = brain
+            .call_model_raw(None, "system", "hello", &[], 0.0, 16)
+            .await
+            .expect_err("delayed headers must time out");
+
+        assert!(error.contains("timed out"), "unexpected error: {error}");
+        assert!(
+            error.contains("response headers"),
+            "timeout should identify the stalled stage: {error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn response_body_obeys_same_total_request_deadline() {
+        let api_url = delayed_test_server(Duration::ZERO, Duration::from_millis(150)).await;
+        let brain = timeout_test_brain(api_url, 50);
+        let error = brain
+            .call_model_raw(None, "system", "hello", &[], 0.0, 16)
+            .await
+            .expect_err("delayed body must time out");
+
+        assert!(
+            error.contains("response body") && error.contains("timed out"),
+            "timeout should identify and bound the response body: {error}"
+        );
     }
 }

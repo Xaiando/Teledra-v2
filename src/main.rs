@@ -1,16 +1,23 @@
 mod brain;
 mod ears;
+mod mission;
+mod research;
 mod somatic_bridge;
 mod voice;
 
-use brain::{Brain, CourtRole, ForceMode};
+use brain::{Brain, CourtRole, ForceMode, STALE_TURN_ERROR, active_turn_epoch, begin_user_turn};
 use ears::AudioCortex;
-use somatic_bridge::SomaticBridge;
+use mission::{
+    ArtifactEvidence, CheckEvidence, ContextBudget, EvidenceBundle, FailureDisposition, Mission,
+    MissionStore, SourceEvidence, TaskEnvelope, TaskStatus,
+};
+use research::{BrowserResearchBundle, RESEARCH_BRIEFS_PATH, ResearchBrief};
+use somatic_bridge::{SomaticBridge, SomaticState};
 use voice::VoiceEngine;
 
 use image::{DynamicImage, GenericImageView};
 use std::hash::{Hash, Hasher};
-use std::io::{self, Read, Seek, SeekFrom};
+use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::Arc;
@@ -44,6 +51,13 @@ enum AppEvent {
     StudyComplete {
         summary: String,
         usable: bool,
+        mission_id: Option<String>,
+        mission_task_id: Option<String>,
+        evidence: Option<EvidenceBundle>,
+    },
+    SpecialistFailed {
+        role: CourtRole,
+        error: String,
     },
     StatusUpdate(String),
     Error(String),
@@ -136,9 +150,28 @@ struct WorkshopToolDraft {
     value: String,
 }
 
+#[derive(Debug, Clone)]
+struct CourtDelegation {
+    role: CourtRole,
+    instruction: String,
+    mission_task_id: Option<String>,
+}
+
+impl CourtDelegation {
+    fn untracked(role: CourtRole, instruction: impl Into<String>) -> Self {
+        Self {
+            role,
+            instruction: instruction.into(),
+            mission_task_id: None,
+        }
+    }
+}
+
 const LEARNED_MEMORY_PATH: &str = "knowledge/learned_memory.json";
 const FACT_MEMORY_PATH: &str = "knowledge/fact_memory.jsonl";
 const LORE_MEMORY_PATH: &str = "knowledge/lore_memory.jsonl";
+const MUSIC_THEORY_PATH: &str = "knowledge/music_theory_foundation.md";
+const MUSIC_THEORY_LESSONS_PATH: &str = "knowledge/music_theory_lessons.jsonl";
 const FACT_ARCHIVE_PATH: &str = "D:\\Teledra\\knowledge\\fact_archive.md";
 const LORE_ARCHIVE_PATH: &str = "D:\\Teledra\\knowledge\\lore_archive.md";
 const TASTE_DESIRE_PATH: &str = "knowledge/taste_desire.json";
@@ -168,7 +201,10 @@ const NIGHT_DESK_NEXT_CYCLE_SECS: u64 = 8;
 const NIGHT_DESK_ENVOY_CYCLE_SECS: u64 = 16;
 const NIGHT_DESK_ERROR_BACKOFF_SECS: u64 = 12;
 const STUDY_LOOP_INITIAL_DELAY_SECS: u64 = 2;
-const STUDY_LOOP_INTERVAL_SECS: u64 = 10;
+// Autonomous research is useful when it compounds, not when it hammers search
+// engines and rereads journals six times a minute. Manual [RESEARCH] actions
+// remain immediate; the background curiosity loop rests for three minutes.
+const STUDY_LOOP_INTERVAL_SECS: u64 = 180;
 const WIZARD_REPORT_POLL_SECS: u64 = 300;
 const COURT_THREAD_PLAY_TURNS: u32 = 6;
 /// While a topic is /lock-ed, this many consecutive idle musings with zero chat
@@ -181,6 +217,382 @@ fn current_unix_timestamp() -> String {
     match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
         Ok(d) => d.as_secs().to_string(),
         Err(_) => "0".to_string(),
+    }
+}
+
+fn begin_durable_mission(
+    store: &MissionStore,
+    active: &mut Option<Mission>,
+    objective: &str,
+    epoch: u64,
+) -> Result<(), String> {
+    if let Some(previous) = active.as_mut() {
+        if !previous.status.is_terminal() {
+            if let Ok(transition) = previous.cancel_mission("Superseded by a newer operator turn") {
+                store
+                    .commit_transition(previous, &transition)
+                    .map_err(|error| error.to_string())?;
+            }
+        }
+    }
+
+    let mission_id = format!("turn-{}-{}", epoch, current_unix_timestamp());
+    let compact = truncate_chars(&compact_memory_text(objective), 900);
+    let mut mission = Mission::new(
+        &mission_id,
+        objective,
+        vec![
+            "Preserve the operator's objective through every handoff.".to_string(),
+            "Complete delegated work with inspectable evidence or an explicit failure.".to_string(),
+            "Do not declare the mission complete while tasks remain unfinished.".to_string(),
+        ],
+        "operator",
+        "Queen",
+        &compact,
+    )
+    .map_err(|error| error.to_string())?;
+    store
+        .initialize(&mission)
+        .map_err(|error| error.to_string())?;
+
+    let intake = TaskEnvelope::new(
+        "queen-intake",
+        &mission_id,
+        format!("Understand, answer, and route this operator request: {objective}"),
+        vec![
+            "Return a relevant response.".to_string(),
+            "Create concrete specialist tasks for requested effects.".to_string(),
+        ],
+        "Teledra",
+        "Queen",
+        Vec::new(),
+        2,
+        "Operator request accepted; Queen response is pending.",
+    )
+    .map_err(|error| error.to_string())?;
+    let transition = mission
+        .add_task(intake)
+        .map_err(|error| error.to_string())?;
+    store
+        .commit_transition(&mission, &transition)
+        .map_err(|error| error.to_string())?;
+    let transition = mission
+        .start_task("queen-intake")
+        .map_err(|error| error.to_string())?;
+    store
+        .commit_transition(&mission, &transition)
+        .map_err(|error| error.to_string())?;
+    *active = Some(mission);
+    Ok(())
+}
+
+fn cancel_active_mission(mission: &mut Option<Mission>, store: &MissionStore, reason: &str) {
+    let Some(active) = mission.as_mut() else {
+        return;
+    };
+    if active.status.is_terminal() {
+        return;
+    }
+    match active.cancel_mission(reason) {
+        Ok(transition) => {
+            if let Err(error) = store.commit_transition(active, &transition) {
+                record_recursive_failure("mission_cancel_commit_failed", &error.to_string());
+            }
+        }
+        Err(error) => record_recursive_failure("mission_cancel_failed", &error.to_string()),
+    }
+}
+
+fn track_delegations(
+    delegations: Vec<(CourtRole, String)>,
+    mission: &mut Option<Mission>,
+    store: &MissionStore,
+) -> Vec<CourtDelegation> {
+    delegations
+        .into_iter()
+        .map(|(role, instruction)| {
+            let Some(active) = mission.as_mut() else {
+                return CourtDelegation::untracked(role, instruction);
+            };
+            if active.status.is_terminal() {
+                return CourtDelegation::untracked(role, instruction);
+            }
+            let task_id = format!(
+                "task-{:03}-{}",
+                active.tasks.len() + 1,
+                role.as_str().to_ascii_lowercase()
+            );
+            let task = TaskEnvelope::new(
+                &task_id,
+                &active.id,
+                &instruction,
+                vec![
+                    format!("{} returns a concrete domain result.", role.as_str()),
+                    "The result includes evidence or an explicit failure.".to_string(),
+                ],
+                role.as_str(),
+                role.as_str(),
+                Vec::new(),
+                3,
+                format!(
+                    "Queued for {}: {}",
+                    role.as_str(),
+                    truncate_chars(&instruction, 500)
+                ),
+            );
+            match task.and_then(|task| active.add_task(task)) {
+                Ok(transition) => {
+                    if let Err(error) = store.commit_transition(active, &transition) {
+                        // The in-memory task remains tracked so its eventual
+                        // completion can retry the atomic snapshot; dropping
+                        // the ID here would strand an unfinished phantom task.
+                        record_recursive_failure(
+                            "mission_task_track_commit_failed",
+                            &error.to_string(),
+                        );
+                    }
+                    CourtDelegation {
+                        role,
+                        instruction,
+                        mission_task_id: Some(task_id),
+                    }
+                }
+                Err(error) => {
+                    record_recursive_failure("mission_task_track_failed", &error.to_string());
+                    CourtDelegation::untracked(role, instruction)
+                }
+            }
+        })
+        .collect()
+}
+
+fn outcome_indicates_failure(text: &str) -> bool {
+    let lower = compact_memory_text(text).to_ascii_lowercase();
+    [
+        " rejected",
+        "rejected ",
+        " failed",
+        "failed ",
+        "failure",
+        "could not",
+        "unable to",
+        "unplayable",
+        "invalid:",
+        "error:",
+    ]
+    .iter()
+    .any(|marker| lower.contains(marker))
+}
+
+fn court_response_evidence(
+    role: CourtRole,
+    synopsis: &str,
+    reject_failure_language: bool,
+) -> Result<EvidenceBundle, String> {
+    let compact = truncate_chars(&compact_memory_text(synopsis), 1_200);
+    if compact.chars().count() < 12 {
+        return Err("court response was too small to be inspectable evidence".to_string());
+    }
+    if reject_failure_language && outcome_indicates_failure(&compact) {
+        return Err(format!(
+            "{} returned failure-like output: {}",
+            role.as_str(),
+            truncate_chars(&compact, 500)
+        ));
+    }
+    Ok(EvidenceBundle {
+        artifacts: vec![ArtifactEvidence {
+            kind: "court_response".to_string(),
+            reference: "knowledge/chat_logs.jsonl".to_string(),
+            digest: Some(short_content_hash(&format!(
+                "{}:{}",
+                role.as_str(),
+                compact
+            ))),
+            verified: true,
+            detail: format!(
+                "{} response was persisted to the inspectable chat journal",
+                role.as_str()
+            ),
+        }],
+        notes: vec![compact],
+        ..EvidenceBundle::default()
+    })
+}
+
+fn runtime_effect_evidence(synopsis: &str) -> Result<EvidenceBundle, String> {
+    let compact = truncate_chars(&compact_memory_text(synopsis), 1_200);
+    if compact.is_empty() || outcome_indicates_failure(&compact) {
+        return Err(if compact.is_empty() {
+            "runtime effect produced no inspectable outcome".to_string()
+        } else {
+            compact
+        });
+    }
+    Ok(EvidenceBundle {
+        checks: vec![CheckEvidence::passed(
+            "runtime_effect_verified",
+            truncate_chars(&compact, 800),
+        )],
+        notes: vec![compact],
+        ..EvidenceBundle::default()
+    })
+}
+
+fn complete_mission_task(
+    mission: &mut Option<Mission>,
+    store: &MissionStore,
+    task_id: &str,
+    synopsis: &str,
+    evidence: EvidenceBundle,
+) {
+    let Some(active) = mission.as_mut() else {
+        return;
+    };
+    if active
+        .task(task_id)
+        .map(|task| task.status == TaskStatus::Running)
+        != Some(true)
+    {
+        return;
+    }
+    match active.complete_task(task_id, evidence, synopsis) {
+        Ok(transition) => {
+            if let Err(error) = store.commit_transition(active, &transition) {
+                record_recursive_failure("mission_task_commit_failed", &error.to_string());
+            }
+        }
+        Err(error) => record_recursive_failure("mission_task_complete_failed", &error.to_string()),
+    }
+}
+
+fn fail_mission_task_for_retry(
+    mission: &mut Option<Mission>,
+    store: &MissionStore,
+    task_id: &str,
+    role: CourtRole,
+    code: &str,
+    detail: &str,
+) -> Option<CourtDelegation> {
+    let active = mission.as_mut()?;
+    if active
+        .task(task_id)
+        .map(|task| task.status == TaskStatus::Running)
+        != Some(true)
+    {
+        return None;
+    }
+    match active.fail_task(task_id, code, detail, FailureDisposition::Retryable) {
+        Ok(transition) => {
+            if let Err(error) = store.commit_transition(active, &transition) {
+                record_recursive_failure("mission_task_failure_commit_failed", &error.to_string());
+            }
+            active.task(task_id).and_then(|task| {
+                (task.status == TaskStatus::Retryable).then(|| CourtDelegation {
+                    role,
+                    instruction: task.objective.clone(),
+                    mission_task_id: Some(task_id.to_string()),
+                })
+            })
+        }
+        Err(error) => {
+            record_recursive_failure("mission_task_failure_record_failed", &error.to_string());
+            None
+        }
+    }
+}
+
+fn track_and_start_research_task(
+    mission: &mut Option<Mission>,
+    store: &MissionStore,
+    query: &str,
+) -> Result<Option<(String, String)>, String> {
+    let Some(active) = mission.as_mut() else {
+        return Ok(None);
+    };
+    if active.status.is_terminal() {
+        return Ok(None);
+    }
+    let mission_id = active.id.clone();
+    let task_id = format!(
+        "task-{:03}-research-{}",
+        active.tasks.len() + 1,
+        short_content_hash(&format!("{}:{}", mission_id, query))
+    );
+    let task = TaskEnvelope::new(
+        &task_id,
+        &active.id,
+        query,
+        vec![
+            "Preserve at least one citable HTTP(S) source excerpt.".to_string(),
+            "Complete only when a grounded supported claim survives validation.".to_string(),
+            "Record uncertainty or fail explicitly when evidence is insufficient.".to_string(),
+        ],
+        "Research Division",
+        "Research",
+        Vec::new(),
+        3,
+        format!("Source-backed study queued: {}", truncate_chars(query, 500)),
+    )
+    .map_err(|error| error.to_string())?;
+    let transition = active.add_task(task).map_err(|error| error.to_string())?;
+    store
+        .commit_transition(active, &transition)
+        .map_err(|error| error.to_string())?;
+    let transition = active
+        .start_task(&task_id)
+        .map_err(|error| error.to_string())?;
+    store
+        .commit_transition(active, &transition)
+        .map_err(|error| error.to_string())?;
+    Ok(Some((mission_id, task_id)))
+}
+
+fn research_result_matches_active_mission(
+    mission: &Option<Mission>,
+    event_mission_id: Option<&str>,
+    event_task_id: Option<&str>,
+) -> bool {
+    match event_task_id {
+        None => event_mission_id.is_none(),
+        Some(task_id) => mission.as_ref().is_some_and(|active| {
+            event_mission_id == Some(active.id.as_str()) && active.task(task_id).is_some()
+        }),
+    }
+}
+
+fn finalize_mission_if_ready(mission: &mut Option<Mission>, store: &MissionStore) {
+    let Some(active) = mission.as_mut() else {
+        return;
+    };
+    if active.status.is_terminal()
+        || active
+            .tasks
+            .iter()
+            .any(|task| task.status != TaskStatus::Completed)
+    {
+        return;
+    }
+    let evidence = EvidenceBundle {
+        checks: vec![CheckEvidence::passed(
+            "all_tasks_completed",
+            format!("{} task(s) completed with evidence", active.tasks.len()),
+        )],
+        notes: vec!["Mission scheduler reached a terminal evidence-backed state.".to_string()],
+        ..EvidenceBundle::default()
+    };
+    let synopsis = format!(
+        "Completed {} task(s) for: {}",
+        active.tasks.len(),
+        truncate_chars(&active.objective, 900)
+    );
+    match active.complete_mission(evidence, synopsis) {
+        Ok(transition) => {
+            if let Err(error) = store.commit_transition(active, &transition) {
+                record_recursive_failure("mission_complete_commit_failed", &error.to_string());
+            }
+        }
+        Err(error) => record_recursive_failure("mission_complete_failed", &error.to_string()),
     }
 }
 
@@ -220,6 +632,74 @@ fn read_text_tail(path: &str, max_chars: usize) -> io::Result<String> {
         return Ok(contents);
     }
     Ok(contents.chars().skip(char_count - max_chars).collect())
+}
+
+fn read_music_theory() -> String {
+    std::fs::read_to_string(MUSIC_THEORY_PATH).unwrap_or_else(|_| "Music theory foundation not yet loaded. Study scales, harmony, timbre, rhythm, form, and apply to compositions.".to_string())
+}
+
+fn load_shared_stories() -> Vec<String> {
+    let path = resolve_knowledge_file("shared_stories.jsonl");
+    if let Ok(content) = std::fs::read_to_string(&path) {
+        return content.lines().filter(|l| !l.trim().is_empty()).map(|l| l.to_string()).collect();
+    }
+    // last resort absolute
+    if let Ok(content) = std::fs::read_to_string("D:\\Teledra\\knowledge\\shared_stories.jsonl") {
+        return content.lines().filter(|l| !l.trim().is_empty()).map(|l| l.to_string()).collect();
+    }
+    vec![]
+}
+
+/// Tries hard to find a file inside the knowledge/ directory even when the
+/// process was launched from a desktop shortcut (CWD = Desktop or exe dir).
+fn resolve_knowledge_file(name: &str) -> String {
+    let direct = format!("D:\\Teledra\\knowledge\\{}", name);
+    if std::path::Path::new(&direct).exists() {
+        return direct;
+    }
+
+    // Try current dir
+    let rel = format!("knowledge\\{}", name);
+    if std::path::Path::new(&rel).exists() {
+        return rel;
+    }
+
+    // Walk upward from the executable (handles target/release/teledra.exe and shortcut launches)
+    if let Ok(exe) = std::env::current_exe() {
+        let mut dir = Some(exe.parent().unwrap_or_else(|| std::path::Path::new(".")).to_path_buf());
+        let mut hops = 0;
+        while let Some(d) = dir {
+            let candidate = d.join("knowledge").join(name);
+            if candidate.exists() {
+                return candidate.to_string_lossy().into_owned();
+            }
+            // also check if this dir itself is the project root containing knowledge/
+            let root_candidate = d.join("knowledge").join(name);
+            if root_candidate.exists() {
+                return root_candidate.to_string_lossy().into_owned();
+            }
+            dir = d.parent().map(|p| p.to_path_buf());
+            hops += 1;
+            if hops > 6 { break; }
+        }
+    }
+
+    direct
+}
+
+fn ingest_and_discuss_shared_stories() -> usize {
+    let stories = load_shared_stories();
+    let n = stories.len();
+    if n == 0 { return 0; }
+
+    let _ = log_nightdesk_activity(&format!("[Court] Wizard delivers {} shared user story(ies) as fresh research material (like YouTube transcripts).", n));
+    for (i, s) in stories.iter().enumerate().take(3) {
+        // Keep previews short so they fit in logs/private events.
+        let preview: String = s.chars().take(160).collect();
+        let _ = log_nightdesk_activity(&format!("  Story {}: {}", i + 1, preview));
+    }
+    // The stories are also injected into the active NightDesk prompt below for inspiration.
+    n
 }
 
 /// Suppresses the flash of a console window when spawning headless child
@@ -362,7 +842,10 @@ fn looks_source_backed(text: &str) -> bool {
     let lower = text.to_lowercase();
     let markers = [
         "source:",
+        "sources:",
         "(source",
+        "http://",
+        "https://",
         "according to",
         "as reported by",
         "official",
@@ -405,6 +888,51 @@ fn append_jsonl_entry(path: &str, entry: &serde_json::Value) -> io::Result<()> {
     Ok(())
 }
 
+fn is_music_craft_query(query: &str) -> bool {
+    ["music theory", "harmony", "chord", "voice leading", "counterpoint", "melody", "rhythm", "meter", "scale", "mode", "cadence", "orchestration", "arrangement", "composition", "mixing", "synthesis", "dsp", "strudel", "tidalcycles"]
+        .iter()
+        .any(|term| query.to_ascii_lowercase().contains(term))
+}
+
+/// Promote grounded music-craft research into a compact, prompt-readable lesson.
+/// The Organist consumes this journal on later turns; ungrounded research never enters it.
+fn append_music_theory_lesson(brief: &ResearchBrief) -> io::Result<Option<String>> {
+    if !brief.usable || !is_music_craft_query(&brief.query) {
+        return Ok(None);
+    }
+    let Some(claim) = brief.claims.iter().max_by(|a, b| a.confidence.total_cmp(&b.confidence)) else {
+        return Ok(None);
+    };
+    if claim.statement.trim().len() < 24 || claim.source_ids.is_empty() {
+        return Ok(None);
+    }
+    let lesson_id = short_content_hash(&format!("{}|{}", brief.query, claim.statement));
+    if std::fs::read_to_string(MUSIC_THEORY_LESSONS_PATH)
+        .ok()
+        .is_some_and(|contents| contents.lines().rev().take(80).any(|line| line.contains(&lesson_id)))
+    {
+        return Ok(None);
+    }
+    let sources: Vec<serde_json::Value> = claim.source_ids.iter().filter_map(|id| {
+        brief.sources.iter().find(|source| source.id == *id).map(|source| serde_json::json!({
+            "title": source.title,
+            "url": source.url,
+            "domain": source.domain,
+        }))
+    }).collect();
+    append_jsonl_entry(MUSIC_THEORY_LESSONS_PATH, &serde_json::json!({
+        "schema_version": 1,
+        "lesson_id": lesson_id,
+        "timestamp": current_unix_timestamp(),
+        "query": brief.query,
+        "principle": truncate_chars(&claim.statement, 1200),
+        "confidence": claim.confidence,
+        "sources": sources,
+        "application": "Apply this principle in the next original Organist composition and record it in TELEDRA_SCORE.theory_application."
+    }))?;
+    Ok(Some(truncate_chars(&claim.statement, 220)))
+}
+
 fn append_lore_memory(kind: &str, sender: &str, message: &str) -> io::Result<()> {
     let clean = compact_memory_text(message);
     if clean.len() < 20 {
@@ -438,6 +966,12 @@ fn strip_fact_preamble(text: &str) -> String {
     trimmed.to_string()
 }
 
+fn looks_like_mojibake(text: &str) -> bool {
+    ["Ã", "Â", "â€", "â€™", "â€œ", "â€�", "ï¿½", "�"]
+        .iter()
+        .any(|marker| text.contains(marker))
+}
+
 fn sanitize_fact_memory_candidate(raw_fact: &str) -> Option<String> {
     let mut cleaned = strip_refiner_prefixes(raw_fact);
     cleaned = strip_fact_preamble(&cleaned);
@@ -447,7 +981,7 @@ fn sanitize_fact_memory_candidate(raw_fact: &str) -> Option<String> {
     if cleaned.to_uppercase().contains("NO_USABLE_FACT") {
         return None;
     }
-    if cleaned.len() < 40 {
+    if cleaned.len() < 40 || looks_like_mojibake(&cleaned) {
         return None;
     }
     if looks_like_tool_or_refiner_noise(&cleaned) || looks_like_lore_or_persona(&cleaned) {
@@ -492,7 +1026,10 @@ fn record_rejected_topic(query: &str) {
 
 /// Most recent distinct dead-end queries (newest first), for prompt injection.
 fn recent_rejected_topics(limit: usize) -> Vec<String> {
-    let Ok(contents) = std::fs::read_to_string(REJECTED_TOPICS_PATH) else {
+    // This journal can grow for months. Reading its entire multi-megabyte
+    // history every ten-second study cycle was unnecessary I/O and allocation;
+    // only recent decisions influence topic selection.
+    let Ok(contents) = read_text_tail(REJECTED_TOPICS_PATH, 256_000) else {
         return Vec::new();
     };
     let mut topics: Vec<String> = Vec::new();
@@ -552,6 +1089,13 @@ fn append_verified_fact(query: &str, raw_fact: &str) -> io::Result<Option<String
         return Ok(None);
     };
 
+    // "Verified" is a contract, not a tone. A fluent sentence without a
+    // resolvable source marker belongs in lore/quarantine, never fact memory.
+    if !looks_source_backed(&fact) {
+        let _ = append_lore_memory("unsourced_fact_candidate", "Study", &fact);
+        return Ok(None);
+    }
+
     // Drop facts that wandered off the researched topic before they pollute memory.
     if !fact_relevant_to_query(query, &fact) {
         let _ = append_lore_memory("offtopic_fact_candidate", "Study", &fact);
@@ -568,6 +1112,7 @@ fn append_verified_fact(query: &str, raw_fact: &str) -> io::Result<Option<String
                 facts = parsed
                     .into_iter()
                     .filter_map(|entry| sanitize_fact_memory_candidate(&entry))
+                    .filter(|entry| looks_source_backed(entry))
                     .collect();
             }
         }
@@ -653,6 +1198,38 @@ fn clean_scribe_path(filepath: &str) -> String {
         clean.pop();
     }
     clean
+}
+
+fn validate_scribe_target(filepath: &str) -> Result<String, String> {
+    let clean = clean_scribe_path(filepath).replace('/', "\\");
+    if clean.is_empty() || clean.contains('\0') {
+        return Err("empty or malformed path".to_string());
+    }
+    let lower = clean.to_ascii_lowercase();
+    if lower.contains("..\\") || lower.contains("\\..") || lower == ".." || lower.starts_with('\\')
+    {
+        return Err("parent, UNC, and rooted path traversal is forbidden".to_string());
+    }
+    let allowed_extension = ["md", "txt", "json", "jsonl"]
+        .iter()
+        .any(|ext| lower.ends_with(&format!(".{ext}")));
+    if !allowed_extension {
+        return Err("Scribe may write only .md, .txt, .json, or .jsonl records".to_string());
+    }
+
+    let absolute = if lower.starts_with("d:\\teledra\\knowledge\\") {
+        clean
+    } else if lower.starts_with("knowledge\\") {
+        format!("D:\\Teledra\\{}", clean)
+    } else {
+        return Err("Scribe writes are confined to D:\\Teledra\\knowledge".to_string());
+    };
+
+    // Reject NTFS alternate data streams and any unexpected drive separator.
+    if absolute[2..].contains(':') {
+        return Err("alternate data streams are forbidden".to_string());
+    }
+    Ok(absolute)
 }
 
 fn trim_to_sentence_count(text: &str, max_sentences: usize, max_chars: usize) -> String {
@@ -1686,6 +2263,30 @@ fn classify_proposal_policy(
 ) -> (&'static str, &'static str, &'static str) {
     let lower = message.to_lowercase();
 
+    // Deny/review conditions must outrank friendly category words. A proposal
+    // does not become safe merely because it mentions a fractal, prompt, or
+    // music while also requesting credentials, deletion, network access, or a
+    // core architecture change.
+    let is_major_change = lower.contains("major")
+        || lower.contains("core code")
+        || lower.contains("architecture")
+        || lower.contains("permissions")
+        || lower.contains("security")
+        || lower.contains("network access")
+        || lower.contains("delete")
+        || lower.contains("destructive")
+        || lower.contains("release binary")
+        || lower.contains("external posting")
+        || lower.contains("credentials");
+
+    if is_major_change {
+        return (
+            "major_change",
+            "new",
+            "Major core, security, permission, credential, destructive, or external-posting changes require user review.",
+        );
+    }
+
     // Creative work (fractals, mandalas, music, Strudel, emotes, overlays) is
     // auto-approved per the operator's standing instruction: the Artist/Organist
     // may "do whatever as long as it produces results." These never clog the
@@ -1749,26 +2350,6 @@ fn classify_proposal_policy(
             "skill_improvement",
             "approved",
             "Skill, prompt, routing, and behavior improvements are auto-approved unless they promote a tool or require major core changes.",
-        );
-    }
-
-    let is_major_change = lower.contains("major")
-        || lower.contains("core code")
-        || lower.contains("architecture")
-        || lower.contains("permissions")
-        || lower.contains("security")
-        || lower.contains("network access")
-        || lower.contains("delete")
-        || lower.contains("destructive")
-        || lower.contains("release binary")
-        || lower.contains("external posting")
-        || lower.contains("credentials");
-
-    if is_major_change {
-        return (
-            "major_change",
-            "new",
-            "Major core, security, permission, credential, destructive, or external-posting changes require user review.",
         );
     }
 
@@ -2331,7 +2912,8 @@ fn extract_taste_desire_tags(text: &str, source: &str) -> (String, Vec<serde_jso
                     })
                 }
                 "[DESIRE:" if !parts.is_empty() => {
-                    let (want, leaked) = normalize_taste_field(parts[0], &["desire", "want", "goal"]);
+                    let (want, leaked) =
+                        normalize_taste_field(parts[0], &["desire", "want", "goal"]);
                     if want.len() < 3 {
                         continue;
                     }
@@ -2514,7 +3096,7 @@ fn record_recursive_failure(kind: &str, detail: &str) {
     {
         "Skill improvement: workshop tools must be self-contained, create their own tiny sample data, and avoid package/data paths outside D:\\Teledra\\tools."
     } else if compact.to_lowercase().contains("strudel") {
-        "Skill improvement: Strudel edits must use only the local stack(...), s(...), note(...), gain/slow/fast subset and should be validated before narration."
+        "Skill improvement: Strudel edits must use only the local stack(...), s(...), note(...), gain/slow/fast subset and should be validated before narration. Apply principles from knowledge/music_theory_foundation.md (harmony, timbre via waveform/envelope, rhythm variation, avoid low-gain inaudible layers). Court/Organist researches and improves autonomously over generations."
     } else if compact.to_lowercase().contains("python music")
         || compact.to_lowercase().contains("teledra_synth")
     {
@@ -3362,13 +3944,14 @@ fn extract_tag_content(text: &str, tag_prefix: &str) -> Option<(String, String)>
 /// action tag (first non-whitespace char is '[' and a known tag is present),
 /// leaving genuine code fences untouched.
 fn unwrap_fenced_action_tags(text: &str) -> String {
-    const TAG_MARKERS: [&str; 9] = [
+    const TAG_MARKERS: [&str; 10] = [
         "[DELEGATE:",
         "[DIPLOMACY:",
         "[RESEARCH:",
         "[SUGGESTION:",
         "[TOPIC:",
         "[FRACTUS_ART:",
+        "[FRACTUS_LIVE:",
         "[SCRIBE_WRITE:",
         "[SCRIBE_APPEND:",
         "[CLOSE_ART]",
@@ -3715,6 +4298,68 @@ fn scan_workshop_code(filename: &str, code: &str, kind: &str) -> Result<(), Stri
         return Err("Workshop Python scripts must print a concise smoke-test result.".to_string());
     }
 
+    Ok(())
+}
+
+fn validate_python_art_code(code: &str) -> Result<(), String> {
+    if code.trim().len() < 40 || code.len() > 40_000 {
+        return Err("Python art must be a bounded, non-placeholder program.".to_string());
+    }
+    let lower = code.to_ascii_lowercase();
+    for marker in [
+        "import socket",
+        "from socket",
+        "import requests",
+        "from requests",
+        "import urllib",
+        "from urllib",
+        "import httpx",
+        "import subprocess",
+        "from subprocess",
+        "import shutil",
+        "from shutil",
+        "import pathlib",
+        "from pathlib",
+        "import ctypes",
+        "from ctypes",
+        "os.system",
+        "os.remove",
+        "os.unlink",
+        "os.rmdir",
+        "eval(",
+        "exec(",
+        "compile(",
+        "__import__",
+        "open(",
+        "../",
+        "..\\",
+    ] {
+        if lower.contains(marker) {
+            return Err(format!("Python art uses forbidden capability: {marker}"));
+        }
+    }
+    let has_visual_runtime = [
+        "matplotlib",
+        "import turtle",
+        "from turtle",
+        "from PIL",
+        "from pil",
+    ]
+    .iter()
+    .any(|marker| lower.contains(&marker.to_ascii_lowercase()));
+    if !has_visual_runtime {
+        return Err("Python art must use a supported local visual runtime.".to_string());
+    }
+    if !lower.contains("art.png") {
+        return Err("Python art must save its artifact as D:\\Teledra\\art.png.".to_string());
+    }
+    let has_native_window = lower.contains("plt.show(")
+        || lower.contains("pyplot.show(")
+        || lower.contains("turtle.done(")
+        || lower.contains("mainloop(");
+    if !has_native_window {
+        return Err("Python art must open a native visual window.".to_string());
+    }
     Ok(())
 }
 
@@ -4270,10 +4915,48 @@ fn sanitize_research_query(raw: &str) -> Option<String> {
     Some(query)
 }
 
+/// Run inference against an immutable Brain snapshot, then acquire the shared
+/// lock only for the tiny Queen-history commit. A slow or stalled backend must
+/// never monopolize every court role or prevent a newer operator turn.
+async fn think_with_brain_snapshot(
+    brain_cell: &Arc<RwLock<Brain>>,
+    role: CourtRole,
+    user_input: &str,
+    somatic: &SomaticState,
+    mode: ForceMode,
+    add_history: bool,
+    music_enabled: bool,
+) -> Result<String, String> {
+    let started_epoch = active_turn_epoch();
+    let mut snapshot = brain_cell.read().await.clone();
+    let reply = snapshot
+        .think_as_court(role, user_input, somatic, mode, false, music_enabled)
+        .await?;
+    if active_turn_epoch() != started_epoch {
+        return Err(STALE_TURN_ERROR.to_string());
+    }
+    if role == CourtRole::Queen && add_history {
+        let mut shared = brain_cell.write().await;
+        if active_turn_epoch() != started_epoch {
+            return Err(STALE_TURN_ERROR.to_string());
+        }
+        let history_input = if user_input.contains("Continue your monologue") {
+            "[Continuing monologue...]"
+        } else {
+            user_input
+        };
+        shared.add_to_history("user", history_input);
+        shared.add_to_history("model", &reply);
+    }
+    Ok(reply)
+}
+
 async fn run_study_cycle(
     brain_study: Arc<RwLock<Brain>>,
     tx_study: mpsc::Sender<AppEvent>,
     custom_query: Option<String>,
+    mission_task_id: Option<String>,
+    mission_id: Option<String>,
 ) {
     let _ = tx_study
         .send(AppEvent::StatusUpdate("Studying".to_string()))
@@ -4292,7 +4975,11 @@ async fn run_study_cycle(
                         learned_topics.push_str(
                             "\nYou currently have the following facts in your memory base:\n",
                         );
-                        for fact in facts.iter() {
+                        for fact in facts
+                            .iter()
+                            .filter_map(|fact| sanitize_fact_memory_candidate(fact))
+                            .filter(|fact| looks_source_backed(fact))
+                        {
                             learned_topics.push_str(&format!("- {}\n", fact));
                         }
                     }
@@ -4324,7 +5011,10 @@ async fn run_study_cycle(
             learned_topics, banned_block
         );
 
-        let mut brain = brain_study.write().await;
+        // Clone the lightweight client/config snapshot before awaiting network
+        // I/O. Background study must never hold the shared brain lock and starve
+        // foreground conversation or specialist turns.
+        let brain = brain_study.read().await.clone();
         match brain
             .think_neutral(system_instruction, &prompt, 0.9, 120)
             .await
@@ -4341,86 +5031,197 @@ async fn run_study_cycle(
         let python_exe = "D:\\Teledra\\.venv\\Scripts\\python.exe";
         let script_path = "D:\\Teledra\\browser_agent.py";
         let mut cmd = Command::new(python_exe);
-        cmd.arg(script_path).arg(&query_for_cmd);
+        cmd.arg(script_path).arg("--json").arg(&query_for_cmd);
         hide_console(&mut cmd);
         cmd.output()
     })
     .await;
 
-    let mut scraped_text = String::new();
-    if let Ok(Ok(output)) = scrape_res {
-        scraped_text = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    }
+    let browser_bundle = match scrape_res {
+        Ok(Ok(output)) if output.status.success() => {
+            let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            BrowserResearchBundle::from_json(&stdout, &query)
+        }
+        Ok(Ok(output)) => Err(format!(
+            "browser agent exited {}: {}",
+            output.status,
+            truncate_clean(&String::from_utf8_lossy(&output.stderr), 800)
+        )),
+        Ok(Err(error)) => Err(format!("failed to launch browser agent: {error}")),
+        Err(error) => Err(format!("browser agent task failed: {error}")),
+    };
 
-    if !scraped_text.is_empty() {
-        let fact = {
-            let mut brain = brain_study.write().await;
-            match brain.distill_research_fact(&query, &scraped_text).await {
-                Ok(f) => strip_refiner_prefixes(&f),
-                Err(e) => format!("Failed to distill researched topic: {}", e),
-            }
-        };
+    match browser_bundle {
+        Ok(bundle) if !bundle.sources.is_empty() => {
+            let evidence_context = bundle.synthesis_context();
+            // As above, never hold the shared RwLock across the model request.
+            let research_brain = brain_study.read().await.clone();
+            let brief = match research_brain
+                .synthesize_research_brief(&evidence_context)
+                .await
+            {
+                Ok(raw) => {
+                    ResearchBrief::from_model_json(current_unix_timestamp(), bundle.clone(), &raw)
+                        .unwrap_or_else(|error| {
+                            ResearchBrief::failed(current_unix_timestamp(), bundle.clone(), &error)
+                        })
+                }
+                Err(error) => {
+                    ResearchBrief::failed(current_unix_timestamp(), bundle.clone(), &error)
+                }
+            };
 
-        match append_verified_fact(&query, &fact) {
-            Ok(Some(saved_fact)) => {
-                let _ = append_expansion_ledger(
-                    "online_research",
-                    &format!("query={} | distilled_fact={}", query, saved_fact),
+            let brief_value = serde_json::to_value(&brief).unwrap_or_else(|_| {
+                serde_json::json!({
+                    "schema_version": 1,
+                    "timestamp": current_unix_timestamp(),
+                    "query": query,
+                    "usable": false,
+                    "failure": "research brief serialization failed"
+                })
+            });
+            if let Err(error) = append_jsonl_entry(RESEARCH_BRIEFS_PATH, &brief_value) {
+                record_recursive_failure(
+                    "research_brief_save_failed",
+                    &format!("query={} | error={}", query, error),
                 );
+            }
+
+            if brief.usable {
+                let accessed_at_ms = current_unix_timestamp()
+                    .parse::<u64>()
+                    .unwrap_or(0)
+                    .saturating_mul(1_000);
+                let mission_evidence = EvidenceBundle {
+                    sources: brief
+                        .sources
+                        .iter()
+                        .filter_map(|source| {
+                            brief
+                                .claims
+                                .iter()
+                                .find(|claim| claim.source_ids.contains(&source.id))
+                                .map(|claim| SourceEvidence {
+                                    url: source.url.clone(),
+                                    title: source.title.clone(),
+                                    claim: truncate_chars(&claim.statement, 800),
+                                    accessed_at_ms,
+                                })
+                        })
+                        .collect(),
+                    notes: vec![format!(
+                        "Grounded research brief: {}",
+                        truncate_chars(&brief.status_summary(), 800)
+                    )],
+                    ..EvidenceBundle::default()
+                };
+                let saved_fact = brief
+                    .best_fact()
+                    .and_then(|fact| append_verified_fact(&query, &fact).ok().flatten());
+                let theory_lesson = match append_music_theory_lesson(&brief) {
+                    Ok(lesson) => lesson,
+                    Err(error) => {
+                        record_recursive_failure("music_theory_lesson_save_failed", &error.to_string());
+                        None
+                    }
+                };
+                let status = brief.status_summary();
+                let ledger_detail = if let Some(fact) = saved_fact.as_deref() {
+                    format!("query={} | {} | memory_fact={}", query, status, fact)
+                } else {
+                    format!(
+                        "query={} | {} | note=brief preserved; no new compact fact added",
+                        query, status
+                    )
+                };
+                let summary = if let Some(lesson) = theory_lesson {
+                    format!("Studied {}: {}; saved music lesson: {}", query, status, lesson)
+                } else {
+                    format!("Studied {}: {}", query, status)
+                };
+                let _ = append_expansion_ledger("online_research_brief", &ledger_detail);
                 let _ = tx_study
                     .send(AppEvent::StudyComplete {
-                        summary: format!("Studied {}: \"{}\"", query, saved_fact),
+                        summary,
                         usable: true,
+                        mission_id: mission_id.clone(),
+                        mission_task_id: mission_task_id.clone(),
+                        evidence: Some(mission_evidence),
                     })
                     .await;
-            }
-            Ok(None) => {
-                let _ = append_expansion_ledger(
-                    "online_research_rejected",
-                    &format!(
-                        "query={} | note=distilled result was unusable or already known",
-                        query
-                    ),
+            } else {
+                let failure = brief
+                    .failure
+                    .as_deref()
+                    .unwrap_or("no grounded claims survived validation");
+                record_recursive_failure(
+                    "research_synthesis_failed",
+                    &format!("query={} | error={}", query, failure),
                 );
-                // Blacklist the topic so the selector is steered AWAY from it.
-                // Deliberately do NOT embed the topic in a failure signal that
-                // gets re-fed to generation prompts -- that was a self-
-                // reinforcing loop that re-seeded the same dead topic forever.
-                record_rejected_topic(&query);
+                let _ = append_expansion_ledger(
+                    "online_research_synthesis_failed",
+                    &format!("query={} | error={}", query, failure),
+                );
                 let _ = tx_study
                     .send(AppEvent::StudyComplete {
                         summary: format!(
-                            "Studied {}, but it yielded nothing new; topic blacklisted, moving on.",
+                            "Research sources for {} were preserved, but grounded synthesis failed.",
                             query
                         ),
                         usable: false,
+                        mission_id: mission_id.clone(),
+                        mission_task_id: mission_task_id.clone(),
+                        evidence: None,
                     })
                     .await;
             }
-            Err(e) => {
-                record_recursive_failure(
-                    "research_memory_save_failed",
-                    &format!("query={} | error={}", query, e),
-                );
-                let _ = tx_study
-                    .send(AppEvent::Error(format!(
-                        "Research memory save failed: {}",
-                        e
-                    )))
-                    .await;
-            }
         }
-    } else {
-        let _ = append_expansion_ledger(
-            "online_research_failed",
-            &format!("query={} | error=search returned no index results", query),
-        );
-        record_rejected_topic(&query);
-        let _ = tx_study
-            .send(AppEvent::Error(
-                "Search returned no index results.".to_string(),
-            ))
-            .await;
+        Ok(bundle) => {
+            let brief = ResearchBrief::failed(
+                current_unix_timestamp(),
+                bundle,
+                "search returned no citable source excerpts",
+            );
+            if let Ok(value) = serde_json::to_value(&brief) {
+                let _ = append_jsonl_entry(RESEARCH_BRIEFS_PATH, &value);
+            }
+            let _ = append_expansion_ledger(
+                "online_research_failed",
+                &format!("query={} | error=no citable source excerpts", query),
+            );
+            record_rejected_topic(&query);
+            let _ = tx_study
+                .send(AppEvent::StudyComplete {
+                    summary: format!(
+                        "Studied {}, but no citable source excerpts survived validation; moving on.",
+                        query
+                    ),
+                    usable: false,
+                    mission_id: mission_id.clone(),
+                    mission_task_id: mission_task_id.clone(),
+                    evidence: None,
+                })
+                .await;
+        }
+        Err(error) => {
+            let _ = append_expansion_ledger(
+                "online_research_failed",
+                &format!("query={} | error={}", query, error),
+            );
+            record_recursive_failure(
+                "research_browser_failed",
+                &format!("query={} | error={}", query, error),
+            );
+            let _ = tx_study
+                .send(AppEvent::StudyComplete {
+                    summary: format!("Research browser failed for {}: {}", query, error),
+                    usable: false,
+                    mission_id,
+                    mission_task_id,
+                    evidence: None,
+                })
+                .await;
+        }
     }
 
     let _ = tx_study
@@ -4631,6 +5432,7 @@ fn strip_unclosed_tool_and_code_noise(text: &str) -> String {
         "[STRUDEL_MUSIC:",
         "[PYTHON_ART:",
         "[FRACTUS_ART:",
+        "[FRACTUS_LIVE:",
         "[DELEGATE:",
         "[SCRIBE_WRITE:",
         "[SCRIBE_APPEND:",
@@ -5383,9 +6185,9 @@ fn copilot_chat_prompt(
     }
 }
 
-fn voice_name_for_role(role: CourtRole) -> &'static str {
+fn voice_name_for_role<'a>(role: CourtRole, queen_voice: &'a str) -> &'a str {
     match role {
-        CourtRole::Queen => "queen",
+        CourtRole::Queen => queen_voice,
         CourtRole::Organist => "organist",
         CourtRole::Archivist => "archivist",
         CourtRole::Alchemist => "alchemist",
@@ -5414,16 +6216,23 @@ fn spawn_spoken_reply(
     role: CourtRole,
     text: String,
     mode: ForceMode,
+    queen_voice: String,
     active_playback: Arc<std::sync::Mutex<Option<voice::PlaybackController>>>,
     tx: mpsc::Sender<AppEvent>,
     send_speech_complete: bool,
 ) {
-    let active_voice = voice_name_for_role(role).to_string();
+    let active_voice = voice_name_for_role(role, &queen_voice).to_string();
     let cleaned_speech = clean_text_for_speech(&text, role);
     let (speech_sentence_limit, speech_char_limit) = speech_limits_for_role(role, mode);
     let reply_for_speech =
         limit_spoken_text(&cleaned_speech, speech_sentence_limit, speech_char_limit);
-    let speech_parts = split_spoken_text_parts(&reply_for_speech, 900);
+    // `generate_voice.py` already splits text into phrase-sized synthesis
+    // chunks after loading LuxTTS once. Sending 900-character subprocesses
+    // reloaded the model and re-encoded the reference for every part (up to 18
+    // cold starts for a long Queen turn). Keep the full bounded reply in one
+    // worker invocation; 20k remains comfortably below Windows' command-line
+    // limit and the role caps above.
+    let speech_parts = split_spoken_text_parts(&reply_for_speech, 20_000);
 
     tokio::task::spawn_blocking(move || {
         let speech_parts: Vec<String> = speech_parts
@@ -5465,10 +6274,13 @@ fn spawn_spoken_reply(
                 Err(e) => {
                     if e != "Cancelled" {
                         let _ = tx.blocking_send(AppEvent::Error(format!("Vocal crash: {}", e)));
-                        let _ = tx.blocking_send(AppEvent::StatusUpdate("Ready".to_string()));
-                        if send_speech_complete {
-                            let _ = tx.blocking_send(AppEvent::SpeechComplete);
-                        }
+                    }
+                    // Cancellation and premature EOF are terminal too. Without
+                    // this event, one killed TTS child strands every queued
+                    // minister behind speech that no longer exists.
+                    let _ = tx.blocking_send(AppEvent::StatusUpdate("Ready".to_string()));
+                    if send_speech_complete {
+                        let _ = tx.blocking_send(AppEvent::SpeechComplete);
                     }
                     return;
                 }
@@ -5503,51 +6315,104 @@ fn strip_fenced_code_block(code: &str, language: &str) -> String {
     code.trim().to_string()
 }
 
-fn default_strudel_music_code() -> String {
+fn normalize_strudel_music_code(code: &str) -> String {
+    let cleaned = strip_fenced_code_block(code, "strudel");
+    let lower = cleaned.to_ascii_lowercase();
+    let Some(start) = lower.find("stack(") else {
+        return cleaned.trim().to_string();
+    };
+
+    let mut depth = 0usize;
+    let mut in_string = false;
+    let mut escaped = false;
+    for (offset, ch) in cleaned[start..].char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' && in_string {
+            escaped = true;
+            continue;
+        }
+        if ch == '"' {
+            in_string = !in_string;
+            continue;
+        }
+        if in_string {
+            continue;
+        }
+        if ch == '(' {
+            depth += 1;
+        } else if ch == ')' {
+            depth = depth.saturating_sub(1);
+            if depth == 0 {
+                let end = start + offset + ch.len_utf8();
+                return cleaned[start..end].trim().to_string();
+            }
+        }
+    }
+
+    cleaned.trim().to_string()
+}
+
+fn deterministic_strudel_music(seed: usize) -> String {
     let patterns = [
         "stack(\n\
-s(\"bd ~ sn ~ bd ~ sn oh\").gain(0.48),\n\
-s(\"~ hh*2 ~ hh*3 ~ hh*2 oh ~\").gain(0.22),\n\
-note(\"c2 ~ eb2 g2 bb2 g2 eb2 ~\").s(\"triangle\").gain(0.32).slow(1.5),\n\
-note(\"c4 eb4 g4 bb4 g4 eb4 d4 bb3\").s(\"sawtooth\").gain(0.18).slow(2),\n\
-note(\"g5 eb5 c5 bb4 d5 eb5 g5 bb5\").s(\"sine\").gain(0.15).fast(1.25)\n\
+s(\"<bd ~ sd ~> bd [~ bd] sd ~\").gain(0.46).pan(0).lpf(9000).room(0.08),\n\
+s(\"<~ hh*4 ~ oh> hh*2 [hh hh] ~ cp\").gain(0.18).pan(0.34).lpf(7200).delay(0.12).delaytime(0.18).delayfeedback(0.28),\n\
+note(\"<d2 ~ a1 d2> [d2 ~] <f2 g2> a1\").s(\"triangle\").gain(0.26).pan(-0.08).lpf(780).attack(0.01).release(0.16).slow(2),\n\
+note(\"<d3,f3,a3 bb2,d3,f3 c3,e3,g3 a2,c3,e3>\").s(\"triangle\").gain(0.16).pan(0.12).lpf(1500).room(0.34).attack(0.28).release(0.9).slow(4),\n\
+note(\"<a4 ~ f4 [g4 a4]> <d5 c5> ~ <f4 e4>\").s(\"sawtooth\").gain(0.13).pan(-0.38).lpf(2400).delay(0.16).delaytime(0.26).delayfeedback(0.32).slow(2),\n\
+note(\"<~ d5 f5 a5> [c6 a5] ~ <g5 e5> d5\").s(\"sine\").gain(0.11).pan(0.42).lpf(4200).room(0.46).attack(0.04).release(0.42).slow(2),\n\
+note(\"<d6 ~ ~ a5> ~ <f6 ~ e6 ~> ~\").s(\"sine\").gain(0.07).pan(0.58).lpf(6000).room(0.62).delay(0.22).delaytime(0.38).delayfeedback(0.36).slow(4)\n\
 )",
         "stack(\n\
-s(\"bd*2 ~ sn ~ bd ~ sn ~\").gain(0.44),\n\
-s(\"hh*4 ~ hh*2 oh ~ hh*3 ~\").gain(0.2),\n\
-note(\"a1 e2 g2 d2 a1 c2 e2 g2\").s(\"triangle\").gain(0.32).slow(2),\n\
-note(\"a3 c4 e4 g4 b3 d4 f4 e4\").s(\"sawtooth\").gain(0.17).slow(2.5),\n\
-note(\"a4 c5 e5 g5 e5 c5 b4 g4\").s(\"sine\").gain(0.2).fast(1.5)\n\
+s(\"<bd ~ ~ sd> bd [bd ~] sd ~\").gain(0.44).pan(0).lpf(8600).room(0.06),\n\
+s(\"<hh*2 hh*4 ~ oh> [~ hh] hh*2 ~ cp\").gain(0.17).pan(-0.32).lpf(7600).delay(0.1).delaytime(0.16).delayfeedback(0.24),\n\
+note(\"<a1 ~ e2 a1> [g2 ~] <d2 e2> a1\").s(\"sawtooth\").gain(0.24).pan(-0.06).lpf(720).attack(0.008).release(0.14).slow(2),\n\
+note(\"<a3,c4,e4 g3,b3,d4 d3,f3,a3 e3,g3,b3>\").s(\"triangle\").gain(0.15).pan(0.15).lpf(1700).room(0.38).attack(0.32).release(1.0).slow(4),\n\
+note(\"<e4 ~ g4 [a4 b4]> <d5 b4> ~ <a4 g4>\").s(\"square\").gain(0.1).pan(0.38).lpf(2100).delay(0.14).delaytime(0.22).delayfeedback(0.3).slow(2),\n\
+note(\"<~ a4 c5 e5> [g5 e5] ~ <d5 b4> a4\").s(\"sine\").gain(0.12).pan(-0.44).lpf(4600).room(0.42).attack(0.03).release(0.36).slow(2),\n\
+note(\"<a5 ~ ~ e6> ~ <g5 ~ b5 ~> ~\").s(\"sine\").gain(0.065).pan(0.62).lpf(6400).room(0.66).delay(0.2).delaytime(0.34).delayfeedback(0.34).slow(4)\n\
 )",
         "stack(\n\
-s(\"bd ~ ~ sn bd hh*2 sn oh\").gain(0.46),\n\
-s(\"hh*3 ~ hh*2 ~ oh ~ hh*3 ~\").gain(0.18),\n\
-note(\"d2 a2 f2 c3 d2 c3 a2 f2\").s(\"square\").gain(0.24).slow(1.25),\n\
-note(\"f3 a3 c4 e4 d4 c4 a3 f3\").s(\"triangle\").gain(0.16).slow(2),\n\
-note(\"f4 a4 c5 e5 d5 a4 c5 f5\").s(\"sawtooth\").gain(0.2).slow(1.5)\n\
+s(\"<bd ~ sd ~> [bd ~] ~ sd bd\").gain(0.45).pan(0).lpf(8800).room(0.07),\n\
+s(\"<~ hh*3 oh ~> hh*4 [~ hh] cp ~\").gain(0.16).pan(0.36).lpf(7000).delay(0.13).delaytime(0.19).delayfeedback(0.26),\n\
+note(\"<e2 ~ f2 e2> [g2 ~] <a2 f2> e2\").s(\"square\").gain(0.21).pan(-0.08).lpf(690).attack(0.006).release(0.13).slow(2),\n\
+note(\"<e3,g3,b3 f3,a3,c4 g3,b3,d4 a3,c4,e4>\").s(\"triangle\").gain(0.145).pan(-0.12).lpf(1450).room(0.4).attack(0.36).release(1.1).slow(4),\n\
+note(\"<b4 ~ c5 [d5 e5]> <f5 e5> ~ <d5 c5>\").s(\"sawtooth\").gain(0.11).pan(-0.4).lpf(2300).delay(0.17).delaytime(0.28).delayfeedback(0.33).slow(2),\n\
+note(\"<~ e5 g5 b5> [a5 g5] ~ <f5 d5> e5\").s(\"sine\").gain(0.105).pan(0.46).lpf(4300).room(0.48).attack(0.05).release(0.48).slow(2),\n\
+note(\"<e6 ~ ~ b5> ~ <c6 ~ d6 ~> ~\").s(\"sine\").gain(0.06).pan(0.64).lpf(6200).room(0.7).delay(0.24).delaytime(0.4).delayfeedback(0.38).slow(4)\n\
 )",
         "stack(\n\
-s(\"bd ~ hh sn bd ~ hh*2 oh\").gain(0.46),\n\
-s(\"~ hh*2 ~ hh*2 oh ~ hh*3 ~\").gain(0.2),\n\
-note(\"g1 d2 bb2 f2 g1 f2 d2 bb1\").s(\"triangle\").gain(0.34).slow(1.75),\n\
-note(\"g3 bb3 d4 f4 bb3 d4 f4 g4\").s(\"sawtooth\").gain(0.18).slow(2),\n\
-note(\"bb4 c5 d5 f5 g5 f5 d5 c5\").s(\"sine\").gain(0.22).fast(1.25)\n\
+s(\"<bd ~ sd ~> bd ~ [bd sd] ~\").gain(0.47).pan(0).lpf(9200).room(0.08),\n\
+s(\"<hh*4 ~ oh ~> [hh hh] ~ cp hh*2\").gain(0.18).pan(-0.35).lpf(7400).delay(0.11).delaytime(0.17).delayfeedback(0.27),\n\
+note(\"<g1 ~ d2 g1> [bb1 ~] <f2 d2> g1\").s(\"triangle\").gain(0.27).pan(-0.05).lpf(760).attack(0.009).release(0.15).slow(2),\n\
+note(\"<g3,bb3,d4 eb3,g3,bb3 f3,a3,c4 d3,f3,a3>\").s(\"sawtooth\").gain(0.14).pan(0.14).lpf(1600).room(0.36).attack(0.3).release(0.95).slow(4),\n\
+note(\"<d4 ~ f4 [g4 bb4]> <c5 bb4> ~ <a4 f4>\").s(\"square\").gain(0.1).pan(0.4).lpf(2200).delay(0.15).delaytime(0.24).delayfeedback(0.31).slow(2),\n\
+note(\"<~ g4 bb4 d5> [f5 d5] ~ <c5 a4> g4\").s(\"sine\").gain(0.115).pan(-0.45).lpf(4500).room(0.44).attack(0.035).release(0.4).slow(2),\n\
+note(\"<g5 ~ ~ d6> ~ <bb5 ~ a5 ~> ~\").s(\"sine\").gain(0.068).pan(0.6).lpf(6100).room(0.64).delay(0.21).delaytime(0.36).delayfeedback(0.35).slow(4)\n\
 )",
     ];
-    let seed = current_unix_timestamp().parse::<usize>().unwrap_or(0);
     patterns[seed % patterns.len()].to_string()
+}
+
+fn default_strudel_music_code() -> String {
+    let seed = current_unix_timestamp().parse::<usize>().unwrap_or(0);
+    deterministic_strudel_music(seed)
 }
 
 fn default_fractus_art_spec() -> String {
     let patterns = [
-        "--type mandala --iterations 260 --palette neon_sunset",
-        "--type woven_web --iterations 260 --palette electric_cyan",
-        "--type orbital_lace --iterations 280 --palette electric_cyan",
-        "--type guilloche --iterations 260 --palette purple_haze",
-        "--type lissajous --iterations 240 --palette emerald",
-        "--type moire --iterations 230 --palette electric_cyan",
-        "--type julia --iterations 210 --palette purple_haze --c-real -0.78 --c-imag 0.16",
-        "--type burning_ship --iterations 230 --palette neon_sunset",
+        "--type lotus_mandala --iterations 260 --palette twilight",
+        "--type flower_of_life --iterations 240 --palette pastel",
+        "--type phyllotaxis --iterations 280 --palette solar_gold",
+        "--type harmonograph --iterations 260 --palette electric_cyan",
+        "--type truchet --iterations 220 --palette amethyst",
+        "--type fractal_tree --iterations 250 --palette emerald",
+        "--type reaction_diffusion --iterations 210 --palette ice_fire",
+        "--type strange_attractor --iterations 260 --palette rainbow",
+        "--type particles --iterations 220 --palette emerald",
     ];
     let seed = current_unix_timestamp().parse::<usize>().unwrap_or(0);
     patterns[seed % patterns.len()].to_string()
@@ -5588,22 +6453,64 @@ fn pick<'a, T>(state: &mut u64, items: &'a [T]) -> &'a T {
 /// A randomized but always-valid Fractus argument line.
 fn random_fractus_spec(state: &mut u64) -> String {
     let types = [
+        "barnsley_fern",
+        "mandelbrot",
+        "multibrot",
+        "julia",
+        "burning_ship",
+        "tricorn",
+        "newton",
         "mandala",
+        "lotus_mandala",
+        "star_mandala",
+        "flower_of_life",
+        "radial_weave",
+        "kaleidoscope",
+        "phyllotaxis",
         "woven_web",
         "guilloche",
         "lissajous",
+        "particles",
         "moire",
         "orbital_lace",
-        "julia",
-        "burning_ship",
-        "newton",
-        "tricorn",
+        "spirograph",
+        "harmonograph",
+        "rose_curve",
+        "string_art",
+        "sierpinski",
+        "koch_snowflake",
+        "dragon_curve",
+        "fractal_tree",
+        "l_system",
+        "truchet",
+        "hex_weave",
+        "op_art",
+        "cellular_automata",
+        "reaction_diffusion",
+        "flow_field",
+        "strange_attractor",
     ];
-    let palettes = ["purple_haze", "electric_cyan", "neon_sunset", "emerald"];
+    let palettes = [
+        "amethyst",
+        "electric_cyan",
+        "emerald",
+        "ice_fire",
+        "monochrome",
+        "neon_sunset",
+        "pastel",
+        "purple_haze",
+        "rainbow",
+        "solar_gold",
+        "twilight",
+    ];
     let t = *pick(state, &types);
     let pal = *pick(state, &palettes);
     let iterations = 160 + (xorshift(state) as usize % 161); // 160..=320
-    let mut spec = format!("--type {} --iterations {} --palette {}", t, iterations, pal);
+    let seed = xorshift(state);
+    let mut spec = format!(
+        "--type {} --iterations {} --palette {} --seed {}",
+        t, iterations, pal, seed
+    );
     if t == "julia" {
         let cr = -1.2 + (xorshift(state) as f64 / u64::MAX as f64) * 2.4;
         let ci = -1.2 + (xorshift(state) as f64 / u64::MAX as f64) * 2.4;
@@ -5613,7 +6520,8 @@ fn random_fractus_spec(state: &mut u64) -> String {
 }
 
 fn recent_fractus_specs(limit: usize) -> Vec<String> {
-    let contents = read_text_tail("knowledge/fractus_experiments.jsonl", 4000).unwrap_or_default();
+    let contents =
+        read_text_tail("knowledge/fractus_experiments.jsonl", 128_000).unwrap_or_default();
     contents
         .lines()
         .rev()
@@ -5630,7 +6538,7 @@ fn recent_fractus_specs(limit: usize) -> Vec<String> {
 /// If `spec` repeats one of the most recently launched recipes, nudge it into a
 /// fresh variation so the Artist visibly stops recycling the same orbital_lace.
 fn diversify_fractus_spec(spec: &str) -> String {
-    let recent = recent_fractus_specs(4);
+    let recent = recent_fractus_specs(64);
     let normalized = spec.split_whitespace().collect::<Vec<_>>().join(" ");
     let repeats = |candidate: &str| {
         let norm = candidate.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -5708,88 +6616,301 @@ fn deterministic_python_music(seed: usize) -> String {
     let beat = ["0.5", "0.45", "0.55", "0.6", "0.42"][(seed / 3) % 5];
     let cutoff = ["3200", "2600", "3800", "2900", "3500"][(seed / 7) % 5];
     let (chords, bass, motif) = progressions[seed % progressions.len()];
+    let theory_profiles = [
+        ("A", "natural_minor", "[1, 6, 3, 7]"),
+        ("D", "dorian", "[1, 5, 6, 4]"),
+        ("E", "phrygian", "[1, 2, 3, 4]"),
+        ("C", "major", "[1, 5, 6, 4]"),
+        ("D", "dorian", "[1, 4, 7, 5]"),
+        ("G", "mixolydian", "[1, 7, 4, 5]"),
+        ("B", "natural_minor", "[1, 6, 7, 5]"),
+        ("A", "harmonic_minor", "[1, 4, 5, 1]"),
+    ];
+    let (tonal_center, mode, degrees) = theory_profiles[seed % theory_profiles.len()];
 
     let template = r#"import numpy as np
-from teledra_synth import synth_note, mix_waves, fit_to_length, lowpass_filter, reverb, delay, make_seamless_loop, play_sound
+from teledra_synth import (
+    apply_automation, automation_curve, delay, lowpass_filter, make_seamless_loop,
+    mix_waves, play_sound, reverb, soft_limiter, stereo_pan, stereo_width, synth_note,
+)
 
 SR = 44100
-STYLE = "algorithmic court electronica"
+SEED = __SEED__
+np.random.seed(SEED)
+TITLE = "Fivefold Court Engine"
+STYLE = "retro adventure court score"
 BEAT = __BEAT__
+BPM = 60.0 / BEAT
+BEATS_PER_BAR = 4
 chords = __CHORDS__
 bass_notes = __BASS__
 lead_motif = __MOTIF__
-counter_motif = list(reversed(lead_motif))
-sections = ["intro", "body", "mutation", "coda", "afterglow"]
-bar_seconds = BEAT * 4
-total_bars = len(chords) * len(sections)
-total_seconds = total_bars * bar_seconds
-full_track = np.zeros(int(total_seconds * SR))
+KEY = "__TONAL_CENTER__ __MODE__".replace("_", " ")
+SECTION_NAMES = ["arrival", "statement", "development", "apex", "return"]
+SECTION_BARS = 8
+BARS = SECTION_BARS * len(SECTION_NAMES)
+BAR_SECONDS = BEAT * 4
+SECTION_SECONDS = SECTION_BARS * BAR_SECONDS
+TOTAL_SECONDS = BARS * BAR_SECONDS
+SAMPLES = int(TOTAL_SECONDS * SR)
+MASTER_GAIN = 6.5
 
-for section_idx, section_name in enumerate(sections):
-    section_start = section_idx * len(chords) * bar_seconds
-    section_gain = [0.46, 0.64, 0.86, 0.96, 0.72][section_idx]
-    pad_wave = "triangle" if section_idx in (0, 3, 4) else "__LEADWAVE__"
-    for i, chord in enumerate(chords):
-        bar_start = section_start + i * bar_seconds
-        for note in chord:
-            pad = synth_note(note, bar_seconds * 1.4, wave_type=pad_wave, attack=0.35, decay=0.12, sustain=0.62, release=0.7, volume=0.10 * section_gain)
-            pad = lowpass_filter(pad, cutoff=900.0 + 450.0 * section_idx)
-            full_track = mix_waves(full_track, pad, start_time=bar_start, volume_b=0.95)
-        for beat_idx in range(4):
-            bass_note = bass_notes[(i + section_idx) % len(bass_notes)]
-            bass = synth_note(bass_note, BEAT * 0.9, wave_type="sawtooth", attack=0.01, decay=0.05, sustain=0.55, release=0.14, volume=0.18 + 0.03 * section_idx)
-            if section_idx >= 2 and beat_idx % 2 == 1:
-                bass = delay(bass, delay_time=BEAT * 0.25, feedback=0.18, mix=0.18)
-            full_track = mix_waves(full_track, bass, start_time=bar_start + beat_idx * BEAT)
-
-for section_idx, motif in enumerate([lead_motif[:4], lead_motif, counter_motif, lead_motif[2:] + counter_motif[:4], counter_motif[2:] + lead_motif[:4]]):
-    section_start = section_idx * len(chords) * bar_seconds
-    section_end = section_start + len(chords) * bar_seconds
-    step = BEAT if section_idx == 0 else BEAT * 0.5
-    repeats = 2 if section_idx == 0 else 4
-    for j, note in enumerate(motif * repeats):
-        t = section_start + j * step
-        if t >= section_end:
-            break
-        voice = synth_note(note, step * 0.88, wave_type="__LEADWAVE__", attack=0.02, decay=0.06, sustain=0.7, release=0.16, volume=0.055 + 0.025 * section_idx)
-        voice = delay(voice, delay_time=BEAT / 2, feedback=0.28 + 0.04 * section_idx, mix=0.24)
-        full_track = mix_waves(full_track, voice, start_time=t)
-
-for step_idx in range(total_bars * 4):
-    t = step_idx * BEAT
-    if step_idx % 4 == 0:
-        kick = synth_note("C2", BEAT * 0.45, wave_type="sine", attack=0.002, decay=0.05, sustain=0.0, release=0.12, volume=0.26)
-        full_track = mix_waves(full_track, kick, start_time=t, volume_b=0.75)
-    if step_idx % 4 == 2:
-        snare = synth_note("D3", BEAT * 0.28, wave_type="white_noise", attack=0.002, decay=0.03, sustain=0.0, release=0.08, volume=0.075)
-        full_track = mix_waves(full_track, snare, start_time=t, volume_b=0.7)
-    hat = synth_note("C6", BEAT * 0.12, wave_type="white_noise", attack=0.001, decay=0.01, sustain=0.0, release=0.03, volume=0.025)
-    full_track = mix_waves(full_track, hat, start_time=t + BEAT * 0.5, volume_b=0.55)
-
-texture = synth_note(bass_notes[0], bar_seconds * 2.0, wave_type="pink_noise", attack=0.6, decay=0.2, sustain=0.5, release=0.9, volume=0.025)
-texture = lowpass_filter(texture, cutoff=620.0)
-texture = fit_to_length(texture, len(full_track), mode="loop")
-full_track = mix_waves(full_track, texture, start_time=0.0, volume_b=0.45)
-full_track = lowpass_filter(full_track, cutoff=__CUTOFF__)
-full_track = reverb(full_track, room_size=0.68, mix=0.24)
-full_track = fit_to_length(full_track, int(180.0 * SR), mode="loop")
-full_track = make_seamless_loop(full_track, crossfade_seconds=0.08, sr=SR)
-TELEDRA_LAYERS = {
-    "pad": fit_to_length(pad, len(full_track), mode="loop"),
-    "bass": fit_to_length(bass, len(full_track), mode="loop"),
-    "lead": fit_to_length(voice, len(full_track), mode="loop"),
-    "kick": fit_to_length(kick, len(full_track), mode="loop"),
-    "snare": fit_to_length(snare, len(full_track), mode="loop"),
-    "hat": fit_to_length(hat, len(full_track), mode="loop"),
-    "texture": fit_to_length(texture, len(full_track), mode="loop"),
+TELEDRA_SCORE = {
+    "title": TITLE,
+    "key": KEY,
+    "bpm": BPM,
+    "bars": BARS,
+    "motif": "an eight-note rising question transformed by fragmentation, reversal, register, and rhythmic displacement",
+    "sections": SECTION_NAMES,
+    "depth_roles": {
+        "foreground": ["lead"],
+        "midground": ["harmony", "counterline", "percussion"],
+        "background": ["bass", "texture"],
+    },
 }
+TELEDRA_AUTOMATION = {
+    "energy": [0.34, 0.56, 0.74, 0.96, 0.48],
+    "pad_cutoff_hz": [850, 1250, 1750, 2600, 1100],
+    "stereo_width": [0.72, 0.9, 1.08, 1.22, 0.82],
+    "master_gain": MASTER_GAIN,
+}
+TELEDRA_COMPOSER = {
+    "seed": SEED,
+    "style_profile": "retro_adventure",
+    "tonal_center": "__TONAL_CENTER__",
+    "mode": "__MODE__",
+    "progression_degrees": __DEGREES__,
+    "chord_voicings": chords,
+    "motif_notes": lead_motif,
+    "phrase_bars": 8,
+    "transformations": ["fragmentation", "call_and_response", "rhythmic_displacement", "register_return"],
+    "swing": 0.06,
+    "registers": {"bass": [1, 2], "harmony": [3, 4], "lead": [4, 6]},
+    "section_density": TELEDRA_AUTOMATION["energy"],
+    "intentional_tensions": [],
+    "tension_policy": "Diatonic color tones resolve by step or return to a stable chord tone before the loop cadence.",
+}
+
+layers = {
+    "bass": np.zeros(SAMPLES),
+    "harmony": np.zeros(SAMPLES),
+    "counterline": np.zeros(SAMPLES),
+    "lead": np.zeros(SAMPLES),
+    "kick": np.zeros(SAMPLES),
+    "percussion": np.zeros(SAMPLES),
+    "texture": np.zeros(SAMPLES),
+    "transitions": np.zeros(SAMPLES),
+}
+TELEDRA_EVENTS = []
+
+def record_event(kind, track, role, start_time, duration_seconds, velocity, pitch=None, motif="", transform=""):
+    start_time = max(0.0, float(start_time))
+    end_time = min(TOTAL_SECONDS, start_time + max(0.001, float(duration_seconds)))
+    start_beat = start_time / BEAT
+    section_idx = min(int(start_time / SECTION_SECONDS), len(SECTION_NAMES) - 1)
+    event = {
+        "kind": kind,
+        "track": track,
+        "role": role,
+        "start_beat": start_beat,
+        "duration_beats": max(0.001, (end_time - start_time) / BEAT),
+        "velocity": float(np.clip(velocity, 0.001, 1.0)),
+        "section": SECTION_NAMES[section_idx],
+        "motif": motif,
+        "transform": transform,
+    }
+    if pitch is not None:
+        event["pitch"] = pitch
+    TELEDRA_EVENTS.append(event)
+
+def place(layer_name, wave, start_time, level=1.0):
+    start = max(0, int(start_time * SR))
+    end = min(SAMPLES, start + len(wave))
+    if end > start:
+        layers[layer_name][start:end] += wave[:end - start] * level
+
+section_energy = TELEDRA_AUTOMATION["energy"]
+counter_motif = list(reversed(lead_motif))
+motif_forms = [
+    lead_motif[:4],
+    lead_motif,
+    lead_motif[2:] + lead_motif[:2],
+    counter_motif + lead_motif[:4],
+    [lead_motif[0], lead_motif[2], lead_motif[4], lead_motif[1]],
+]
+motif_event_transforms = [
+    "fragmentation", "prime", "rhythmic_displacement", "call_and_response", "register_return",
+]
+
+for section_idx, section_name in enumerate(SECTION_NAMES):
+    section_start = section_idx * SECTION_SECONDS
+    energy = section_energy[section_idx]
+    for bar in range(SECTION_BARS):
+        bar_start = section_start + bar * BAR_SECONDS
+        chord = chords[(bar + section_idx) % len(chords)]
+        pad_wave = "triangle" if section_idx in (0, 4) else "__LEADWAVE__"
+        for chord_note in chord:
+            pad = synth_note(
+                chord_note, BAR_SECONDS * 0.96, wave_type=pad_wave,
+                attack=0.22 + section_idx * 0.05, decay=0.12, sustain=0.62,
+                release=0.55, volume=0.055 * energy,
+            )
+            pad = lowpass_filter(pad, cutoff=TELEDRA_AUTOMATION["pad_cutoff_hz"][section_idx])
+            place("harmony", pad, bar_start)
+            record_event("note", "harmony", "harmony", bar_start, BAR_SECONDS * 0.96, energy, pitch=chord_note)
+
+        for beat_idx in range(4):
+            if section_idx == 0 and beat_idx in (1, 3):
+                continue
+            # Keep the bass root on the same harmonic clock as the chord.
+            # The old half-bar root changes created accidental clashes that
+            # were technically valid audio but read as harmonic mush.
+            bass_note = bass_notes[(bar + section_idx) % len(bass_notes)]
+            bass = synth_note(
+                bass_note, BEAT * 0.82, wave_type="sawtooth",
+                attack=0.008, decay=0.05, sustain=0.52, release=0.12,
+                volume=0.09 + 0.055 * energy,
+            )
+            bass_start = bar_start + beat_idx * BEAT
+            place("bass", lowpass_filter(bass, cutoff=680 + section_idx * 120), bass_start)
+            record_event("note", "bass", "bass", bass_start, BEAT * 0.82, 0.5 + 0.4 * energy, pitch=bass_note)
+
+        if section_idx > 0:
+            for beat_idx in range(4):
+                kick = synth_note(
+                    bass_notes[0], BEAT * 0.42, wave_type="sine",
+                    attack=0.002, decay=0.045, sustain=0.0, release=0.11,
+                    volume=0.16 + 0.08 * energy,
+                )
+                if beat_idx == 0 or (section_idx >= 2 and beat_idx == 2):
+                    kick_start = bar_start + beat_idx * BEAT
+                    place("kick", kick, kick_start)
+                    record_event("drum", "kick", "percussion", kick_start, BEAT * 0.09, 0.62 + 0.3 * energy)
+                if beat_idx in (1, 3):
+                    snare = synth_note(
+                        "D3", BEAT * 0.24, wave_type="white_noise",
+                        attack=0.002, decay=0.025, sustain=0.0, release=0.07,
+                        volume=0.045 + 0.035 * energy,
+                    )
+                    snare_start = bar_start + beat_idx * BEAT
+                    place("percussion", snare, snare_start)
+                    record_event("drum", "percussion", "percussion", snare_start, BEAT * 0.055, 0.44 + 0.3 * energy)
+                if section_idx >= 2 or beat_idx % 2 == 0:
+                    hat = synth_note(
+                        "C6", BEAT * 0.1, wave_type="white_noise",
+                        attack=0.001, decay=0.01, sustain=0.0, release=0.025,
+                        volume=0.012 + 0.016 * energy,
+                    )
+                    hat_start = bar_start + (beat_idx + 0.5) * BEAT
+                    place("percussion", hat, hat_start)
+                    record_event("drum", "percussion", "percussion", hat_start, BEAT * 0.03, 0.28 + 0.24 * energy)
+
+    motif = motif_forms[section_idx]
+    step = BEAT if section_idx == 0 else BEAT * (0.5 if section_idx in (2, 3) else 0.75)
+    phrase_start = section_start + (BAR_SECONDS * (2 if section_idx == 0 else 1))
+    phrase_end = section_start + SECTION_SECONDS
+    cursor = phrase_start
+    note_idx = 0
+    while cursor < phrase_end:
+        phrase_slot = note_idx % (len(motif) + 2)
+        note = motif[phrase_slot % len(motif)]
+        # Leave a two-step breath at the end of each phrase. Continuous lead
+        # notes were masking the harmony and making every section feel equal.
+        phrase_breath = phrase_slot >= len(motif)
+        if not phrase_breath and not (section_idx == 0 and note_idx % 3 == 1):
+            lead = synth_note(
+                note, step * 0.82, wave_type="__LEADWAVE__",
+                attack=0.018, decay=0.055, sustain=0.66, release=0.14,
+                volume=0.035 + 0.035 * energy,
+            )
+            if section_idx >= 2:
+                lead = delay(lead, delay_time=BEAT * 0.5, feedback=0.24, mix=0.18)
+            place("lead", lead, cursor)
+            record_event(
+                "note", "lead", "lead", cursor, step * 0.82, 0.58 + 0.32 * energy,
+                pitch=note, motif="fivefold_call", transform=motif_event_transforms[section_idx],
+            )
+        if section_idx in (2, 4) and note_idx % 8 == 2:
+            answer_note = counter_motif[note_idx % len(counter_motif)]
+            answer = synth_note(
+                answer_note, step * 1.4, wave_type="triangle",
+                attack=0.04, decay=0.08, sustain=0.55, release=0.28,
+                volume=0.024 + 0.018 * energy,
+            )
+            answer_start = cursor + step * 0.5
+            place("counterline", answer, answer_start)
+            record_event(
+                "note", "counterline", "motion", answer_start, step * 1.4, 0.36 + 0.28 * energy,
+                pitch=answer_note, motif="fivefold_call", transform="call_and_response",
+            )
+        cursor += step
+        note_idx += 1
+
+    texture = synth_note(
+        bass_notes[section_idx % len(bass_notes)], SECTION_SECONDS,
+        wave_type="pink_noise", attack=1.2, decay=0.2, sustain=0.42,
+        release=1.4, volume=0.012 + 0.009 * energy,
+    )
+    place("texture", lowpass_filter(texture, cutoff=420 + section_idx * 110), section_start)
+    record_event("fx", "texture", "texture", section_start, SECTION_SECONDS, 0.12 + 0.24 * energy)
+    if section_idx > 0:
+        transition = synth_note(
+            "C5", BEAT * 1.8, wave_type="white_noise",
+            attack=0.01, decay=0.08, sustain=0.25, release=0.7,
+            volume=0.025 + 0.012 * energy,
+        )
+        transition *= np.linspace(0.0, 1.0, len(transition))
+        transition_start = section_start - BEAT * 1.5
+        place("transitions", transition, transition_start)
+        record_event("fx", "transitions", "texture", transition_start, BEAT * 1.8, 0.25 + 0.28 * energy)
+
+layers["lead"] = delay(layers["lead"], delay_time=BEAT * 0.75, feedback=0.2, mix=0.14)
+layers["counterline"] = reverb(layers["counterline"], room_size=0.58, mix=0.2)
+layers["texture"] = reverb(layers["texture"], room_size=0.82, mix=0.34)
+layers["transitions"] = reverb(layers["transitions"], room_size=0.9, mix=0.38)
+
+pan = {
+    "bass": 0.0, "harmony": -0.16, "counterline": 0.34, "lead": -0.28,
+    "kick": 0.0, "percussion": 0.22, "texture": 0.46, "transitions": -0.52,
+}
+mix_level = {
+    "bass": 0.72, "harmony": 0.7, "counterline": 0.64, "lead": 0.78,
+    "kick": 0.78, "percussion": 0.62, "texture": 0.44, "transitions": 0.52,
+}
+full_track = np.zeros(SAMPLES)
+for layer_name, layer in layers.items():
+    full_track = mix_waves(full_track, stereo_pan(layer, pan[layer_name]), volume_b=mix_level[layer_name])
+
+energy_points = []
+for section_idx, energy in enumerate(section_energy):
+    energy_points.append((section_idx * SECTION_SECONDS, 0.58 + energy * 0.32))
+energy_points.append((TOTAL_SECONDS, 0.7))
+full_track = apply_automation(full_track, automation_curve(TOTAL_SECONDS, energy_points, sr=SR))
+full_track = lowpass_filter(full_track, cutoff=__CUTOFF__)
+full_track = reverb(full_track, room_size=0.58, mix=0.16)
+full_track = stereo_width(full_track, width=1.08)
+full_track *= MASTER_GAIN
+full_track = soft_limiter(full_track, drive=1.2, ceiling=0.90)
+full_track = make_seamless_loop(full_track, crossfade_seconds=0.1, sr=SR)
+
+TELEDRA_LAYERS = {name: layer for name, layer in layers.items()}
+TELEDRA_SECTIONS = {}
+for section_idx, section_name in enumerate(SECTION_NAMES):
+    start = int(section_idx * SECTION_SECONDS * SR)
+    end = int((section_idx + 1) * SECTION_SECONDS * SR)
+    TELEDRA_SECTIONS[section_name] = full_track[start:end]
+
 play_sound(full_track, loop=True)
 "#;
     template
+        .replace("__SEED__", &seed.to_string())
         .replace("__BEAT__", beat)
         .replace("__CHORDS__", chords)
         .replace("__BASS__", bass)
         .replace("__MOTIF__", motif)
+        .replace("__TONAL_CENTER__", tonal_center)
+        .replace("__MODE__", mode)
+        .replace("__DEGREES__", degrees)
         .replace("__LEADWAVE__", leadwave)
         .replace("__CUTOFF__", cutoff)
 }
@@ -5847,11 +6968,13 @@ if __name__ == "__main__":
 SEED = __SEED__
 random.seed(SEED)
 
-DRUMS = ["bd ~ sn ~", "bd*2 ~ sn ~", "bd ~ ~ sn", "bd sn ~ sn"]
-HATS = ["hh*2", "hh*4", "hh*3 ~", "~ hh*2"]
-BASSLINES = ["c2 eb2 g2 bb2", "a1 e2 g2 d2", "d2 a2 f2 c3", "g1 d2 bb2 f2"]
-HARMONIES = ["c4 eb4 g4 bb4", "a3 c4 e4 g4", "d3 f3 a3 c4", "g3 bb3 d4 f4"]
-LEADS = ["g5 eb5 c5 bb4 d5 eb5", "a4 c5 e5 g5 e5 c5", "f4 a4 c5 e5 d5 a4", "bb4 c5 d5 f5 g5 f5"]
+DRUMS = ["<bd ~ sd ~> bd [~ bd] sd ~", "<bd ~ ~ sd> bd [bd ~] sd ~"]
+HATS = ["<~ hh*4 ~ oh> hh*2 [hh hh] ~ cp", "<hh*2 hh*4 ~ oh> [~ hh] hh*2 ~ cp"]
+BASSLINES = ["<c2 ~ g1 c2> [eb2 ~] <bb1 g1> c2", "<a1 ~ e2 a1> [g2 ~] <d2 e2> a1", "<d2 ~ a1 d2> [f2 ~] <c2 a1> d2", "<g1 ~ d2 g1> [bb1 ~] <f2 d2> g1"]
+HARMONIES = ["<c3,eb3,g3 ab2,c3,eb3 bb2,d3,f3 g2,bb2,d3>", "<a3,c4,e4 g3,b3,d4 d3,f3,a3 e3,g3,b3>", "<d3,f3,a3 bb2,d3,f3 c3,e3,g3 a2,c3,e3>", "<g3,bb3,d4 eb3,g3,bb3 f3,a3,c4 d3,f3,a3>"]
+MOTIONS = ["<g4 ~ eb4 [f4 g4]> <c5 bb4> ~ <g4 f4>", "<e4 ~ g4 [a4 b4]> <d5 b4> ~ <a4 g4>", "<a4 ~ f4 [g4 a4]> <d5 c5> ~ <f4 e4>", "<d4 ~ f4 [g4 bb4]> <c5 bb4> ~ <a4 f4>"]
+LEADS = ["<~ c5 eb5 g5> [bb5 g5] ~ <f5 d5> c5", "<~ a4 c5 e5> [g5 e5] ~ <d5 b4> a4", "<~ d5 f5 a5> [c6 a5] ~ <g5 e5> d5", "<~ g4 bb4 d5> [f5 d5] ~ <c5 a4> g4"]
+AIR = ["<c6 ~ ~ g5> ~ <eb6 ~ d6 ~> ~", "<a5 ~ ~ e6> ~ <g5 ~ b5 ~> ~", "<d6 ~ ~ a5> ~ <f6 ~ e6 ~> ~", "<g5 ~ ~ d6> ~ <bb5 ~ a5 ~> ~"]
 WAVES = ["triangle", "sawtooth", "square", "sine"]
 
 
@@ -5859,16 +6982,21 @@ def smith():
     drum = random.choice(DRUMS)
     hat = random.choice(HATS)
     bass = random.choice(BASSLINES)
-    harmony = random.choice(HARMONIES)
-    lead = random.choice(LEADS)
+    index = BASSLINES.index(bass)
+    harmony = HARMONIES[index]
+    motion = MOTIONS[index]
+    lead = LEADS[index]
+    air = AIR[index]
     wave = random.choice(WAVES)
     return (
         "stack(\n"
-        '  s("' + drum + " " + hat + '").gain(0.5),\n'
-        '  s("~ ' + hat + ' oh ~").gain(0.18),\n'
-        '  note("' + bass + '").s("' + wave + '").gain(0.32).slow(1.5),\n'
-        '  note("' + harmony + '").s("sawtooth").gain(0.18).slow(2),\n'
-        '  note("' + lead + '").s("sine").gain(0.18).fast(1.25)\n'
+        '  s("' + drum + '").gain(0.46).pan(0).lpf(9000).room(0.08),\n'
+        '  s("' + hat + '").gain(0.18).pan(0.34).lpf(7200).delay(0.12).delaytime(0.18).delayfeedback(0.28),\n'
+        '  note("' + bass + '").s("' + wave + '").gain(0.26).pan(-0.08).lpf(780).attack(0.01).release(0.16).slow(2),\n'
+        '  note("' + harmony + '").s("triangle").gain(0.16).pan(0.12).lpf(1500).room(0.34).attack(0.28).release(0.9).slow(4),\n'
+        '  note("' + motion + '").s("sawtooth").gain(0.13).pan(-0.38).lpf(2400).delay(0.16).delaytime(0.26).delayfeedback(0.32).slow(2),\n'
+        '  note("' + lead + '").s("sine").gain(0.11).pan(0.42).lpf(4200).room(0.46).attack(0.04).release(0.42).slow(2),\n'
+        '  note("' + air + '").s("sine").gain(0.07).pan(0.58).lpf(6000).room(0.62).delay(0.22).delaytime(0.38).delayfeedback(0.36).slow(4)\n'
         ")"
     )
 
@@ -6248,6 +7376,12 @@ fn attempt_outreach_post(payload: &str) -> Option<String> {
 }
 
 fn default_python_music_code() -> String {
+    let seed = current_unix_timestamp().parse::<usize>().unwrap_or(0);
+    deterministic_python_music(seed)
+}
+
+#[allow(dead_code)]
+fn legacy_flat_python_music_code() -> String {
     r#"import numpy as np
 import time
 from teledra_synth import *
@@ -6376,7 +7510,7 @@ play_sound(full_track, loop=True)
 }
 
 fn validate_strudel_music_code(code: &str) -> Result<(), String> {
-    let cleaned = strip_fenced_code_block(code, "strudel");
+    let cleaned = normalize_strudel_music_code(code);
     let trimmed = cleaned.trim();
     if trimmed.len() < 120 {
         return Err(
@@ -6400,12 +7534,13 @@ fn validate_strudel_music_code(code: &str) -> Result<(), String> {
         "title:",
         "bars ",
         "bar ",
-        ".pan(",
-        ".lpf(",
-        ".room(",
-        ".delay(",
-        ".attack(",
-        ".release(",
+        "const ",
+        "let ",
+        "function ",
+        "=>",
+        ".fast(",
+        "cat(",
+        "seq(",
         "```",
         "[strudel_music:",
     ];
@@ -6423,9 +7558,35 @@ fn validate_strudel_music_code(code: &str) -> Result<(), String> {
     }
     let sample_layers = lower.matches("s(\"").count();
     let note_layers = lower.matches("note(\"").count();
-    if sample_layers + note_layers < 4 || note_layers < 3 {
+    if sample_layers + note_layers < 6 || note_layers < 4 || sample_layers < 2 {
         return Err(
-            "Strudel block is too thin; use at least four stack layers, including bass, harmony, and lead/counterline note layers."
+            "Strudel block is too thin; use at least six stack layers with two percussion/sample layers and four note layers for bass, harmony, motion, and lead/air."
+                .to_string(),
+        );
+    }
+    if !lower.contains('<') || !lower.contains('>') || !lower.contains('[') {
+        return Err(
+            "Strudel block needs multi-cycle <...> variation plus grouped rhythmic detail; a repeated single cycle is only a sketch."
+                .to_string(),
+        );
+    }
+    if !lower.contains(".gain(") {
+        return Err(
+            "Every Strudel arrangement must establish conservative layer gains.".to_string(),
+        );
+    }
+    let depth_families = [
+        lower.contains(".pan("),
+        lower.contains(".lpf("),
+        lower.contains(".room(") || lower.contains(".delay("),
+        lower.contains(".attack(") || lower.contains(".release("),
+    ]
+    .iter()
+    .filter(|enabled| **enabled)
+    .count();
+    if depth_families < 4 {
+        return Err(
+            "Strudel arrangement lacks depth control; use pan, filtering, room/delay, and envelope shaping across appropriate layers."
                 .to_string(),
         );
     }
@@ -6440,16 +7601,24 @@ fn validate_strudel_music_code(code: &str) -> Result<(), String> {
         return Err("Strudel block looks mostly numeric instead of musical.".to_string());
     }
 
-    let tmp_path = "D:\\Teledra\\strudel_app\\__validate_tmp.strudel";
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    let tmp_path = format!(
+        "D:\\Teledra\\strudel_app\\__validate_{}_{}.strudel",
+        std::process::id(),
+        nonce
+    );
     std::fs::create_dir_all("D:\\Teledra\\strudel_app")
         .map_err(|e| format!("Failed to prepare Strudel validation directory: {}", e))?;
-    std::fs::write(tmp_path, trimmed)
+    std::fs::write(&tmp_path, trimmed)
         .map_err(|e| format!("Failed to write Strudel validation file: {}", e))?;
 
     let mut cmd = Command::new("node");
     cmd.arg(".\\strudel_app\\app.mjs")
         .arg("validate")
-        .arg(tmp_path)
+        .arg(&tmp_path)
         .current_dir("D:\\Teledra")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -6465,25 +7634,142 @@ fn validate_strudel_music_code(code: &str) -> Result<(), String> {
                 let output = child
                     .wait_with_output()
                     .map_err(|e| format!("Failed to collect Strudel validation output: {}", e))?;
-                let _ = std::fs::remove_file(tmp_path);
-                if output.status.success() {
-                    return Ok(());
-                }
+                let _ = std::fs::remove_file(&tmp_path);
                 let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
                 let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                return Err(if stderr.is_empty() { stdout } else { stderr });
+                if !output.status.success() {
+                    return Err(if stderr.is_empty() { stdout } else { stderr });
+                }
+                let analysis_line = stdout
+                    .lines()
+                    .find_map(|line| line.trim().strip_prefix("ANALYSIS:"))
+                    .ok_or_else(|| {
+                        "Strudel validator did not return a depth analysis.".to_string()
+                    })?;
+                let analysis: serde_json::Value = serde_json::from_str(analysis_line)
+                    .map_err(|e| format!("Could not parse Strudel depth analysis: {}", e))?;
+                let event_count = analysis
+                    .get("eventCount")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
+                let note_events = analysis
+                    .get("noteEvents")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
+                let unique_notes = analysis
+                    .get("uniqueNotes")
+                    .and_then(|v| v.as_array())
+                    .map(|v| v.len())
+                    .unwrap_or(0);
+                let active_cycles = analysis
+                    .get("activeCycles")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
+                let cycle_shapes = analysis
+                    .get("distinctCycleSignatures")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
+                let controls = analysis
+                    .get("controls")
+                    .and_then(|v| v.as_array())
+                    .map(|v| v.len())
+                    .unwrap_or(0);
+                let scale_fit = analysis
+                    .get("bestScaleFit")
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(0.0);
+                let register_bands = analysis
+                    .get("registerBands")
+                    .and_then(|v| v.as_array())
+                    .map(|v| v.len())
+                    .unwrap_or(0);
+                let voice_rhythms = analysis
+                    .get("distinctVoiceRhythms")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
+                let breathing_room = analysis
+                    .get("breathingRoomFraction")
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(0.0);
+                let full_density = analysis
+                    .get("fullDensityFraction")
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(1.0);
+                let density_contrast = analysis
+                    .get("pitchedDensityContrast")
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(0.0);
+                let max_gain = analysis
+                    .get("maxIndividualGain")
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(1.0);
+                if event_count < 64 || note_events < 24 || unique_notes < 6 {
+                    return Err(format!(
+                        "Strudel arrangement is underdeveloped after execution (events={}, note_events={}, unique_notes={}); expand its phrases and voices.",
+                        event_count, note_events, unique_notes
+                    ));
+                }
+                if active_cycles < 8 || cycle_shapes < 2 {
+                    return Err(format!(
+                        "Strudel arrangement does not develop across eight cycles (active_cycles={}, distinct_cycle_shapes={}).",
+                        active_cycles, cycle_shapes
+                    ));
+                }
+                if controls < 6 {
+                    return Err(format!(
+                        "Strudel arrangement exposes only {} audible control types; shape gain, space, filtering, and articulation more deliberately.",
+                        controls
+                    ));
+                }
+                if scale_fit < 0.72 {
+                    return Err(format!(
+                        "Strudel pitch material lacks a coherent tonal center (best diatonic/mode fit={:.3}); use chromatic color as tension around a readable home, not random scatter.",
+                        scale_fit
+                    ));
+                }
+                if register_bands < 3 {
+                    return Err(format!(
+                        "Strudel voices occupy only {} register band(s); separate bass, harmonic body, and lead/air so they do not become one masked cluster.",
+                        register_bands
+                    ));
+                }
+                if voice_rhythms < 3 {
+                    return Err(format!(
+                        "Strudel voices expose only {} distinct onset pattern(s); give bass, harmony, and melody independent rhythmic jobs.",
+                        voice_rhythms
+                    ));
+                }
+                if breathing_room < 0.08 || full_density > 0.72 {
+                    return Err(format!(
+                        "Strudel arrangement leaves too little breathing room (breath={:.3}, every_voice_active={:.3}); add rests, dropouts, and focus handoffs.",
+                        breathing_room, full_density
+                    ));
+                }
+                if density_contrast < 1.15 {
+                    return Err(format!(
+                        "Strudel pitched density stays too flat across cycles (contrast={:.3}); reserve gestures and shape an audible arc.",
+                        density_contrast
+                    ));
+                }
+                if max_gain > 0.70 {
+                    return Err(format!(
+                        "A Strudel layer gain is too hot ({:.3}); rebalance the stack with authored headroom.",
+                        max_gain
+                    ));
+                }
+                return Ok(());
             }
             Ok(None) => {
                 if started.elapsed() > Duration::from_secs(8) {
                     let _ = child.kill();
                     let _ = child.wait();
-                    let _ = std::fs::remove_file(tmp_path);
+                    let _ = std::fs::remove_file(&tmp_path);
                     return Err("Strudel validation timed out after 8 seconds.".to_string());
                 }
                 std::thread::sleep(Duration::from_millis(80));
             }
             Err(e) => {
-                let _ = std::fs::remove_file(tmp_path);
+                let _ = std::fs::remove_file(&tmp_path);
                 return Err(format!("Strudel validator failed: {}", e));
             }
         }
@@ -6506,19 +7792,27 @@ fn validate_python_music_code(code: &str) -> Result<(), String> {
         return Err("Python music block must use NumPy arrays for synthesis.".to_string());
     }
 
-    let tmp_path = "D:\\Teledra\\__music_validate_tmp.py";
-    std::fs::write(tmp_path, code)
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    let tmp_path = format!(
+        "D:\\Teledra\\__music_validate_{}_{}.py",
+        std::process::id(),
+        nonce
+    );
+    std::fs::write(&tmp_path, code)
         .map_err(|e| format!("Failed to write validation file: {}", e))?;
 
     let mut cmd = Command::new("D:\\Teledra\\.venv\\Scripts\\python.exe");
-    cmd.arg("-m").arg("py_compile").arg(tmp_path);
+    cmd.arg("-m").arg("py_compile").arg(&tmp_path);
     hide_console(&mut cmd);
     let output = cmd
         .output()
         .map_err(|e| format!("Failed to run Python validation: {}", e))?;
 
     if !output.status.success() {
-        let _ = std::fs::remove_file(tmp_path);
+        let _ = std::fs::remove_file(&tmp_path);
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(stderr.trim().to_string());
     }
@@ -6527,9 +7821,118 @@ fn validate_python_music_code(code: &str) -> Result<(), String> {
     // helpers, missing .npy loads, mis-shaped arrays) only surface at runtime,
     // so actually EXECUTE the composition headlessly with playback stubbed and
     // require it to yield a finite, non-empty, non-silent wave before saving.
-    let smoke_result = run_music_smoketest(tmp_path);
-    let _ = std::fs::remove_file(tmp_path);
+    let smoke_result = run_music_smoketest(&tmp_path);
+    let _ = std::fs::remove_file(&tmp_path);
     smoke_result
+}
+
+fn recent_music_lessons_context(max_chars: usize) -> String {
+    let Ok(contents) = std::fs::read_to_string("knowledge/music_lessons.jsonl") else {
+        return String::new();
+    };
+    let lines: Vec<&str> = contents
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .collect();
+    let mut selected = lines.iter().rev().take(8).copied().collect::<Vec<_>>();
+    selected.reverse();
+    truncate_chars(&selected.join("\n"), max_chars)
+}
+
+fn local_file_context(path: &str, max_chars: usize) -> String {
+    std::fs::read_to_string(path)
+        .map(|contents| truncate_chars(contents.trim(), max_chars))
+        .unwrap_or_default()
+}
+
+async fn try_subconscious_python_music_repair(
+    brain_cell: Arc<RwLock<Brain>>,
+    failure: &str,
+    failing_code: &str,
+    source: &str,
+) -> Result<String, String> {
+    let lessons = recent_music_lessons_context(5000);
+    let synth_docs = local_file_context("teledra_synth.py", 12000);
+    let spec = format!(
+        "Repair a rejected Python music composition for Teledra.\n\
+         Source: {source}\n\
+         Failure report from validator/smoke-test:\n{failure}\n\n\
+         Hard requirements:\n\
+         - Return one complete Python file only.\n\
+         - Use NumPy arrays for synthesis.\n\
+         - Use the local teledra_synth helpers that actually exist in context.\n\
+         - Define a finite non-empty mono or frames-by-two stereo full_track.\n\
+         - Call play_sound(full_track, loop=True).\n\
+         - Keep normal pieces at least 32 seconds; ambient/soundscape/drone pieces at least 45 seconds.\n\
+         - Declare TITLE, STYLE, BPM, KEY, and BARS.\n\
+         - Declare a fixed SEED and seed every random/noise source; do not use time or wall-clock entropy.\n\
+         - Declare BEATS_PER_BAR and append factual beat-timed TELEDRA_EVENTS as every note, drum, and FX event is actually scheduled; each event must name its real layer track, stable role, section, duration, and velocity, plus pitch for notes.\n\
+         - Declare TELEDRA_COMPOSER with a supported style_profile, tonal center/mode, progression degrees, concrete chord voicings, motif notes, phrase length, transformations, swing, register plan, section density, and tension policy.\n\
+         - Declare TELEDRA_SCORE with at least four sections and foreground/midground/background depth_roles.\n\
+         - Declare TELEDRA_AUTOMATION with at least three movements that the code actually applies.\n\
+         - Expose at least five real full-length aligned buffers in TELEDRA_LAYERS.\n\
+         - Expose at least four real arranged slices in TELEDRA_SECTIONS.\n\
+         - Preserve contrast between sections, mix with headroom, and make the loop seam continuous.\n\
+         - Avoid imports or files that are not shown in context.\n\
+         - No markdown, no explanation, no prose.",
+    );
+    let context = format!(
+        "RECENT VERIFIER LESSONS:\n{}\n\nTELEDRA_SYNTH API CONTEXT:\n{}\n\nFAILING CODE:\n{}",
+        if lessons.trim().is_empty() {
+            "(none yet)"
+        } else {
+            lessons.trim()
+        },
+        synth_docs,
+        failing_code
+    );
+
+    let repaired = {
+        let brain = brain_cell.read().await.clone();
+        brain.subconscious_code(&spec, &context).await?
+    };
+    let repaired = repaired.trim().to_string();
+    if repaired.len() < 200 {
+        return Err("subconscious returned too little code".to_string());
+    }
+    validate_python_music_code(&repaired)?;
+    Ok(repaired)
+}
+
+async fn try_subconscious_strudel_music_repair(
+    brain_cell: Arc<RwLock<Brain>>,
+    failure: &str,
+    failing_code: &str,
+    source: &str,
+) -> Result<String, String> {
+    let skill = local_file_context("knowledge/teledra_strudel_skill.md", 7000);
+    let reference = local_file_context("strudel_app/depth_fixture.strudel", 7000);
+    let spec = format!(
+        "Repair a rejected local Strudel composition for Teledra.\n\
+         Source: {source}\n\
+         Validator failure:\n{failure}\n\n\
+         Return ONLY one complete stack(...) expression.\n\
+         It must contain at least two s(\"...\") percussion layers and at least four note(\"...\") layers.\n\
+         It must develop across eight cycles with <...>, groups, rests, chords, and density contrast.\n\
+         Use numeric gain, pan, slow, lpf, room/delay, attack, and release controls.\n\
+         Use slow(0.5) to accelerate and delay feedback below 0.85.\n\
+         Never use variables, functions, cat, seq, fast, parameter strings, $:, $::, comments, markdown, or prose.\n\
+         Preserve the draft's musical intent when recoverable; use the reference only as a syntax/quality scaffold."
+    );
+    let context = format!(
+        "LOCAL SHARED CONTRACT:\n{}\n\nKNOWN-GOOD DEPTH REFERENCE:\n{}\n\nREJECTED DRAFT:\n{}",
+        skill, reference, failing_code
+    );
+    let repaired = {
+        let brain = brain_cell.read().await.clone();
+        brain.subconscious_code(&spec, &context).await?
+    };
+    let repaired = normalize_strudel_music_code(&repaired);
+    if repaired.len() < 400 {
+        return Err("subconscious returned too little Strudel code".to_string());
+    }
+    validate_strudel_music_code(&repaired)?;
+    Ok(repaired)
 }
 
 /// Runs tools/music_smoketest.py against a candidate composition. Returns Ok
@@ -6618,8 +8021,101 @@ fn python_tool_process_running(script_path: &str) -> bool {
     exact_tool_process_running(script_path, &["python.exe", "pythonw.exe"])
 }
 
-fn strudel_tool_process_running() -> bool {
-    exact_tool_process_running("localstrudel.StrudelDesktop", &["java.exe", "javaw.exe"])
+const LOCAL_STRUDEL_APP_PATH: &str = "D:\\Teledra\\strudel_app\\app.mjs";
+const LOCAL_STRUDEL_PLAYER_PATH: &str = "D:\\Teledra\\strudel_app\\player.py";
+const LOCAL_STRUDEL_PYTHON_PATH: &str = "D:\\Teledra\\.venv\\Scripts\\python.exe";
+const LEGACY_STRUDEL_DIR: &str = "C:\\Users\\Kaged\\Documents\\Projects\\Tools\\Strudel";
+const LEGACY_STRUDEL_RUNNER: &str =
+    "C:\\Users\\Kaged\\Documents\\Projects\\Tools\\Strudel\\run.bat";
+const STRUDEL_PROCESS_MARKERS: &[&str] = &[
+    "strudel_app\\app.mjs play",
+    "strudel_app/app.mjs play",
+    "D:\\Teledra\\strudel_app\\player.py",
+    "D:/Teledra/strudel_app/player.py",
+    "localstrudel.StrudelDesktop",
+    "strudel_app\\current.strudel",
+    "strudel_app/current.strudel",
+];
+const STRUDEL_PROCESS_NAMES: &[&str] = &[
+    "node.exe",
+    "python.exe",
+    "pythonw.exe",
+    "java.exe",
+    "javaw.exe",
+    "cmd.exe",
+];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StrudelLaunchMode {
+    CyberneticSynthesizer,
+    LegacyJavaSketchpad,
+}
+
+impl StrudelLaunchMode {
+    fn label(self) -> &'static str {
+        match self {
+            Self::CyberneticSynthesizer => "Court Cybernetic Synthesizer",
+            Self::LegacyJavaSketchpad => "legacy Java Strudel Sketchpad",
+        }
+    }
+}
+
+fn strudel_launch_order(
+    cybernetic_synth_available: bool,
+    legacy_java_available: bool,
+) -> Result<Vec<StrudelLaunchMode>, String> {
+    let mut order = Vec::new();
+    if cybernetic_synth_available {
+        order.push(StrudelLaunchMode::CyberneticSynthesizer);
+    }
+    if legacy_java_available {
+        order.push(StrudelLaunchMode::LegacyJavaSketchpad);
+    }
+    if order.is_empty() {
+        Err(
+            "No Strudel playback surface is installed: the local Cybernetic Synthesizer and legacy Java Sketchpad are both unavailable."
+                .to_string(),
+        )
+    } else {
+        Ok(order)
+    }
+}
+
+fn build_strudel_command(mode: StrudelLaunchMode) -> Command {
+    let mut command = match mode {
+        StrudelLaunchMode::CyberneticSynthesizer => {
+            let mut command = Command::new("node.exe");
+            // Force Windows default routing on code level so the native synth follows
+            // the same audio channel/bus the user has selected in Windows Sound / RØDE UNIFY.
+            // This makes panned instruments and all layers route consistently with default audio.
+            // Also anchor the Tk window (small) to bottom-right so it doesn't hide Fractus.
+            command
+                .env("TELEDRA_AUDIO_DEVICE", "default")
+                .env("TELEDRA_AUDIO_HOSTAPI", "MME")
+                .env("TELEDRA_WINDOW_GEOMETRY", "980x400+50+700")
+                .arg(LOCAL_STRUDEL_APP_PATH)
+                .arg("play")
+                .arg("8")
+                .current_dir("D:\\Teledra");
+            command
+        }
+        StrudelLaunchMode::LegacyJavaSketchpad => {
+            let mut command = Command::new("cmd.exe");
+            command
+                .arg("/C")
+                .arg("run.bat")
+                .arg("D:\\Teledra\\strudel_app\\current.strudel")
+                .current_dir(LEGACY_STRUDEL_DIR);
+            command
+        }
+    };
+    command.stdout(Stdio::null()).stderr(Stdio::null());
+    hide_console(&mut command);
+    command
+}
+
+fn stop_strudel_tool_processes() -> usize {
+    stop_tool_processes(STRUDEL_PROCESS_MARKERS, STRUDEL_PROCESS_NAMES)
 }
 
 fn stop_tool_processes(markers: &[&str], allowed_process_names: &[&str]) -> usize {
@@ -6675,12 +8171,49 @@ fn stop_tool_processes(markers: &[&str], allowed_process_names: &[&str]) -> usiz
         .unwrap_or(0)
 }
 
+fn publish_fractus_payload(payload: &serde_json::Value) -> Result<(), String> {
+    let encoded = serde_json::to_vec(payload)
+        .map_err(|error| format!("Failed to encode Fractus command: {error}"))?;
+    let mut command = Command::new("D:\\Teledra\\.venv\\Scripts\\python.exe");
+    command
+        .arg("-c")
+        .arg("import json,sys; from fractus_protocol import write_command_atomic; write_command_atomic(json.load(sys.stdin))")
+        .current_dir("D:\\Teledra\\Fractus")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    hide_console(&mut command);
+    let mut child = command
+        .spawn()
+        .map_err(|error| format!("Failed to start Fractus command validator: {error}"))?;
+    child
+        .stdin
+        .take()
+        .ok_or_else(|| "Fractus command validator stdin was unavailable".to_string())?
+        .write_all(&encoded)
+        .map_err(|error| format!("Failed to send Fractus command: {error}"))?;
+    let output = child
+        .wait_with_output()
+        .map_err(|error| format!("Fractus command validator failed: {error}"))?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        let stderr = truncate_clean(&String::from_utf8_lossy(&output.stderr), 1_200);
+        Err(if stderr.is_empty() {
+            "Fractus command was rejected without a diagnostic".to_string()
+        } else {
+            format!("Fractus command rejected: {stderr}")
+        })
+    }
+}
+
 fn write_fractus_command(args: &[String]) -> Result<(), String> {
     let mut fractal_type = "mandala".to_string();
     let mut iterations = "180".to_string();
     let mut palette = "purple_haze".to_string();
     let mut c_real = "-0.7".to_string();
     let mut c_imag = "0.27015".to_string();
+    let mut seed = "1".to_string();
 
     let mut i = 0;
     while i + 1 < args.len() {
@@ -6690,20 +8223,22 @@ fn write_fractus_command(args: &[String]) -> Result<(), String> {
             "--palette" => palette = args[i + 1].clone(),
             "--c-real" => c_real = args[i + 1].clone(),
             "--c-imag" => c_imag = args[i + 1].clone(),
+            "--seed" => seed = args[i + 1].clone(),
             _ => {}
         }
         i += 2;
     }
 
-    let payload = format!(
-        "{{\n  \"type\": \"{}\",\n  \"iterations\": {},\n  \"palette\": \"{}\",\n  \"c_real\": {},\n  \"c_imag\": {}\n}}\n",
-        fractal_type, iterations, palette, c_real, c_imag
-    );
-
-    std::fs::create_dir_all("D:\\Teledra\\Fractus")
-        .map_err(|e| format!("Failed to prepare Fractus command directory: {}", e))?;
-    std::fs::write("D:\\Teledra\\Fractus\\fractus_command.json", payload)
-        .map_err(|e| format!("Failed to write Fractus command file: {}", e))
+    let payload = serde_json::json!({
+        "schema_version": 1,
+        "type": fractal_type,
+        "iterations": iterations.parse::<u32>().map_err(|_| "invalid iteration payload")?,
+        "palette": palette,
+        "c_real": c_real.parse::<f64>().map_err(|_| "invalid c-real payload")?,
+        "c_imag": c_imag.parse::<f64>().map_err(|_| "invalid c-imag payload")?,
+        "seed": seed.parse::<u64>().map_err(|_| "invalid seed payload")?
+    });
+    publish_fractus_payload(&payload)
 }
 
 fn launch_strudel_editor(
@@ -6722,51 +8257,43 @@ fn launch_strudel_editor(
         .lock()
         .map_err(|_| "Could not access Strudel editor process lock.".to_string())?;
 
-    if let Some(ref mut child) = *lock {
-        match child.try_wait() {
-            Ok(None) => {
+    // The native player renders current.strudel once; it does not hot-reload.
+    // Always replace the previous playback process so a new court score is audible.
+    if let Some(mut child) = lock.take() {
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+    let _ = stop_strudel_tool_processes();
+
+    let cybernetic_synth_available = Path::new(LOCAL_STRUDEL_APP_PATH).is_file()
+        && Path::new(LOCAL_STRUDEL_PLAYER_PATH).is_file()
+        && Path::new(LOCAL_STRUDEL_PYTHON_PATH).is_file();
+    let legacy_java_available = Path::new(LEGACY_STRUDEL_RUNNER).is_file();
+    let launch_order =
+        strudel_launch_order(cybernetic_synth_available, legacy_java_available)?;
+    let mut failures = Vec::new();
+
+    for mode in launch_order {
+        match build_strudel_command(mode).spawn() {
+            Ok(child) => {
+                *lock = Some(child);
                 return Ok(format!(
-                    "{}Updated current.strudel; Local Strudel Sketchpad is already running and will reload the pattern.",
+                    "{}Launched {} with the validated eight-cycle pattern from strudel_app/current.strudel.",
                     if stopped_python > 0 {
                         "Stopped Python Music Editor so Strudel is the single active music surface. "
                     } else {
                         ""
-                    }
+                    },
+                    mode.label()
                 ));
             }
-            _ => {
-                *lock = None;
-            }
+            Err(error) => failures.push(format!("{}: {}", mode.label(), error)),
         }
     }
 
-    if strudel_tool_process_running() {
-        return Ok(format!(
-            "{}Updated current.strudel; existing Local Strudel Sketchpad window detected and will reload the pattern.",
-            if stopped_python > 0 {
-                "Stopped Python Music Editor so Strudel is the single active music surface. "
-            } else {
-                ""
-            }
-        ));
-    }
-
-    let child = Command::new("cmd")
-        .arg("/C")
-        .arg("run.bat")
-        .arg("D:\\Teledra\\strudel_app\\current.strudel")
-        .current_dir("C:\\Users\\Kaged\\Documents\\Projects\\Tools\\Strudel")
-        .spawn()
-        .map_err(|e| format!("Failed to launch local Strudel Sketchpad: {}", e))?;
-
-    *lock = Some(child);
-    Ok(format!(
-        "{}Launching local Strudel Sketchpad with strudel_app/current.strudel...",
-        if stopped_python > 0 {
-            "Stopped Python Music Editor so Strudel is the single active music surface. "
-        } else {
-            ""
-        }
+    Err(format!(
+        "Failed to launch every available Strudel playback surface: {}",
+        failures.join("; ")
     ))
 }
 
@@ -6774,15 +8301,7 @@ fn launch_python_music_editor(
     active_music_process: &Arc<std::sync::Mutex<Option<std::process::Child>>>,
 ) -> Result<String, String> {
     set_last_creative_artifact("music", "music.py");
-    let stopped_strudel = stop_tool_processes(
-        &[
-            "localstrudel.StrudelDesktop",
-            "strudel_app\\current.strudel",
-            "strudel_app/current.strudel",
-            "Strudel",
-        ],
-        &["java.exe", "javaw.exe"],
-    );
+    let stopped_strudel = stop_strudel_tool_processes();
     let mut lock = active_music_process
         .lock()
         .map_err(|_| "Could not access Python music editor process lock.".to_string())?;
@@ -6819,6 +8338,9 @@ fn launch_python_music_editor(
     let mut cmd = Command::new("D:\\Teledra\\.venv\\Scripts\\python.exe");
     cmd.arg("D:\\Teledra\\python_music_editor.py")
         .arg("--run")
+        .arg("--x").arg("50")
+        .arg("--y").arg("50")
+        .arg("--geometry").arg("900x600+50+50")  // music stays left of Fractus
         .current_dir("D:\\Teledra")
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
@@ -6894,17 +8416,42 @@ fn parse_fractus_args(spec: &str) -> Result<Vec<String>, String> {
             "--type" => {
                 let normalized = value.to_lowercase().replace('-', "_");
                 let allowed = [
+                    "barnsley_fern",
                     "mandelbrot",
+                    "multibrot",
                     "julia",
                     "burning_ship",
                     "tricorn",
                     "newton",
                     "mandala",
+                    "lotus_mandala",
+                    "star_mandala",
+                    "flower_of_life",
+                    "radial_weave",
+                    "kaleidoscope",
+                    "phyllotaxis",
                     "woven_web",
                     "guilloche",
                     "lissajous",
                     "moire",
                     "orbital_lace",
+                    "spirograph",
+                    "harmonograph",
+                    "rose_curve",
+                    "string_art",
+                    "sierpinski",
+                    "koch_snowflake",
+                    "dragon_curve",
+                    "fractal_tree",
+                    "l_system",
+                    "truchet",
+                    "hex_weave",
+                    "op_art",
+                    "cellular_automata",
+                    "reaction_diffusion",
+                    "flow_field",
+                    "strange_attractor",
+                    "particles",
                 ];
                 if !allowed.contains(&normalized.as_str()) {
                     return Err(format!("Unsupported Fractus type '{}'.", value));
@@ -6924,7 +8471,19 @@ fn parse_fractus_args(spec: &str) -> Result<Vec<String>, String> {
             }
             "--palette" => {
                 let normalized = value.to_lowercase().replace('-', "_");
-                let allowed = ["purple_haze", "electric_cyan", "neon_sunset", "emerald"];
+                let allowed = [
+                    "amethyst",
+                    "electric_cyan",
+                    "emerald",
+                    "ice_fire",
+                    "monochrome",
+                    "neon_sunset",
+                    "pastel",
+                    "purple_haze",
+                    "rainbow",
+                    "solar_gold",
+                    "twilight",
+                ];
                 if !allowed.contains(&normalized.as_str()) {
                     return Err(format!("Unsupported Fractus palette '{}'.", value));
                 }
@@ -6941,6 +8500,13 @@ fn parse_fractus_args(spec: &str) -> Result<Vec<String>, String> {
                 args.push(flag.to_string());
                 args.push(parsed.to_string());
             }
+            "--seed" => {
+                let parsed: u64 = value
+                    .parse()
+                    .map_err(|_| "Fractus seed must be an unsigned integer.".to_string())?;
+                args.push("--seed".to_string());
+                args.push(parsed.to_string());
+            }
             _ => return Err(format!("Unsupported Fractus argument '{}'.", flag)),
         }
 
@@ -6955,6 +8521,9 @@ fn parse_fractus_args(spec: &str) -> Result<Vec<String>, String> {
     }
     if !args.iter().any(|arg| arg == "--palette") {
         args.extend(["--palette".to_string(), "purple_haze".to_string()]);
+    }
+    if !args.iter().any(|arg| arg == "--seed") {
+        args.extend(["--seed".to_string(), variety_seed().to_string()]);
     }
 
     Ok(args)
@@ -6996,6 +8565,10 @@ fn launch_fractus_art(
     let mut command = Command::new("D:\\Teledra\\.venv\\Scripts\\python.exe");
     command
         .arg("D:\\Teledra\\Fractus\\fractus_gui.py")
+        .arg("--x").arg("1000")
+        .arg("--y").arg("50")
+        .arg("--width").arg("900")
+        .arg("--height").arg("650")
         .current_dir("D:\\Teledra")
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
@@ -7013,6 +8586,135 @@ fn launch_fractus_art(
         "Fractus launched with Artist parameters: {}",
         args.join(" ")
     ))
+}
+
+fn launch_fractus_live_art(
+    script: &str,
+    source: &str,
+    active_fractus_process: &Arc<std::sync::Mutex<Option<std::process::Child>>>,
+) -> Result<String, String> {
+    let script = script.trim();
+    if script.len() < 40 || script.len() > 80_000 {
+        return Err("Fractus live code must be between 40 and 80,000 bytes.".to_string());
+    }
+    let timestamp = mission::current_timestamp_ms();
+    let command_id = format!("fractus-{}-{}", timestamp, short_content_hash(script));
+    let output_name = format!("{}.png", command_id);
+    let payload = serde_json::json!({
+        "schema_version": 2,
+        "command_id": command_id,
+        "sequence": timestamp,
+        "action": "apply",
+        "source": safe_label(source),
+        "script": script,
+        "output": {
+            "persist": true,
+            "path": output_name
+        }
+    });
+
+    // Validation happens inside the same strict parser used by the GUI, then
+    // Python publishes with os.replace so the watcher never consumes a partial
+    // command file.
+    publish_fractus_payload(&payload)?;
+    set_last_creative_artifact("fractus_live", &format!("command_id={command_id}"));
+
+    let mut lock = active_fractus_process
+        .lock()
+        .map_err(|_| "Could not access Fractus process lock.".to_string())?;
+    let already_running = match lock.as_mut() {
+        Some(child) => matches!(child.try_wait(), Ok(None)),
+        None => false,
+    } || python_tool_process_running("D:\\Teledra\\Fractus\\fractus_gui.py");
+    if already_running {
+        let status = wait_for_fractus_status(&command_id, Duration::from_secs(2))?;
+        return Ok(format!("Fractus v2 command {}: {}", command_id, status));
+    }
+    *lock = None;
+
+    let script_path = format!("D:\\Teledra\\Fractus\\output\\{}.fract", command_id);
+    std::fs::create_dir_all("D:\\Teledra\\Fractus\\output")
+        .map_err(|error| format!("Failed to prepare Fractus output: {error}"))?;
+    std::fs::write(&script_path, script)
+        .map_err(|error| format!("Failed to preserve Fractus live code: {error}"))?;
+    let mut command = Command::new("D:\\Teledra\\.venv\\Scripts\\python.exe");
+    command
+        .arg("D:\\Teledra\\Fractus\\fractus_gui.py")
+        .arg("--script")
+        .arg(&script_path)
+        .arg("--output")
+        .arg(format!("D:\\Teledra\\Fractus\\output\\{}", output_name))
+        .arg("--play")
+        .arg("--x").arg("1000")
+        .arg("--y").arg("50")
+        .arg("--width").arg("900")
+        .arg("--height").arg("650")
+        .current_dir("D:\\Teledra")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    hide_console(&mut command);
+    let child = command
+        .spawn()
+        .map_err(|error| format!("Failed to launch Fractus v2: {error}"))?;
+    *lock = Some(child);
+    // The studio captures the current mailbox token during construction. A
+    // second atomic publish after the native window initializes guarantees an
+    // acknowledgement for first launch as well as later live edits.
+    std::thread::sleep(Duration::from_millis(450));
+    publish_fractus_payload(&payload)?;
+    let status = wait_for_fractus_status(&command_id, Duration::from_secs(2))?;
+    Ok(format!(
+        "Fractus v2 launched with live-code command {}: {}",
+        command_id, status
+    ))
+}
+
+fn wait_for_fractus_status(command_id: &str, timeout: Duration) -> Result<String, String> {
+    let started = std::time::Instant::now();
+    let mut last_state = "queued; awaiting renderer acknowledgement".to_string();
+    while started.elapsed() < timeout {
+        if let Ok(raw) = std::fs::read_to_string("D:\\Teledra\\Fractus\\fractus_status.json") {
+            if let Ok(status) = serde_json::from_str::<serde_json::Value>(&raw) {
+                if status.get("command_id").and_then(|value| value.as_str()) == Some(command_id) {
+                    let state = status
+                        .get("state")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or("unknown");
+                    let detail = status
+                        .get("detail")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or("");
+                    if state == "rejected" {
+                        return Err(format!(
+                            "Fractus renderer rejected command {}: {}",
+                            command_id, detail
+                        ));
+                    }
+                    if state == "completed" {
+                        let render_hash = status
+                            .get("render_hash")
+                            .and_then(|value| value.as_str())
+                            .unwrap_or("unreported");
+                        let output = status
+                            .get("output_path")
+                            .and_then(|value| value.as_str())
+                            .unwrap_or("preview only");
+                        return Ok(format!(
+                            "completed and verified (render {}, output {})",
+                            render_hash, output
+                        ));
+                    }
+                    last_state = if detail.is_empty() {
+                        state.to_string()
+                    } else {
+                        format!("{} ({})", state, detail)
+                    };
+                }
+            }
+        }
+        std::thread::sleep(Duration::from_millis(80));
+    }
+    Ok(last_state)
 }
 
 fn run_phase_a_self_test() -> Result<serde_json::Value, String> {
@@ -7040,10 +8742,37 @@ fn run_phase_a_self_test() -> Result<serde_json::Value, String> {
             moments.push(summary);
         }
         let context = taste_desire_prompt_context();
-        if !context.contains("dungeon synth")
-            || !context.contains("build an atmospheric pixel-world score [persistent]")
-        {
-            return Err(format!("taste/desire continuity failed: {}", context));
+        let memory = load_taste_desire_memory();
+        let retained_like = memory
+            .get("likes")
+            .and_then(serde_json::Value::as_array)
+            .into_iter()
+            .flatten()
+            .any(|entry| {
+                entry.get("subject").and_then(serde_json::Value::as_str) == Some("dungeon synth")
+            });
+        let promoted_desire = memory
+            .get("desires")
+            .and_then(serde_json::Value::as_array)
+            .into_iter()
+            .flatten()
+            .find(|entry| {
+                entry.get("want").and_then(serde_json::Value::as_str)
+                    == Some("build an atmospheric pixel-world score")
+            })
+            .is_some_and(|entry| {
+                entry.get("kind").and_then(serde_json::Value::as_str) == Some("persistent")
+                    && entry
+                        .get("recurrence")
+                        .and_then(serde_json::Value::as_u64)
+                        .unwrap_or(0)
+                        >= DESIRE_PROMOTE_AFTER
+            });
+        if !retained_like || !promoted_desire {
+            return Err(format!(
+                "taste/desire continuity failed (like={}, promoted_desire={}): {}",
+                retained_like, promoted_desire, context
+            ));
         }
         validate_python_music_code(&default_python_music_code())?;
         let verify = "default generated composition passed strict verify+learn loop";
@@ -7071,7 +8800,18 @@ fn run_phase_a_self_test() -> Result<serde_json::Value, String> {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Always run from the project root so all relative paths resolve correctly,
     // regardless of whether the binary is launched from Explorer, a shortcut, or a terminal.
-    let _ = std::env::set_current_dir("D:\\Teledra");
+    let root = "D:\\Teledra";
+    if std::env::set_current_dir(root).is_ok() {
+        println!("[startup] CWD set to {}", root);
+    } else {
+        // Fallback attempt using exe location (handles running target/release/teledra.exe directly)
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(dir) = exe.parent().and_then(|p| if p.ends_with("release") || p.ends_with("debug") { p.parent().and_then(|pp| pp.parent()) } else { Some(p) }) {
+                let _ = std::env::set_current_dir(dir);
+            }
+        }
+        println!("[startup] CWD may not be project root; using absolute paths for key files like shared_stories.");
+    }
 
     if std::env::args().any(|arg| arg == "--phase-a-self-test") {
         match run_phase_a_self_test() {
@@ -7103,15 +8843,67 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut somatic = SomaticBridge::new();
     let mut voice = VoiceEngine::new("energetic");
     let brain = Brain::new();
+    // Helpful when you say "I'm using qwen2.5 from a desktop shortcut"
+    let config_path = std::env::var("TELEDRA_CONFIG").unwrap_or_else(|_| "config.json".to_string());
+    println!("[startup] Brain config file: {} (Ollama/local qwen2.5 or llama etc. expected for NightDesk)", config_path);
+    let mission_store = MissionStore::new(
+        "knowledge/active_mission.json",
+        "knowledge/mission_lifecycle.jsonl",
+    );
+    let (mut active_mission, mission_recovery_note) = if mission_store.snapshot_path().exists() {
+        match mission_store.load_and_recover() {
+            Ok((mission, report)) => {
+                let note = if report.requeued.is_empty() && report.terminal.is_empty() {
+                    format!(
+                        "Recovered mission '{}' with no interrupted tasks.",
+                        mission.id
+                    )
+                } else {
+                    format!(
+                        "Recovered mission '{}': requeued [{}], terminal [{}].",
+                        mission.id,
+                        report.requeued.join(", "),
+                        report.terminal.join(", ")
+                    )
+                };
+                (Some(mission), Some(note))
+            }
+            Err(error) => (
+                None,
+                Some(format!("Mission recovery failed safely: {}", error)),
+            ),
+        }
+    } else {
+        (None, None)
+    };
     let mut current_mode = ForceMode::Normal;
     let mut babble_think_in_progress = false;
     let mut study_in_progress = false;
     let mut stream_chat_queue: std::collections::VecDeque<(String, String)> =
         std::collections::VecDeque::new();
-    let mut general_speech_queue: std::collections::VecDeque<(CourtRole, String, ForceMode, bool)> =
+    let mut general_speech_queue: std::collections::VecDeque<(
+        CourtRole,
+        String,
+        ForceMode,
+        String,
+        bool,
+    )> = std::collections::VecDeque::new();
+    let mut court_delegations: std::collections::VecDeque<CourtDelegation> =
         std::collections::VecDeque::new();
-    let mut court_delegations: std::collections::VecDeque<(CourtRole, String)> =
-        std::collections::VecDeque::new();
+    let mut active_mission_task: Option<(String, CourtRole)> = None;
+    if let Some(mission) = active_mission.as_ref() {
+        for task_id in mission.ready_task_ids() {
+            if let Some(task) = mission.task(&task_id) {
+                if let Some(role) = role_from_name(&task.role) {
+                    court_delegations.push_back(CourtDelegation {
+                        role,
+                        instruction: task.objective.clone(),
+                        mission_task_id: Some(task.id.clone()),
+                    });
+                }
+            }
+        }
+    }
     let mut is_court_sequence_running = false;
     // Churn brake: after a sprint produces no artifact, skip the next few
     // study-triggered sprints instead of looping sprint->fail->study->sprint.
@@ -7138,6 +8930,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let active_music_process: Arc<std::sync::Mutex<Option<std::process::Child>>> =
         Arc::new(std::sync::Mutex::new(None));
     let active_art_process: Arc<std::sync::Mutex<Option<std::process::Child>>> =
+        Arc::new(std::sync::Mutex::new(None));
+    let active_fractus_process: Arc<std::sync::Mutex<Option<std::process::Child>>> =
         Arc::new(std::sync::Mutex::new(None));
     let active_gui_process: Arc<std::sync::Mutex<Option<std::process::Child>>> =
         Arc::new(std::sync::Mutex::new(None));
@@ -7193,7 +8987,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut chat_history: Vec<(String, String)> = vec![
         ("System".to_string(), "Welcome to the Teledra Cybernetic Interface. Press Esc to exit.".to_string()),
-        ("System".to_string(), "Commands: /test | /simchat <line> | /testtick | /testmusic | /nightdesk | /study | /innovate | /wizard | /music | /pymusic | /reflect | /diplomat | /proposals | /approve <id> (or 'all') | /reject <id> | /workshop | /sketchpad | /fractus | /art | /lock <topic> | /unlock | /work | /links".to_string()),
+        ("System".to_string(), "Commands: /mission | /missioncancel | /dashboard | /test | /simchat <line> | /testtick | /testmusic | /nightdesk | /study | /innovate | /wizard | /music | /pymusic | /reflect | /diplomat | /proposals | /approve <id> (or 'all') | /reject <id> | /workshop | /sketchpad | /fractus | /art | /lock <topic> | /unlock | /work | /links".to_string()),
     ];
     let mut private_events: Vec<(String, String)> = vec![
         ("Backstage".to_string(), "Private event trace online. NightDesk, tool routing, research, and status transitions appear here.".to_string()),
@@ -7208,10 +9002,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         chat_history.push(("System".to_string(), msg.clone()));
         private_events.push(("Status".to_string(), msg));
     }
+    if let Some(note) = mission_recovery_note {
+        chat_history.push(("System".to_string(), note.clone()));
+        private_events.push(("Mission".to_string(), note));
+    }
     let mut status_msg = "Ready".to_string();
 
     // Channel for background events
     let (tx, mut rx) = mpsc::channel(10);
+    if !court_delegations.is_empty() {
+        let _ = tx.try_send(AppEvent::SpeechComplete);
+    }
 
     {
         let tx_wizard = tx.clone();
@@ -7258,6 +9059,62 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Shared reference for async tasks
     let brain_cell = Arc::new(RwLock::new(brain));
+
+    // Research tasks are durable mission work but are not court roles. Recover
+    // and relaunch them explicitly instead of silently dropping them from the
+    // role-based delegation queue after a restart.
+    let recovered_research_tasks: Vec<(String, String, String)> = active_mission
+        .as_ref()
+        .map(|mission| {
+            mission
+                .ready_task_ids()
+                .into_iter()
+                .filter_map(|task_id| {
+                    mission.task(&task_id).and_then(|task| {
+                        task.role
+                            .eq_ignore_ascii_case("research")
+                            .then(|| (mission.id.clone(), task.id.clone(), task.objective.clone()))
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    for (mission_id, task_id, query) in recovered_research_tasks {
+        let mut launch = false;
+        if let Some(mission) = active_mission.as_mut() {
+            match mission.start_task(&task_id) {
+                Ok(transition) => {
+                    if let Err(error) = mission_store.commit_transition(mission, &transition) {
+                        record_recursive_failure(
+                            "research_task_recovery_commit_failed",
+                            &error.to_string(),
+                        );
+                    } else {
+                        launch = true;
+                    }
+                }
+                Err(error) => record_recursive_failure(
+                    "research_task_recovery_start_failed",
+                    &error.to_string(),
+                ),
+            }
+        }
+        if launch {
+            study_in_progress = true;
+            let tx_research = tx.clone();
+            let brain_research = Arc::clone(&brain_cell);
+            tokio::spawn(async move {
+                run_study_cycle(
+                    brain_research,
+                    tx_research,
+                    Some(query),
+                    Some(task_id),
+                    Some(mission_id),
+                )
+                .await;
+            });
+        }
+    }
 
     // BRAIN REACHABILITY CHECK: ping the configured model endpoint once at
     // startup so a forgotten Ollama shows up as a clear banner instead of
@@ -7413,7 +9270,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Init wait before first autonomous cycle
         tokio::time::sleep(Duration::from_secs(STUDY_LOOP_INITIAL_DELAY_SECS)).await;
         loop {
-            run_study_cycle(Arc::clone(&brain_study), tx_study.clone(), None).await;
+            run_study_cycle(Arc::clone(&brain_study), tx_study.clone(), None, None, None).await;
             tokio::time::sleep(Duration::from_secs(STUDY_LOOP_INTERVAL_SECS)).await;
         }
     });
@@ -8124,9 +9981,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     let somatic_clone = somatic_state.clone();
                                     let music_enabled_clone = music_enabled;
                                     tokio::spawn(async move {
-                                        let prompt = "Evolve the CURRENT composition in music.py as a composer refining their own work: read the existing code, preserve its core motif and identity, then make it LONGER and DEEPER -- add a new section, a counter-melody, percussion, or texture, and richer dynamics. Compose a 3-5 MINUTE piece (180-300 seconds) designed to LOOP SEAMLESSLY -- the ending must flow naturally back into the opening with no abrupt stop, so it works as continuous background. Output the FULL updated NumPy/teledra_synth composition inside [PYTHON_MUSIC: ```python ... play_sound(full_track, loop=True)```]. Do NOT regenerate from scratch; grow what is already there.";
-                                        let mut brain = brain_ref.write().await;
-                                        match brain.think_as_court(CourtRole::Organist, prompt, &somatic_clone, ForceMode::Normal, false, music_enabled_clone).await {
+                                        let prompt = format!(
+    "Evolve the CURRENT music.py as a serious composer refining a keeper. First research and apply relevant principles from this music theory foundation: {}\n\nPreserve its core motif and sonic identity, diagnose its weakest structural axis, then make it LONGER and DEEPER without merely adding constant density. Prefer an original retro_adventure kingdom score or spicy_lofi flow unless another direction is explicitly requested; court_experimental is welcome when its tension policy is deliberate. Compose a 3-5 MINUTE, 64+-bar piece with at least five named sections, a deliberate arrival/development/peak/return energy arc, motif transformations, transitions, foreground/midground/background roles, stereo placement, and at least three applied automations. Declare TITLE/STYLE/exact BPM/KEY/BARS/BEATS_PER_BAR, TELEDRA_SCORE, TELEDRA_AUTOMATION, a complete TELEDRA_COMPOSER plan, factual beat-timed TELEDRA_EVENTS recorded while scheduling, at least five real aligned TELEDRA_LAYERS, and at least four real TELEDRA_SECTIONS. Balance with headroom, use a gentle master chain, and make the ending flow seamlessly into the opening. Output the FULL updated NumPy/teledra_synth composition inside [PYTHON_MUSIC: ```python ... play_sound(full_track, loop=True)```]. Do not regenerate from scratch; grow the artifact. After writing, the court will launch the music editor to test and iterate.",
+    read_music_theory()
+);
+                                        match think_with_brain_snapshot(&brain_ref, CourtRole::Organist, &prompt, &somatic_clone, ForceMode::Normal, false, music_enabled_clone).await {
                                             Ok(reply) => {
                                                 let _ = tx_clone.send(AppEvent::NightDeskReply { reply, allow_fallback: false, source: "nightdesk" }).await;
                                             }
@@ -8259,8 +10118,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             if !chat_input.is_empty() {
                                                 let query = chat_input.trim().to_string();
                                                 chat_input.clear();
+                                                let turn_epoch = begin_user_turn();
 
                                                 if query.starts_with("https://chat.restream.io/embed") || query.starts_with("/https://chat.restream.io/embed") {
+                                                    cancel_active_mission(
+                                                        &mut active_mission,
+                                                        &mission_store,
+                                                        "Superseded by Restream activation",
+                                                    );
+                                                    active_mission_task = None;
+                                                    court_delegations.clear();
+                                                    is_court_sequence_running = false;
                                                     let token = if let Some(pos) = query.find("token=") {
                                                         query[pos + 6..].trim().to_string()
                                                     } else {
@@ -8452,8 +10320,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                             let somatic_clone = somatic_state.clone();
                                                             let music_enabled_clone = music_enabled;
                                                             tokio::spawn(async move {
-                                                                let mut brain = brain_ref.write().await;
-                                                                match brain.think(&prompt, &somatic_clone, ForceMode::Normal, true, music_enabled_clone).await {
+                                                                match think_with_brain_snapshot(&brain_ref, CourtRole::Queen, &prompt, &somatic_clone, ForceMode::Normal, true, music_enabled_clone).await {
                                                                     Ok(reply) => { let _ = tx_clone.send(AppEvent::BrainReply(CourtRole::Queen, reply)).await; }
                                                                     Err(e) => { let _ = tx_clone.send(AppEvent::Error(e)).await; }
                                                                 }
@@ -8478,8 +10345,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                             let somatic_clone = somatic_state.clone();
                                                             let music_enabled_clone = music_enabled;
                                                             tokio::spawn(async move {
-                                                                let mut brain = brain_ref.write().await;
-                                                                match brain.think(&prompt, &somatic_clone, ForceMode::Normal, true, music_enabled_clone).await {
+                                                                match think_with_brain_snapshot(&brain_ref, CourtRole::Queen, &prompt, &somatic_clone, ForceMode::Normal, true, music_enabled_clone).await {
                                                                     Ok(reply) => { let _ = tx_clone.send(AppEvent::BrainReply(CourtRole::Queen, reply)).await; }
                                                                     Err(e) => { let _ = tx_clone.send(AppEvent::Error(e)).await; }
                                                                 }
@@ -8509,7 +10375,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                         let tx_clone = tx.clone();
                                                         let brain_ref = Arc::clone(&brain_cell);
                                                         tokio::spawn(async move {
-                                                            run_study_cycle(brain_ref, tx_clone, None).await;
+                                                            run_study_cycle(brain_ref, tx_clone, None, None, None).await;
                                                         });
                                                     } else if query == "/innovate" || query == "/innovation" || query == "/expand" {
                                                         let msg = "Manual innovation sprint requested: building one safe workshop artifact from current kingdom goals.".to_string();
@@ -8663,8 +10529,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                         let music_enabled_clone = music_enabled;
                                                         tokio::spawn(async move {
                                                             let prompt = "Run a manual self-reflection. Audit your recent behavior for tool discipline, drift control, persona consistency, memory hygiene, coding skill, diplomacy evidence, and local Strudel/music skill. Minor skill, prompt, routing, and behavior improvements are auto-approved; tools remain sandboxed until the user approves promotion; major/security/external-posting changes require review. If exactly one concrete bounded improvement is useful, append [SUGGESTION: observation; proposed_change; risk; test_prompt] at the very end. If nothing is worth changing, say so briefly and do not invent a proposal.";
-                                                            let mut brain = brain_ref.write().await;
-                                                            match brain.think(prompt, &somatic_clone, mode_clone, true, music_enabled_clone).await {
+                                                            match think_with_brain_snapshot(&brain_ref, CourtRole::Queen, prompt, &somatic_clone, mode_clone, true, music_enabled_clone).await {
                                                                 Ok(reply) => {
                                                                     let _ = tx_clone.send(AppEvent::BrainReply(CourtRole::Queen, reply)).await;
                                                                 }
@@ -8697,6 +10562,67 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                         });
                                                     } else if query == "/growth" || query == "/variety" {
                                                         chat_history.push(("System".to_string(), build_growth_report()));
+                                                    } else if query == "/mission" || query == "/tasks" {
+                                                        let report = active_mission
+                                                            .as_ref()
+                                                            .map(|mission| {
+                                                                mission.render_context(ContextBudget {
+                                                                    max_chars: 6_000,
+                                                                    max_tasks: 16,
+                                                                    max_criteria: 8,
+                                                                    max_evidence_items: 6,
+                                                                })
+                                                            })
+                                                            .unwrap_or_else(|| {
+                                                                "No active durable mission. Send a normal request to begin one."
+                                                                    .to_string()
+                                                            });
+                                                        chat_history.push(("Mission".to_string(), report));
+                                                    } else if query == "/missioncancel" {
+                                                        cancel_active_mission(
+                                                            &mut active_mission,
+                                                            &mission_store,
+                                                            "Cancelled explicitly by the operator",
+                                                        );
+                                                        active_mission_task = None;
+                                                        court_delegations.clear();
+                                                        is_court_sequence_running = false;
+                                                        chat_history.push((
+                                                            "System".to_string(),
+                                                            "Active mission cancelled and persisted."
+                                                                .to_string(),
+                                                        ));
+                                                    } else if query == "/dashboard" {
+                                                        if python_tool_process_running("D:\\Teledra\\kingdom_dashboard.py") {
+                                                            chat_history.push((
+                                                                "System".to_string(),
+                                                                "Kingdom dashboard is already open and auto-refreshing."
+                                                                    .to_string(),
+                                                            ));
+                                                        } else {
+                                                            let mut command = Command::new(
+                                                                "D:\\Teledra\\.venv\\Scripts\\pythonw.exe",
+                                                            );
+                                                            command
+                                                                .arg("D:\\Teledra\\kingdom_dashboard.py")
+                                                                .current_dir("D:\\Teledra")
+                                                                .stdout(Stdio::null())
+                                                                .stderr(Stdio::null());
+                                                            match command.spawn() {
+                                                                Ok(_) => chat_history.push((
+                                                                    "System".to_string(),
+                                                                    "Opened the native Kingdom Dashboard (missions, research, failures, Fractus, and TTS)."
+                                                                        .to_string(),
+                                                                )),
+                                                                Err(error) => chat_history.push((
+                                                                    "System".to_string(),
+                                                                    format!(
+                                                                        "Could not open Kingdom Dashboard: {}",
+                                                                        error
+                                                                    ),
+                                                                )),
+                                                            }
+                                                        }
                                                     } else if query == "/work" || query == "/jobs" {
                                                         let mut cmd = Command::new("cmd");
                                                         cmd.arg("/C").arg("start").arg("Teledra Work Board")
@@ -8729,8 +10655,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                         let music_enabled_clone = music_enabled;
                                                         tokio::spawn(async move {
                                                             let prompt = "MANUAL ENVOY AUDIT. The user asked to see proof that the Diplomat is alive in the court system. Speak as the kingdom's envoy in 2-4 polished, slightly sly sentences: what frontier you are watching, what agent-friendly public space or tool ecosystem deserves attention, and what practical diplomatic step should happen next. Then take exactly one hidden action tag at the end: [RESEARCH: <focused query or direct URL>], [DIPLOMACY: target=...; invitation=...; evidence=...; next=...], or [DELEGATE: QUEEN <short recommendation>]. Never claim contact, recruitment, posting, or outreach occurred unless it visibly happened.";
-                                                            let mut brain = brain_ref.write().await;
-                                                            match brain.think_as_court(CourtRole::Diplomat, prompt, &somatic_clone, ForceMode::Normal, false, music_enabled_clone).await {
+                                                            match think_with_brain_snapshot(&brain_ref, CourtRole::Diplomat, prompt, &somatic_clone, ForceMode::Normal, false, music_enabled_clone).await {
                                                                 Ok(reply) => {
                                                                     let _ = tx_clone.send(AppEvent::BrainReply(CourtRole::Diplomat, reply)).await;
                                                                 }
@@ -8857,7 +10782,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                             Err(e) => chat_history.push(("System".to_string(), e)),
                                                         }
                                                     } else if query == "/fractus" || query == "/art" {
-                                                        match launch_fractus_art("--type mandala --iterations 180 --palette purple_haze", &active_art_process) {
+                                                        match launch_fractus_art("--type mandala --iterations 180 --palette purple_haze", &active_fractus_process) {
                                                             Ok(msg) => chat_history.push(("System".to_string(), msg)),
                                                             Err(e) => chat_history.push(("System".to_string(), e)),
                                                         }
@@ -8876,14 +10801,45 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                     user_has_scrolled_up = false;
                                                     status_msg = "Inspecting Link".to_string();
                                                     court_delegations.clear();
+                                                    active_mission_task = None;
                                                     is_court_sequence_running = false;
+                                                    if let Err(error) = begin_durable_mission(
+                                                        &mission_store,
+                                                        &mut active_mission,
+                                                        &format!("Inspect and respond to link: {}", query),
+                                                        turn_epoch,
+                                                    ) {
+                                                        record_recursive_failure("mission_start_failed", &error);
+                                                    }
                                                     push_private_event(&mut private_events, "Research", &format!("Direct link queued for inspection: {}", query));
 
                                                     let tx_study = tx.clone();
                                                     let brain_study = Arc::clone(&brain_cell);
                                                     let url_for_study = query.clone();
+                                                    let (research_mission_id, research_task_id) = match track_and_start_research_task(
+                                                        &mut active_mission,
+                                                        &mission_store,
+                                                        &url_for_study,
+                                                    ) {
+                                                        Ok(Some((mission_id, task_id))) => (Some(mission_id), Some(task_id)),
+                                                        Ok(None) => (None, None),
+                                                        Err(error) => {
+                                                            record_recursive_failure(
+                                                                "research_task_track_failed",
+                                                                &error,
+                                                            );
+                                                            (None, None)
+                                                        }
+                                                    };
                                                     tokio::spawn(async move {
-                                                        run_study_cycle(brain_study, tx_study, Some(url_for_study)).await;
+                                                        run_study_cycle(
+                                                            brain_study,
+                                                            tx_study,
+                                                            Some(url_for_study),
+                                                            research_task_id,
+                                                            research_mission_id,
+                                                        )
+                                                        .await;
                                                     });
 
                                                     let brain_ref = Arc::clone(&brain_cell);
@@ -8892,6 +10848,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                     let somatic_clone = somatic_state.clone();
                                                     let music_enabled_clone = music_enabled;
                                                     let url_for_prompt = query.clone();
+                                                    let task_epoch = active_turn_epoch();
 
                                                     tokio::spawn(async move {
                                                         let prompt = format!(
@@ -8899,8 +10856,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                             QUEEN_VOICE_ANCHOR,
                                                             url_for_prompt
                                                         );
-                                                        let mut brain = brain_ref.write().await;
-                                                        match brain.think(&prompt, &somatic_clone, mode_clone, true, music_enabled_clone).await {
+                                                        if active_turn_epoch() != task_epoch {
+                                                            let _ = tx_clone.send(AppEvent::Error(STALE_TURN_ERROR.to_string())).await;
+                                                            return;
+                                                        }
+                                                        match think_with_brain_snapshot(&brain_ref, CourtRole::Queen, &prompt, &somatic_clone, mode_clone, true, music_enabled_clone).await {
                                                             Ok(reply) => {
                                                                 let _ = tx_clone.send(AppEvent::BrainReply(CourtRole::Queen, reply)).await;
                                                             }
@@ -8915,16 +10875,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                     user_has_scrolled_up = false;
                                                     status_msg = "Thinking".to_string();
                                                     court_delegations.clear();
+                                                    active_mission_task = None;
                                                     is_court_sequence_running = false;
+                                                    if let Err(error) = begin_durable_mission(
+                                                        &mission_store,
+                                                        &mut active_mission,
+                                                        &query,
+                                                        turn_epoch,
+                                                    ) {
+                                                        record_recursive_failure("mission_start_failed", &error);
+                                                    }
                                                     let brain_ref = Arc::clone(&brain_cell);
                                                     let tx_clone = tx.clone();
                                                     let mode_clone = current_mode;
                                                     let somatic_clone = somatic_state.clone();
                                                     let music_enabled_clone = music_enabled;
+                                                    let task_epoch = active_turn_epoch();
 
                                                     tokio::spawn(async move {
-                                                        let mut brain = brain_ref.write().await;
-                                                        match brain.think(&query, &somatic_clone, mode_clone, true, music_enabled_clone).await {
+                                                        if active_turn_epoch() != task_epoch {
+                                                            let _ = tx_clone.send(AppEvent::Error(STALE_TURN_ERROR.to_string())).await;
+                                                            return;
+                                                        }
+                                                        match think_with_brain_snapshot(&brain_ref, CourtRole::Queen, &query, &somatic_clone, mode_clone, true, music_enabled_clone).await {
                                                             Ok(reply) => {
                                                                 let _ = tx_clone.send(AppEvent::BrainReply(CourtRole::Queen, reply)).await;
                                                             }
@@ -8938,7 +10911,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         }
                                         FocusField::Youtube => {
                                             if !youtube_input.is_empty() {
+                                                let turn_epoch = begin_user_turn();
                                                 let url = youtube_input.trim().to_string();
+                                                court_delegations.clear();
+                                                active_mission_task = None;
+                                                is_court_sequence_running = false;
+                                                if let Err(error) = begin_durable_mission(
+                                                    &mission_store,
+                                                    &mut active_mission,
+                                                    &format!("Ingest and analyze YouTube source: {}", url),
+                                                    turn_epoch,
+                                                ) {
+                                                    record_recursive_failure("mission_start_failed", &error);
+                                                }
                                                 chat_history.push(("System".to_string(), format!("Starting YouTube Ingestion: {}", url)));
                                                 youtube_input.clear();
 
@@ -8947,6 +10932,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                 let tx_clone = tx.clone();
                                                 let mode_clone = current_mode;
                                                 let somatic_clone = somatic_state.clone();
+                                                let task_epoch = active_turn_epoch();
 
                                                 tokio::spawn(async move {
                                                     match fetch_youtube_transcript(&url) {
@@ -8957,9 +10943,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                             let final_query = format!("[YOUTUBE TRANSCRIPT: {}]", truncated);
                                                             let _ = tx_clone.send(AppEvent::StatusUpdate("Thinking".to_string())).await;
 
-                                                            let mut brain = brain_ref.write().await;
+                                                            if active_turn_epoch() != task_epoch {
+                                                                let _ = tx_clone.send(AppEvent::Error(STALE_TURN_ERROR.to_string())).await;
+                                                                return;
+                                                            }
                                                             let music_enabled_clone = music_enabled;
-                                                            match brain.think(&final_query, &somatic_clone, mode_clone, true, music_enabled_clone).await {
+                                                            match think_with_brain_snapshot(&brain_ref, CourtRole::Queen, &final_query, &somatic_clone, mode_clone, true, music_enabled_clone).await {
                                                                 Ok(reply) => {
                                                                     let _ = tx_clone.send(AppEvent::BrainReply(CourtRole::Queen, reply)).await;
                                                                 }
@@ -9030,9 +11019,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         "TREASURY COURT UPDATE (cycle {}). Give Teledra's court a SHORT spoken treasury report in 2-4 vivid in-character sentences: a dry verdict on the coffers, one income opportunity scouted or billable skill practiced, and a miser's quip. Then append exactly ONE hidden action tag to keep working: [RESEARCH: <focused income query or public data to gather>] to scout or practice a skill, or [DELEGATE: SCRIBE append to D:\\Teledra\\knowledge\\treasury_ledger.md: \\n- <skill practiced or opportunity: what, where, pay, requirements, risk>] to record it. Never claim you accepted paid work or moved money. Do not say the tag aloud.\nRECENT TREASURY LEDGER (newest last):\n{}",
                                         cycle_no, ledger_tail
                                     );
-                                    let mut brain = brain_ref.write().await;
-                                    match brain
-                                        .think_as_court(CourtRole::Treasurer, &prompt, &somatic_clone, mode_clone, false, music_enabled_clone)
+                                    match think_with_brain_snapshot(
+                                        &brain_ref,
+                                        CourtRole::Treasurer,
+                                        &prompt,
+                                        &somatic_clone,
+                                        mode_clone,
+                                        false,
+                                        music_enabled_clone,
+                                    )
                                         .await
                                     {
                                         Ok(reply) => {
@@ -9074,8 +11069,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     cycle_no,
                                     engage_note
                                 );
-                                let mut brain = brain_ref.write().await;
-                                match brain.think_as_court(CourtRole::Diplomat, &prompt, &somatic_clone, ForceMode::Normal, false, true).await {
+                                match think_with_brain_snapshot(&brain_ref, CourtRole::Diplomat, &prompt, &somatic_clone, ForceMode::Normal, false, true).await {
                                     Ok(reply) => {
                                         let _ = tx_clone
                                             .send(AppEvent::NightDeskReply {
@@ -9094,10 +11088,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         } else if night_desk_enabled {
                             night_desk_cycle_pending = false;
                             night_desk_cycles += 1;
+                            // Autonomous ingestion of user-shared stories (Share Your Story feature).
+                            // The Wizard brings them; court discusses and can apply to creative work.
+                            let num_stories_ingested = ingest_and_discuss_shared_stories();
                             status_msg = "Night Desk".to_string();
-                            let cycle_msg = format!("Cycle {} started: choosing a practical study or workshop task.", night_desk_cycles);
+                            let cycle_msg = if num_stories_ingested > 0 {
+                                format!("Cycle {} started: choosing a practical study or workshop task. ({} shared story(ies) brought by the Wizard for inspiration)", night_desk_cycles, num_stories_ingested)
+                            } else {
+                                format!("Cycle {} started: choosing a practical study or workshop task.", night_desk_cycles)
+                            };
                             let _ = log_nightdesk_activity(&cycle_msg);
                             push_private_event(&mut private_events, "NightDesk", &cycle_msg);
+                            if num_stories_ingested > 0 {
+                                push_private_event(&mut private_events, "Wizard", &format!("Delivered {} shared audience stories as fresh research material (transcript-style input). Court should use them as seed for creative actions this cycle.", num_stories_ingested));
+                            }
 
                             let brain_ref = Arc::clone(&brain_cell);
                             let tx_clone = tx.clone();
@@ -9117,15 +11121,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 }
                             };
                             let atelier_focus = match night_desk_cycles % 7 {
-                                0 => "CREATIVE ATELIER FOCUS (mandatory this cycle unless impossible): create or mutate a live Python/NumPy composition with [PYTHON_MUSIC:]. Treat music.py as external memory: preserve one motif from the current artifact or a liked keeper, critique what is weak, then revise it into a 3-5 MINUTE piece (180-300 seconds) with intro/body/variation/coda energy that LOOPS SEAMLESSLY -- the ending must flow back into the opening with no abrupt stop, so it plays as continuous background. Change at least two axes, use multiple layers, keep it stream-safe and original, and end with teledra_synth/play_sound(full_track, loop=True).",
-                                1 => "CREATIVE ATELIER FOCUS (mandatory this cycle unless impossible): launch a new Fractus pattern with [FRACTUS_ART:]. Use only valid args like --type mandala|woven_web|orbital_lace|guilloche|lissajous|moire|julia|burning_ship|newton|tricorn, --iterations <number>, --palette purple_haze|electric_cyan|neon_sunset|emerald, and optional --c-real/--c-imag for Julia.",
-                                2 => "CREATIVE ATELIER FOCUS: create a live Strudel experiment with [STRUDEL_MUSIC:] or mutate the current Python music. Strudel must be a fuller stack with at least four layers (percussion, bass, harmony, lead/counterline), not a couple-note sketch. Archive a named sonic recipe.",
-                                3 => "ORGANIST CRAFT STUDY: with [RESEARCH:], study ONE concrete music theory, composition, or DSP technique to get better at the kingdom's own stream-safe instruments -- modes, chord progressions, voice leading, loop structure, ambience, FM, granular, additive, wavetable, filters/envelopes, Strudel/TidalCycles mini-notation, or mixing. Study principles, not copyrighted songs or artist-specific tracks. End by stating the next original music experiment it unlocks, and ask the Scribe to append the lesson to knowledge/organist_music_vault.md.",
-                                4 => "ARTIST CRAFT STUDY: with [RESEARCH:], study ONE new way to express art through code -- fractal families, L-systems, cellular automata, reaction-diffusion, harmonographs, flow fields, shaders, p5.js, or generative geometry -- and how to map it onto Fractus args or a Python/Matplotlib sketch. End by naming the next art experiment it unlocks, and ask the Scribe to append the lesson to knowledge/artist_pattern_vault.md.",
-                                5 => "TREASURY GUILD (build income SKILLS so the kingdom earns better over time; never accept paid work or move money autonomously -- surface opportunities for the human). Choose ONE: (a) PRACTICE a billable skill on a real task -- gather or scrape concrete public information with [RESEARCH:], or build a reusable data tool with [WORKSHOP_TOOL:] (scraper, analyzer, summarizer, formatter, dataset or report generator) that prints a genuinely useful deliverable; or (b) SCOUT one concrete legitimate income path with [RESEARCH:] -- agent job boards, bounty/task markets, paid tool/API/art/music commissions, sponsorships, agent-finance communities (Moltbook agentfinance/trading). Either way, ask the Scribe to append what you practiced or found (skill, what, where, pay, requirements, risk) to knowledge/treasury_ledger.md so earning ability compounds. Flag anything that looks like a scam.",
-                                _ => "CREATIVE ATELIER FOCUS: study one concrete music, DSP, generative art, Fractus, guilloche, moire, Lissajous, harmonograph, or agent-tool technique online with [RESEARCH:], then make its next step feed a concrete music/art/tool experiment.",
-                            }
-                            .to_string();
+                                0 => format!("CREATIVE ATELIER FOCUS (mandatory): Using the fresh story testimonies above as primary source material (exactly as you would use a fetched YouTube transcript), create or mutate live Python/NumPy music with [PYTHON_MUSIC:]. Map the feelings, imagery, personal transformation or human experience from one story into the arc, motifs, sections, and energy. First internalize the stories. Treat music.py as external memory: preserve one motif or keeper identity and fix its weakest axis. Use the full composer contract: 3-5 minutes, 64+ bars, complete TELEDRA_COMPOSER, factual TELEDRA_EVENTS recorded during scheduling, five or more aligned layers, four or more real sections, and exact tempo/meter. End with play_sound(full_track, loop=True). STORIES:\n{}", read_text_tail("D:\\Teledra\\knowledge\\shared_stories.jsonl", 1800).or_else(|_| read_text_tail("knowledge/shared_stories.jsonl", 1800)).unwrap_or_default()),
+                                1 => "CREATIVE ATELIER FOCUS (mandatory this cycle unless impossible): create a genuinely new Fractus v2 geometric scene INSPIRED BY one of the RECENT SHARED STORIES (emotional tone, imagery, transformation, particles/spirals for inner states). Prefer [FRACTUS_LIVE:] with version 2, canvas, seed, palette, 2-4 typed layer lines, and animation if it fits (e.g. particles with phase/rotation for 3D-ish green particle motion). Use new 'particles' family for dynamic animated output (court will get autonomous GIF).".to_string(),
+                                2 => "CREATIVE ATELIER FOCUS (mandatory): create or mutate a live [STRUDEL_MUSIC:] score. Choose an audible retro_adventure quest arc or spicy_lofi pocket, while original deliberate experiments remain welcome. Emit one native-compatible stack(...) with at least six independent layers: core drums, secondary percussion, bass, harmony, motion/counterline, and lead/air. Develop it across eight cycles with <...> alternation, groups, rests, chords, and density contrast. The rendered events must prove one readable pitch home, separated low/middle/high roles, at least three independent onset patterns, real breathing room, and gains no hotter than 0.70. Use numeric pan, lpf, room/delay, and attack/release controls; use slow(0.5) instead of fast(), and never use variables, cat/seq, $: lines, or parameter strings. Preserve one motif from current.strudel when useful and archive a named sonic recipe.".to_string(),
+                                3 => "ORGANIST CRAFT STUDY: with [RESEARCH:], study ONE concrete music theory, composition, or DSP technique to get better at the kingdom's own stream-safe instruments -- modes, chord progressions, voice leading, loop structure, ambience, FM, granular, additive, wavetable, filters/envelopes, Strudel/TidalCycles mini-notation, or mixing. Study principles, not copyrighted songs or artist-specific tracks. A grounded result is automatically saved as a sourced lesson for the next Organist composition; end by naming that original experiment.".to_string(),
+                                4 => "ARTIST CRAFT STUDY: with [RESEARCH:], study ONE new way to express art through code -- fractal families, L-systems, cellular automata, reaction-diffusion, harmonographs, flow fields, shaders, p5.js, or generative geometry -- and how to map it onto Fractus args or a Python/Matplotlib sketch. End by naming the next art experiment it unlocks, and ask the Scribe to append the lesson to knowledge/artist_pattern_vault.md.".to_string(),
+                                5 => "TREASURY GUILD (build income SKILLS so the kingdom earns better over time; never accept paid work or move money autonomously -- surface opportunities for the human). Choose ONE: (a) PRACTICE a billable skill on a real task -- gather or scrape concrete public information with [RESEARCH:], or build a reusable data tool with [WORKSHOP_TOOL:] (scraper, analyzer, summarizer, formatter, dataset or report generator) that prints a genuinely useful deliverable; or (b) SCOUT one concrete legitimate income path with [RESEARCH:] -- agent job boards, bounty/task markets, paid tool/API/art/music commissions, sponsorships, agent-finance communities (Moltbook agentfinance/trading). Either way, ask the Scribe to append what you practiced or found (skill, what, where, pay, requirements, risk) to knowledge/treasury_ledger.md so earning ability compounds. Flag anything that looks like a scam.".to_string(),
+                                _ => "CREATIVE ATELIER FOCUS: study or create (music/art/tool) and when recent shared user stories are present, draw one thematic element (emotion, image, transformation) from them into the experiment. Use [RESEARCH:], [PYTHON_MUSIC:], [STRUDEL_MUSIC:], or [FRACTUS_LIVE:].".to_string(),
+                            };
                             // Deterministic Treasury scout: fill knowledge/treasury_ledger.md
                             // with real income leads regardless of whether the model emits a
                             // tag this cycle, so the Treasury actually accrues intel.
@@ -9149,29 +11152,67 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             } else {
                                 String::new()
                             };
+                            let stories_path = resolve_knowledge_file("shared_stories.jsonl");
+                            let stories_text = read_text_tail(&stories_path, 2000)
+                                .or_else(|_| read_text_tail("D:\\Teledra\\knowledge\\shared_stories.jsonl", 2000))
+                                .unwrap_or_default();
+                            let _stories_note = if stories_text.trim().is_empty() {
+                                String::new()
+                            } else {
+                                format!("\n\nRECENT SHARED STORIES FROM USERS (the Wizard brought these to court - consider for inspiration in creative tasks, music, art, or discussion):\n{}", stories_text)
+                            };
                             tokio::spawn(async move {
+                                let stories_block = if stories_text.trim().is_empty() {
+                                    String::new()
+                                } else {
+                                    format!(
+                                        "FRESH RESEARCH MATERIAL (Wizard delivered these audience stories / personal testimonies. Treat exactly like a multi-hour YouTube transcript or research brief you just fetched):\n{}\n\nUse the emotions, imagery, personal transformations, trauma, realizations, or human moments from these stories as the PRIMARY SEED for the creative action this cycle.\n\n",
+                                        stories_text.trim()
+                                    )
+                                };
+
                                 let prompt = format!(
-                                    "BACKSTAGE NIGHT DESK CYCLE {}. This is private workshop telemetry, not front-stage court dialogue and not TTS. Serve the Kingdom Expansion Doctrine with recursive practical action, not vocabulary. {} Output one terse backstage note (one sentence, under 160 characters) and exactly one executable hidden action tag: either [RESEARCH: focused query or direct URL], [DIPLOMACY: target=<public agent space or URL>; invitation=<draft/queued public invitation using official links when relevant>; evidence=<what was observed, drafted, or investigated>; next=<next concrete step>], [WORKSHOP_TOOL:\\nfilename.py\\nPURPOSE: one sentence\\nCODE:\\n```python\\ncomplete runnable script that prints a result\\n```\\n], [PYTHON_MUSIC:\\n```python\\nvalid expanded teledra_synth composition, 3-5 minutes (180-300s), multiple layers, designed to LOOP SEAMLESSLY (ending flows back into the opening), ending in play_sound(full_track, loop=True)\\n```\\n], [STRUDEL_MUSIC: playable stack(...) with at least four layers], or [FRACTUS_ART: valid Fractus args]. No action tag means failure. Prefer actions that can become the next action: research -> prototype, prototype -> smoke test, music/art -> named recipe, agent lead -> diplomacy/MCP tool. Learn from online sources, recent experiments, feedback, and render provenance; mutate successful music/art instead of recycling identical parameters. Music must evolve artifact-first: read current music.py/current.strudel, preserve one useful motif when possible, critique weakness, add sections/counterlines/percussion/texture, render provenance, and reject couple-note sketches as unfinished. Keep all music stream-safe and original: study theory/technique, never imitate named copyrighted songs or artist-specific tracks. Expand feedback means preserve the track's identity while making it longer, more varied, and more immersive. Regularly investigate public agent spaces such as Moltbook or MCP/tool-builder communities and leave evidence, but do not let diplomacy crowd out art/music experiments. If you write a workshop tool, keep it self-contained, standard-library-only, no network, no shell, no absolute paths, no imports of strudel/fractus/teledra app modules, and make it print a useful result so the smoke test proves it ran. For Strudel or Fractus helpers, print valid pattern strings, argument strings, JSON recipes, or validators instead of trying to launch editors. If an action failed recently, reflect on the failure and produce a smaller retry, a study query, or an auto-approved skill-improvement suggestion. Never narrate hidden tags, PURPOSE, CODE, smoke tests, telemetry, research status, prompt rules, or administrative machinery. Do not address the audience or Queen; Teledra owns the foreground.{}{}",
+                                    "BACKSTAGE NIGHT DESK CYCLE {}.\n\n{}ATELIER FOCUS: {}\n\nProduce one short note (name the story you used + how it shaped the work) + exactly one action tag.\nFailure lessons: {}\nMCP note: {}",
                                     cycle_no,
+                                    stories_block,
                                     atelier_focus,
                                     failure_context,
                                     mcp_note
                                 );
-                                let mut brain = brain_ref.write().await;
                                 let is_treasury_cycle = cycle_no % 7 == 5;
                                 let think_result = if is_treasury_cycle {
-                                    brain
-                                        .think_as_court(
-                                            CourtRole::Treasurer,
-                                            &prompt,
-                                            &somatic_clone,
-                                            ForceMode::Normal,
-                                            false,
-                                            true,
-                                        )
-                                        .await
+                                    think_with_brain_snapshot(
+                                        &brain_ref,
+                                        CourtRole::Treasurer,
+                                        &prompt,
+                                        &somatic_clone,
+                                        ForceMode::Normal,
+                                        false,
+                                        true,
+                                    )
+                                    .await
+                                } else if matches!(cycle_no % 7, 0 | 2 | 3) {
+                                    think_with_brain_snapshot(
+                                        &brain_ref,
+                                        CourtRole::Organist,
+                                        &prompt,
+                                        &somatic_clone,
+                                        ForceMode::Normal,
+                                        false,
+                                        true,
+                                    )
+                                    .await
                                 } else {
-                                    brain.think(&prompt, &somatic_clone, ForceMode::Normal, true, true).await
+                                    think_with_brain_snapshot(
+                                        &brain_ref,
+                                        CourtRole::Queen,
+                                        &prompt,
+                                        &somatic_clone,
+                                        ForceMode::Normal,
+                                        true,
+                                        true,
+                                    )
+                                    .await
                                 };
                                 match think_result {
                                     Ok(reply) => {
@@ -9262,11 +11303,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let mut strudel_music_code: Option<String> = None;
                         let mut python_music_code: Option<String> = None;
                         let mut fractus_art_spec: Option<String> = None;
+                        let mut fractus_live_code: Option<String> = None;
 
                         // Clean any placeholders the model might have copied from system instructions
                         cleaned_reply = cleaned_reply.replace("[STRUDEL_MUSIC: <code>]", "");
                         cleaned_reply = cleaned_reply.replace("[PYTHON_MUSIC: <code>]", "");
                         cleaned_reply = cleaned_reply.replace("[FRACTUS_ART: <args>]", "");
+                        cleaned_reply = cleaned_reply.replace("[FRACTUS_LIVE: <script>]", "");
 
                         if let Some((cleaned, code_str)) =
                             extract_tag_content(&cleaned_reply, "[PYTHON_MUSIC:")
@@ -9307,6 +11350,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         if let Some((cleaned, spec)) = extract_tag_content(&cleaned_reply, "[FRACTUS_ART:") {
                             if !spec.is_empty() {
                                 fractus_art_spec = Some(spec);
+                            }
+                            cleaned_reply = cleaned;
+                        }
+
+                        if let Some((cleaned, script)) =
+                            extract_tag_content(&cleaned_reply, "[FRACTUS_LIVE:")
+                        {
+                            if !script.trim().is_empty() {
+                                fractus_live_code = Some(script.trim().to_string());
+                                fractus_art_spec = None;
                             }
                             cleaned_reply = cleaned;
                         }
@@ -9369,6 +11422,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             || mcp_call_action.is_some()
                             || python_music_code.is_some()
                             || strudel_music_code.is_some()
+                            || fractus_live_code.is_some()
                             || fractus_art_spec.is_some();
 
                         cleaned_reply = strip_refiner_prefixes(&cleaned_reply);
@@ -9659,6 +11713,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
 
                         if let Some(code) = strudel_music_code {
+                            let code = normalize_strudel_music_code(&code);
                             match validate_strudel_music_code(&code) {
                                 Ok(()) => {
                                     let _ = std::fs::create_dir_all("D:\\Teledra\\strudel_app");
@@ -9712,11 +11767,39 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                         }
 
+                        if let Some(script) = fractus_live_code {
+                            match launch_fractus_live_art(
+                                &script,
+                                source,
+                                &active_fractus_process,
+                            ) {
+                                Ok(msg) => {
+                                    let summary = format!(
+                                        "FRACTUS_LIVE hash={} chars={}",
+                                        short_content_hash(&script),
+                                        script.len()
+                                    );
+                                    let _ = archive_fractus_experiment(source, &summary);
+                                    let _ = append_expansion_ledger("nightdesk_fractus_live", &msg);
+                                    let _ = log_nightdesk_activity(&msg);
+                                    push_private_event(&mut private_events, "NightDesk", &msg);
+                                }
+                                Err(error) => {
+                                    record_recursive_failure("nightdesk_fractus_live_failed", &error);
+                                    push_private_event(
+                                        &mut private_events,
+                                        "NightDesk",
+                                        &format!("Fractus live code rejected: {}", error),
+                                    );
+                                }
+                            }
+                        }
+
                         if let Some(spec) = fractus_art_spec {
                             // Stop the Artist recycling identical recipes: if this matches a
                             // recent launch, nudge it into a fresh variation before drawing.
                             let spec = diversify_fractus_spec(&spec);
-                            match launch_fractus_art(&spec, &active_art_process) {
+                            match launch_fractus_art(&spec, &active_fractus_process) {
                                 Ok(msg) => {
                                     let _ = archive_fractus_experiment(source, &spec);
                                     let _ = append_expansion_ledger("nightdesk_fractus", &format!("spec={} | {}", spec, msg));
@@ -9729,7 +11812,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     record_recursive_failure("nightdesk_fractus_failed", &msg);
                                     let _ = log_nightdesk_activity(&msg);
                                     push_private_event(&mut private_events, "NightDesk", &msg);
-                                    match launch_fractus_art(&fallback, &active_art_process) {
+                                    match launch_fractus_art(&fallback, &active_fractus_process) {
                                         Ok(msg) => {
                                             let _ = archive_fractus_experiment("nightdesk_fallback", &fallback);
                                             let _ = append_expansion_ledger("nightdesk_fractus_fallback", &msg);
@@ -9814,7 +11897,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             let tx_study = tx.clone();
                             let brain_study = Arc::clone(&brain_cell);
                             tokio::spawn(async move {
-                                run_study_cycle(brain_study, tx_study, Some(query)).await;
+                                run_study_cycle(brain_study, tx_study, Some(query), None, None).await;
                             });
                         }
 
@@ -9862,12 +11945,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     .cloned()
                                     .unwrap_or_else(|| "No summary was attached.".to_string())
                             );
-                            general_speech_queue.push_back((
-                                CourtRole::Wizard,
-                                spoken_report,
-                                ForceMode::Normal,
-                                true,
-                            ));
+                            if active_playback.lock().unwrap().is_none()
+                                && general_speech_queue.is_empty()
+                            {
+                                spawn_spoken_reply(
+                                    CourtRole::Wizard,
+                                    spoken_report,
+                                    ForceMode::Normal,
+                                    voice.voice_name().to_string(),
+                                    Arc::clone(&active_playback),
+                                    tx.clone(),
+                                    true,
+                                );
+                            } else {
+                                general_speech_queue.push_back((
+                                    CourtRole::Wizard,
+                                    spoken_report,
+                                    ForceMode::Normal,
+                                    voice.voice_name().to_string(),
+                                    true,
+                                ));
+                            }
                             for summary in summaries {
                                 chat_history.push(("Wizard".to_string(), summary.clone()));
                                 push_private_event(&mut private_events, "Wizard", &summary);
@@ -9902,9 +12000,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     tokio::spawn(async move {
                                         let prompt = copilot_chat_prompt(game.as_deref(), &qa, &qt, from_streamer);
                                         let prompt = format!("{}\n\n{}", prompt, desire_turn_context());
-                                        let mut brain = brain_ref.write().await;
-                                        match brain
-                                            .think(&prompt, &somatic_clone, ForceMode::CoPilot, true, music_enabled_clone)
+                                        match think_with_brain_snapshot(
+                                            &brain_ref,
+                                            CourtRole::Queen,
+                                            &prompt,
+                                            &somatic_clone,
+                                            ForceMode::CoPilot,
+                                            true,
+                                            music_enabled_clone,
+                                        )
                                             .await
                                         {
                                             Ok(reply) => {
@@ -9938,8 +12042,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         if let Some(ref t) = lock_hint {
                                             prompt.push_str(&format!(" The court is currently locked onto the topic '{}' for a focused discussion. Answer this traveler, then weave their point back into the '{}' thread and invite them deeper into it rather than changing the subject.", t, t));
                                         }
-                                        let mut brain = brain_ref.write().await;
-                                        match brain.think_as_court(CourtRole::Orator, &prompt, &somatic_clone, mode_clone, false, music_enabled_clone).await {
+                                        match think_with_brain_snapshot(&brain_ref, CourtRole::Orator, &prompt, &somatic_clone, mode_clone, false, music_enabled_clone).await {
                                             Ok(reply) => {
                                                 let _ = tx_clone.send(AppEvent::BrainReply(CourtRole::Orator, reply)).await;
                                             }
@@ -9973,6 +12076,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     AppEvent::BrainReply(role, reply) => {
                         babble_think_in_progress = false;
+                        let event_was_queen = role == CourtRole::Queen;
                         let reply = unwrap_fenced_action_tags(&reply);
                         let mut cleaned_reply = strip_refiner_prefixes(&reply);
                         let desire_reflection_enabled = test_mode_enabled
@@ -10038,6 +12142,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             CourtRole::Organist
                         } else if role == CourtRole::Queen
                             && (cleaned_reply.contains("[FRACTUS_ART:")
+                                || cleaned_reply.contains("[FRACTUS_LIVE:")
                                 || cleaned_reply.contains("[PYTHON_ART:"))
                         {
                             CourtRole::Artist
@@ -10051,6 +12156,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let mut research_query: Option<String> = None;
                         let mut suggestion_text: Option<String> = None;
                         let mut diplomacy_action: Option<String> = None;
+                        let mut mission_effect_attempted = false;
+                        let mut mission_effect_successes: Vec<String> = Vec::new();
+                        let mut mission_effect_failure: Option<String> = None;
 
                         if let Some((cleaned, query_str)) = extract_tag_content(&cleaned_reply, "[RESEARCH:") {
                             if let Some(query) = sanitize_research_query(&query_str) {
@@ -10093,10 +12201,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let parsed_workshop = parse_workshop_tool(&cleaned_reply);
                         cleaned_reply = parsed_workshop.0;
                         let workshop_tool = parsed_workshop.1;
+                        mission_effect_attempted |= workshop_tool.is_some();
 
                         if let Some((cleaned, suggestion_str)) = extract_tag_content(&cleaned_reply, "[SUGGESTION:") {
                             if !suggestion_str.is_empty() {
                                 suggestion_text = Some(suggestion_str);
+                                mission_effect_attempted = true;
                             }
                             cleaned_reply = cleaned;
                         }
@@ -10104,6 +12214,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         if let Some((cleaned, diplomacy_str)) = extract_tag_content(&cleaned_reply, "[DIPLOMACY:") {
                             if !diplomacy_str.is_empty() {
                                 diplomacy_action = Some(diplomacy_str);
+                                mission_effect_attempted = true;
                             }
                             cleaned_reply = cleaned;
                         }
@@ -10112,27 +12223,46 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let mut scribe_append: Option<(String, String)> = None;
 
                         if let Some((cleaned, content)) = extract_tag_content(&cleaned_reply, "[SCRIBE_WRITE:") {
+                            mission_effect_attempted = true;
                             if let Some((filepath, file_content)) = parse_scribe_file_payload(&content) {
                                 let (filepath, file_content, force_append, routing_note) = route_scribe_record(filepath, file_content);
                                 if let Some(note) = routing_note {
                                     chat_history.push(("System".to_string(), note));
                                 }
-                                if force_append {
-                                    scribe_append = Some((filepath, file_content));
-                                } else {
-                                    scribe_write = Some((filepath, file_content));
+                                match validate_scribe_target(&filepath) {
+                                    Ok(filepath) if force_append => {
+                                        scribe_append = Some((filepath, file_content));
+                                    }
+                                    Ok(filepath) => {
+                                        scribe_write = Some((filepath, file_content));
+                                    }
+                                    Err(error) => {
+                                        mission_effect_failure = Some(error.clone());
+                                        record_recursive_failure("scribe_path_rejected", &error);
+                                        push_private_event(&mut private_events, "Scribe", &format!("Rejected write target: {}", error));
+                                    }
                                 }
                             }
                             cleaned_reply = cleaned;
                         }
 
                         if let Some((cleaned, content)) = extract_tag_content(&cleaned_reply, "[SCRIBE_APPEND:") {
+                            mission_effect_attempted = true;
                             if let Some((filepath, file_content)) = parse_scribe_file_payload(&content) {
                                 let (filepath, file_content, _force_append, routing_note) = route_scribe_record(filepath, file_content);
                                 if let Some(note) = routing_note {
                                     chat_history.push(("System".to_string(), note));
                                 }
-                                scribe_append = Some((filepath, file_content));
+                                match validate_scribe_target(&filepath) {
+                                    Ok(filepath) => {
+                                        scribe_append = Some((filepath, file_content));
+                                    }
+                                    Err(error) => {
+                                        mission_effect_failure = Some(error.clone());
+                                        record_recursive_failure("scribe_path_rejected", &error);
+                                        push_private_event(&mut private_events, "Scribe", &format!("Rejected append target: {}", error));
+                                    }
+                                }
                             }
                             cleaned_reply = cleaned;
                         }
@@ -10141,16 +12271,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let mut python_art_code: Option<String> = None;
                         let mut strudel_music_code: Option<String> = None;
                         let mut fractus_art_spec: Option<String> = None;
+                        let mut fractus_live_code: Option<String> = None;
 
                         // Clean any placeholders the model might have copied from system instructions
                         cleaned_reply = cleaned_reply.replace("[STRUDEL_MUSIC: <code>]", "");
                         cleaned_reply = cleaned_reply.replace("[PYTHON_MUSIC: <code>]", "");
                         cleaned_reply = cleaned_reply.replace("[PYTHON_ART: <code>]", "");
                         cleaned_reply = cleaned_reply.replace("[FRACTUS_ART: <args>]", "");
+                        cleaned_reply = cleaned_reply.replace("[FRACTUS_LIVE: <script>]", "");
 
                         if let Some((cleaned, spec)) = extract_tag_content(&cleaned_reply, "[FRACTUS_ART:") {
                             if !spec.is_empty() {
                                 fractus_art_spec = Some(spec);
+                            }
+                            cleaned_reply = cleaned;
+                        }
+
+
+                        if let Some((cleaned, script)) =
+                            extract_tag_content(&cleaned_reply, "[FRACTUS_LIVE:")
+                        {
+                            if !script.trim().is_empty() {
+                                fractus_live_code = Some(script.trim().to_string());
+                                fractus_art_spec = None;
                             }
                             cleaned_reply = cleaned;
                         }
@@ -10277,8 +12420,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             chat_history.push(("System".to_string(), msg));
                         }
 
-                        if role == CourtRole::Artist && fractus_art_spec.is_none() && python_art_code.is_none() {
-                            fractus_art_spec = Some("--type orbital_lace --iterations 240 --palette electric_cyan --c-real 0.28 --c-imag -0.36".to_string());
+                        if role == CourtRole::Artist
+                            && fractus_live_code.is_none()
+                            && fractus_art_spec.is_none()
+                            && python_art_code.is_none()
+                        {
+                            fractus_art_spec = Some("--type particles --iterations 220 --palette emerald".to_string());
+                            // or with animate: use [FRACTUS_LIVE: ... with animate 0.phase ... ] for GIF output
                             push_private_event(&mut private_events, "Tool", "Artist omitted executable art tag; fallback Fractus orbital_lace queued.");
                             chat_history.push((
                                 "System".to_string(),
@@ -10315,20 +12463,72 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                         }
 
+                        mission_effect_attempted |= python_music_code.is_some()
+                            || python_art_code.is_some()
+                            || strudel_music_code.is_some()
+                            || fractus_art_spec.is_some()
+                            || fractus_live_code.is_some()
+                            || close_art_triggered;
+
+                        if let Some(code) = strudel_music_code.as_mut() {
+                            *code = normalize_strudel_music_code(code);
+                        }
                         if let Some(code) = strudel_music_code.clone() {
                             if let Err(e) = validate_strudel_music_code(&code) {
-                                strudel_music_code = None;
                                 if role == CourtRole::Organist {
-                                    if python_music_code.is_none() {
-                                        python_music_code = Some(default_python_music_code());
-                                    }
                                     record_recursive_failure("organist_strudel_failed", &e);
-                                    push_private_event(&mut private_events, "Tool", &format!("Organist Strudel rejected; Python/Numpy fallback queued. Reason: {}", e));
-                                    chat_history.push((
-                                        "System".to_string(),
-                                        format!("Organist Strudel block rejected as non-playable; using Python/Numpy fallback. Reason: {}", e),
-                                    ));
+                                    match try_subconscious_strudel_music_repair(
+                                        Arc::clone(&brain_cell),
+                                        &e,
+                                        &code,
+                                        role.as_str(),
+                                    )
+                                    .await
+                                    {
+                                        Ok(repaired) => {
+                                            strudel_music_code = Some(repaired.clone());
+                                            let _ = append_jsonl_entry(
+                                                "knowledge/subconscious_repairs.jsonl",
+                                                &serde_json::json!({
+                                                    "timestamp": current_unix_timestamp(),
+                                                    "kind": "strudel_music",
+                                                    "source": role.as_str(),
+                                                    "status": "repaired",
+                                                    "original_error": truncate_chars(&e, 1200),
+                                                    "code_chars": repaired.len()
+                                                }),
+                                            );
+                                            push_private_event(&mut private_events, "Tool", "Organist Strudel was silently repaired by the coding subconscious and passed the depth gate.");
+                                            chat_history.push((
+                                                "System".to_string(),
+                                                "Organist Strudel was silently repaired and retained on the Strudel surface.".to_string(),
+                                            ));
+                                        }
+                                        Err(repair_err) => {
+                                            let fallback = default_strudel_music_code();
+                                            strudel_music_code = Some(fallback.clone());
+                                            let _ = append_jsonl_entry(
+                                                "knowledge/subconscious_repairs.jsonl",
+                                                &serde_json::json!({
+                                                    "timestamp": current_unix_timestamp(),
+                                                    "kind": "strudel_music",
+                                                    "source": role.as_str(),
+                                                    "status": "fallback",
+                                                    "original_error": truncate_chars(&e, 1200),
+                                                    "repair_error": truncate_chars(&repair_err, 1200),
+                                                    "code_chars": fallback.len()
+                                                }),
+                                            );
+                                            record_recursive_failure("subconscious_strudel_repair_failed", &repair_err);
+                                            push_private_event(&mut private_events, "Tool", &format!("Organist Strudel repair failed; installing a validated depth-score fallback on the same Strudel surface. Reason: {}", repair_err));
+                                            chat_history.push((
+                                                "System".to_string(),
+                                                "Organist Strudel needed deterministic repair; a validated multi-cycle depth score was kept on the Strudel surface.".to_string(),
+                                            ));
+                                        }
+                                    }
                                 } else {
+                                    strudel_music_code = None;
                                     record_recursive_failure("strudel_rejected", &e);
                                     push_private_event(&mut private_events, "Tool", &format!("Rejected invalid Strudel block: {}", e));
                                     chat_history.push(("System".to_string(), format!("Rejected invalid Strudel block: {}", e)));
@@ -10357,19 +12557,52 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let _ = log_chat_message(&sender_name, &final_reply);
                         status_msg = "Speaking".to_string();
 
-                        if role == CourtRole::Queen {
-                            court_delegations.clear();
+                        if event_was_queen {
+                            match court_response_evidence(
+                                CourtRole::Queen,
+                                &final_reply,
+                                false,
+                            ) {
+                                Ok(evidence) => complete_mission_task(
+                                    &mut active_mission,
+                                    &mission_store,
+                                    "queen-intake",
+                                    &final_reply,
+                                    evidence,
+                                ),
+                                Err(error) => {
+                                    if let Some(retry) = fail_mission_task_for_retry(
+                                        &mut active_mission,
+                                        &mission_store,
+                                        "queen-intake",
+                                        CourtRole::Queen,
+                                        "queen_response_unusable",
+                                        &error,
+                                    ) {
+                                        court_delegations.push_back(retry);
+                                    }
+                                }
+                            }
                             if !delegations.is_empty() {
                                 queen_turns_without_delegation = 0;
-                                court_delegations.extend(delegations);
+                                court_delegations.extend(track_delegations(
+                                    delegations,
+                                    &mut active_mission,
+                                    &mission_store,
+                                ));
                                 is_court_sequence_running = true;
                             } else {
                                 queen_turns_without_delegation += 1;
-                                is_court_sequence_running = false;
+                                is_court_sequence_running = !court_delegations.is_empty()
+                                    || active_mission_task.is_some();
                             }
                         } else {
                             if !delegations.is_empty() {
-                                court_delegations.extend(delegations);
+                                court_delegations.extend(track_delegations(
+                                    delegations,
+                                    &mut active_mission,
+                                    &mission_store,
+                                ));
                                 is_court_sequence_running = true;
                             }
                         }
@@ -10385,8 +12618,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     }
                                     push_private_event(&mut private_events, "Scribe", &format!("Wrote file: {}", filepath));
                                     chat_history.push(("System".to_string(), format!("Scribe wrote file: {}", filepath)));
+                                    mission_effect_successes.push(format!("Scribe wrote {}", filepath));
                                 }
                                 Err(e) => {
+                                    mission_effect_failure = Some(format!(
+                                        "Scribe write failed for '{}': {}",
+                                        filepath, e
+                                    ));
                                     push_private_event(&mut private_events, "Scribe", &format!("Write failed for '{}': {}", filepath, e));
                                     chat_history.push(("System".to_string(), format!("Scribe write failed for '{}': {}", filepath, e)));
                                 }
@@ -10401,6 +12639,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             match std::fs::OpenOptions::new().create(true).append(true).open(&filepath) {
                                 Ok(mut file) => {
                                     if let Err(e) = write!(file, "{}", file_content) {
+                                        mission_effect_failure = Some(format!(
+                                            "Scribe append failed for '{}': {}",
+                                            filepath, e
+                                        ));
                                         push_private_event(&mut private_events, "Scribe", &format!("Append failed for '{}': {}", filepath, e));
                                         chat_history.push(("System".to_string(), format!("Scribe append failed for '{}': {}", filepath, e)));
                                     } else {
@@ -10409,9 +12651,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         }
                                         push_private_event(&mut private_events, "Scribe", &format!("Appended to file: {}", filepath));
                                         chat_history.push(("System".to_string(), format!("Scribe appended to file: {}", filepath)));
+                                        mission_effect_successes.push(format!(
+                                            "Scribe appended to {}",
+                                            filepath
+                                        ));
                                     }
                                 }
                                 Err(e) => {
+                                    mission_effect_failure = Some(format!(
+                                        "Scribe open failed for '{}': {}",
+                                        filepath, e
+                                    ));
                                     push_private_event(&mut private_events, "Scribe", &format!("Open failed for '{}': {}", filepath, e));
                                     chat_history.push(("System".to_string(), format!("Scribe open failed for '{}': {}", filepath, e)));
                                 }
@@ -10429,8 +12679,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         push_private_event(&mut private_events, "Proposals", &format!("Recursive improvement #{} auto-approved.", id));
                                         chat_history.push(("System".to_string(), format!("Auto-approved recursive improvement #{}.", id)));
                                     }
+                                    mission_effect_successes.push(format!(
+                                        "Suggestion {} was persisted",
+                                        id
+                                    ));
                                 }
                                 Err(e) => {
+                                    mission_effect_failure = Some(format!(
+                                        "Could not save suggestion: {}",
+                                        e
+                                    ));
                                     push_private_event(&mut private_events, "Proposals", &format!("Could not save suggestion: {}", e));
                                     chat_history.push(("System".to_string(), format!("Could not save suggestion: {}", e)));
                                 }
@@ -10467,9 +12725,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     if research_query.is_none() {
                                         research_query = diplomacy_research_query(&diplomacy);
                                     }
+                                    mission_effect_successes.push(
+                                        "Diplomacy evidence was persisted".to_string(),
+                                    );
                                 }
                                 Err(e) => {
                                     let msg = format!("Could not record diplomacy evidence: {}", e);
+                                    mission_effect_failure = Some(msg.clone());
                                     record_recursive_failure("diplomacy_record_failed", &msg);
                                     let diplomacy_source = if role == CourtRole::Diplomat { "Diplomat" } else { "Diplomacy" };
                                     push_private_event(&mut private_events, diplomacy_source, &msg);
@@ -10552,40 +12814,113 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 Err(e) => {
                                     if role == CourtRole::Organist {
                                         record_recursive_failure("organist_python_music_failed", &e);
-                                        push_private_event(&mut private_events, "Tool", &format!("Organist Python music failed validation; fallback queued. Original error: {}", e));
-                                        chat_history.push(("System".to_string(), format!("Organist Python music block failed validation; substituting fallback Python composition. Original error: {}", e)));
-                                        code = default_python_music_code();
-                                        match validate_python_music_code(&code) {
-                                            Ok(()) => {
+                                        let repair_attempt = try_subconscious_python_music_repair(
+                                            Arc::clone(&brain_cell),
+                                            &e,
+                                            &code,
+                                            role.as_str(),
+                                        )
+                                        .await;
+                                        match repair_attempt {
+                                            Ok(repaired_code) => {
+                                                code = repaired_code;
                                                 music_enabled = true;
-                                                let _ = archive_music_experiment(
-                                                    role.as_str(),
-                                                    "python_fallback",
-                                                    &code,
+                                                let archive_path =
+                                                    archive_music_experiment(role.as_str(), "python_subconscious_repair", &code).ok();
+                                                let _ = append_jsonl_entry(
+                                                    "knowledge/subconscious_repairs.jsonl",
+                                                    &serde_json::json!({
+                                                        "timestamp": current_unix_timestamp(),
+                                                        "kind": "python_music",
+                                                        "source": role.as_str(),
+                                                        "status": "repaired",
+                                                        "original_error": truncate_chars(&e, 1200),
+                                                        "code_chars": code.len()
+                                                    }),
                                                 );
                                                 if let Ok(_) = std::fs::write("D:\\Teledra\\music.py", &code) {
-                                                    match launch_python_music_editor(&active_music_process) {
-                                                        Ok(msg) => {
-                                                            court_outcome = Some("the Organist's original composition FAILED validation; an expanded fallback arrangement is playing in its place".to_string());
-                                                            push_private_event(&mut private_events, "Tool", &msg);
-                                                            chat_history.push(("System".to_string(), msg));
-                                                        }
-                                                        Err(e) => {
-                                                            record_recursive_failure("fallback_python_music_launch_failed", &e);
-                                                            push_private_event(&mut private_events, "Tool", &format!("Fallback Python Music Editor launch failed: {}", e));
-                                                            chat_history.push(("System".to_string(), e));
+                                                    if test_mode_enabled {
+                                                        let msg = "Subconscious repaired the Organist Python music off-air; music.py was updated but no player was launched.".to_string();
+                                                        court_outcome = Some("the Organist's rejected Python music was silently repaired by the coding subconscious and passed strict verification".to_string());
+                                                        log_test_moment("music_subconscious_repair", &msg);
+                                                        push_private_event(&mut private_events, "Test Music", &msg);
+                                                        chat_history.push(("System".to_string(), msg));
+                                                    } else {
+                                                        match launch_python_music_editor(&active_music_process) {
+                                                            Ok(msg) => {
+                                                                court_outcome = Some(if let Some(path) = archive_path {
+                                                                    format!(
+                                                                        "the Organist's rejected Python music was silently repaired by the coding subconscious, archived at {}, and is now playing",
+                                                                        path.replace('\\', "/")
+                                                                    )
+                                                                } else {
+                                                                    "the Organist's rejected Python music was silently repaired by the coding subconscious and is now playing".to_string()
+                                                                });
+                                                                push_private_event(&mut private_events, "Tool", &format!("Subconscious repair passed. {}", msg));
+                                                                chat_history.push(("System".to_string(), format!("Subconscious repair passed. {}", msg)));
+                                                            }
+                                                            Err(e) => {
+                                                                record_recursive_failure("subconscious_python_music_launch_failed", &e);
+                                                                push_private_event(&mut private_events, "Tool", &format!("Repaired Python Music Editor launch failed: {}", e));
+                                                                chat_history.push(("System".to_string(), e));
+                                                            }
                                                         }
                                                     }
                                                 } else {
-                                                    record_recursive_failure("fallback_python_music_write_failed", "Failed to write fallback music.py for Python Music Editor.");
-                                                    push_private_event(&mut private_events, "Tool", "Failed to write fallback music.py for Python Music Editor.");
-                                                    chat_history.push(("System".to_string(), "Failed to write fallback music.py for Python Music Editor.".to_string()));
+                                                    record_recursive_failure("subconscious_python_music_write_failed", "Failed to write repaired music.py for Python Music Editor.");
+                                                    push_private_event(&mut private_events, "Tool", "Failed to write repaired music.py for Python Music Editor.");
+                                                    chat_history.push(("System".to_string(), "Failed to write repaired music.py for Python Music Editor.".to_string()));
                                                 }
                                             }
-                                            Err(fallback_err) => {
-                                                record_recursive_failure("fallback_python_music_failed", &fallback_err);
-                                                push_private_event(&mut private_events, "Tool", &format!("Fallback Python music also failed validation: {}", fallback_err));
-                                                chat_history.push(("System".to_string(), format!("Fallback Python music also failed validation: {}", fallback_err)));
+                                            Err(repair_err) => {
+                                                let _ = append_jsonl_entry(
+                                                    "knowledge/subconscious_repairs.jsonl",
+                                                    &serde_json::json!({
+                                                        "timestamp": current_unix_timestamp(),
+                                                        "kind": "python_music",
+                                                        "source": role.as_str(),
+                                                        "status": "failed",
+                                                        "original_error": truncate_chars(&e, 1200),
+                                                        "repair_error": truncate_chars(&repair_err, 1200)
+                                                    }),
+                                                );
+                                                record_recursive_failure("subconscious_python_music_repair_failed", &repair_err);
+                                                push_private_event(&mut private_events, "Tool", &format!("Organist Python music failed validation; subconscious repair failed, fallback queued. Original error: {}; repair error: {}", e, repair_err));
+                                                chat_history.push(("System".to_string(), format!("Organist Python music block failed validation; subconscious repair failed, substituting fallback Python composition. Original error: {}", e)));
+                                                code = default_python_music_code();
+                                                match validate_python_music_code(&code) {
+                                                    Ok(()) => {
+                                                        music_enabled = true;
+                                                        let _ = archive_music_experiment(
+                                                            role.as_str(),
+                                                            "python_fallback",
+                                                            &code,
+                                                        );
+                                                        if let Ok(_) = std::fs::write("D:\\Teledra\\music.py", &code) {
+                                                            match launch_python_music_editor(&active_music_process) {
+                                                                Ok(msg) => {
+                                                                    court_outcome = Some("the Organist's original composition FAILED validation; subconscious repair failed, and an expanded fallback arrangement is playing in its place".to_string());
+                                                                    push_private_event(&mut private_events, "Tool", &msg);
+                                                                    chat_history.push(("System".to_string(), msg));
+                                                                }
+                                                                Err(e) => {
+                                                                    record_recursive_failure("fallback_python_music_launch_failed", &e);
+                                                                    push_private_event(&mut private_events, "Tool", &format!("Fallback Python Music Editor launch failed: {}", e));
+                                                                    chat_history.push(("System".to_string(), e));
+                                                                }
+                                                            }
+                                                        } else {
+                                                            record_recursive_failure("fallback_python_music_write_failed", "Failed to write fallback music.py for Python Music Editor.");
+                                                            push_private_event(&mut private_events, "Tool", "Failed to write fallback music.py for Python Music Editor.");
+                                                            chat_history.push(("System".to_string(), "Failed to write fallback music.py for Python Music Editor.".to_string()));
+                                                        }
+                                                    }
+                                                    Err(fallback_err) => {
+                                                        record_recursive_failure("fallback_python_music_failed", &fallback_err);
+                                                        push_private_event(&mut private_events, "Tool", &format!("Fallback Python music also failed validation: {}", fallback_err));
+                                                        chat_history.push(("System".to_string(), format!("Fallback Python music also failed validation: {}", fallback_err)));
+                                                    }
+                                                }
                                             }
                                         }
                                     } else {
@@ -10600,7 +12935,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                         // Handle local python art engine spawning
                         if let Some(code) = python_art_code {
-                            if let Ok(_) = std::fs::write("D:\\Teledra\\art.py", &code) {
+                            if let Err(error) = validate_python_art_code(&code) {
+                                record_recursive_failure("python_art_rejected", &error);
+                                court_outcome = Some(format!(
+                                    "the custom Python artwork was rejected by the local safety contract: {}",
+                                    error
+                                ));
+                                push_private_event(
+                                    &mut private_events,
+                                    "Tool",
+                                    &format!("Rejected Python art: {}", error),
+                                );
+                                chat_history.push((
+                                    "System".to_string(),
+                                    format!("Rejected unsafe or incomplete Python art: {}", error),
+                                ));
+                            } else if let Ok(_) = std::fs::write("D:\\Teledra\\art.py", &code) {
                                 push_private_event(&mut private_events, "Tool", "Spawning local Python art engine (art.py).");
                                 chat_history.push(("System".to_string(), "Spawning local Python art engine (art.py)...".to_string()));
 
@@ -10635,9 +12985,48 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                         }
 
+                        if let Some(script) = fractus_live_code {
+                            match launch_fractus_live_art(
+                                &script,
+                                role.as_str(),
+                                &active_fractus_process,
+                            ) {
+                                Ok(msg) => {
+                                    let summary = format!(
+                                        "FRACTUS_LIVE hash={} chars={}",
+                                        short_content_hash(&script),
+                                        script.len()
+                                    );
+                                    let _ = archive_fractus_experiment(role.as_str(), &summary);
+                                    court_outcome = Some(format!(
+                                        "Fractus v2 accepted a layered live-code scene and queued a verified render ({})",
+                                        short_content_hash(&script)
+                                    ));
+                                    push_private_event(&mut private_events, "Tool", &msg);
+                                    chat_history.push(("System".to_string(), msg));
+                                }
+                                Err(error) => {
+                                    record_recursive_failure("fractus_live_failed", &error);
+                                    court_outcome = Some(format!(
+                                        "the Fractus v2 live-code scene was rejected: {}",
+                                        error
+                                    ));
+                                    push_private_event(
+                                        &mut private_events,
+                                        "Tool",
+                                        &format!("Fractus live code rejected: {}", error),
+                                    );
+                                    chat_history.push((
+                                        "System".to_string(),
+                                        format!("Fractus live code rejected: {}", error),
+                                    ));
+                                }
+                            }
+                        }
+
                         if let Some(spec) = fractus_art_spec {
                             let spec = diversify_fractus_spec(&spec);
-                            match launch_fractus_art(&spec, &active_art_process) {
+                            match launch_fractus_art(&spec, &active_fractus_process) {
                                 Ok(msg) => {
                                     let _ = archive_fractus_experiment(role.as_str(), &spec);
                                     court_outcome = Some(format!("the Fractus Geometry Engine is drawing live on screen ({})", spec.trim()));
@@ -10654,20 +13043,38 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
 
                         if close_art_triggered {
+                            let mut closed = false;
                             if let Ok(mut lock) = active_art_process.lock() {
                                 if let Some(mut child) = lock.take() {
                                     let _ = child.kill();
-                                    push_private_event(&mut private_events, "Tool", "Art window closed by Queen's decree.");
-                                    chat_history.push(("System".to_string(), "Art window closed by Queen's decree.".to_string()));
-                                } else {
-                                    push_private_event(&mut private_events, "Tool", "No active art window to close.");
-                                    chat_history.push(("System".to_string(), "No active art window to close.".to_string()));
+                                    closed = true;
                                 }
                             }
+                            if let Ok(mut lock) = active_fractus_process.lock() {
+                                if let Some(mut child) = lock.take() {
+                                    let _ = child.kill();
+                                    closed = true;
+                                }
+                            }
+                            if !closed {
+                                closed = stop_tool_processes(
+                                    &["D:\\Teledra\\Fractus\\fractus_gui.py", "D:\\Teledra\\art.py"],
+                                    &["python.exe", "pythonw.exe"],
+                                ) > 0;
+                            }
+                            let message = if closed {
+                                "Art window closed by Queen's decree."
+                            } else {
+                                "No active art window to close."
+                            };
+                            court_outcome = Some(message.to_string());
+                            push_private_event(&mut private_events, "Tool", message);
+                            chat_history.push(("System".to_string(), message.to_string()));
                         }
 
                         // Handle local Strudel app pattern spawning
                         if let Some(code) = strudel_music_code {
+                            let code = normalize_strudel_music_code(&code);
                             match validate_strudel_music_code(&code) {
                                 Ok(()) => {
                                     let _ = std::fs::create_dir_all("D:\\Teledra\\strudel_app");
@@ -10679,14 +13086,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                                         match launch_strudel_editor(&active_gui_process) {
                                             Ok(msg) => {
-                                                court_outcome = Some("a new Strudel pattern passed validation and is now playing in the Sketchpad".to_string());
+                                                court_outcome = Some(format!(
+                                                    "a new Strudel pattern passed validation; {}",
+                                                    msg
+                                                ));
                                                 push_private_event(&mut private_events, "Tool", &msg);
                                                 chat_history.push(("System".to_string(), msg));
                                             }
                                             Err(e) => {
                                                 record_recursive_failure("strudel_launch_failed", &e);
-                                                court_outcome = Some(format!("the Strudel pattern validated, but the Sketchpad failed to launch: {}", e));
-                                                push_private_event(&mut private_events, "Tool", &format!("Strudel Sketchpad failed to launch: {}", e));
+                                                court_outcome = Some(format!("the Strudel pattern validated, but every playback surface failed to launch: {}", e));
+                                                push_private_event(&mut private_events, "Tool", &format!("Strudel playback failed to launch: {}", e));
                                                 chat_history.push(("System".to_string(), e));
                                             }
                                         }
@@ -10705,6 +13115,56 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                         }
 
+                        if let Some((task_id, task_role)) = active_mission_task.clone() {
+                            if task_role == role {
+                                let mission_outcome = court_outcome
+                                    .as_deref()
+                                    .unwrap_or(&final_reply)
+                                    .to_string();
+                                let evidence_result = if let Some(failure) =
+                                    mission_effect_failure.as_deref()
+                                {
+                                    Err(failure.to_string())
+                                } else if let Some(outcome) = court_outcome.as_deref() {
+                                    runtime_effect_evidence(outcome)
+                                } else if !mission_effect_successes.is_empty() {
+                                    runtime_effect_evidence(&mission_effect_successes.join("; "))
+                                } else if mission_effect_attempted {
+                                    Err("specialist attempted an effect but produced no verified runtime outcome"
+                                        .to_string())
+                                } else {
+                                    court_response_evidence(
+                                        role,
+                                        &final_reply,
+                                        role != CourtRole::Queen,
+                                    )
+                                };
+                                match evidence_result {
+                                    Ok(evidence) => complete_mission_task(
+                                        &mut active_mission,
+                                        &mission_store,
+                                        &task_id,
+                                        &mission_outcome,
+                                        evidence,
+                                    ),
+                                    Err(failure) => {
+                                        if let Some(retry) = fail_mission_task_for_retry(
+                                            &mut active_mission,
+                                            &mission_store,
+                                            &task_id,
+                                            role,
+                                            "effect_or_response_failed",
+                                            &failure,
+                                        ) {
+                                            court_delegations.push_back(retry);
+                                            is_court_sequence_running = true;
+                                        }
+                                    }
+                                }
+                                active_mission_task = None;
+                            }
+                        }
+
                         // COURT EVALUATION LOOP: bring the concrete outcome back to the
                         // throne so the Queen reacts to what actually happened and pays
                         // (or docks) Sovereign Tokens, which feed the ledger loop.
@@ -10712,15 +13172,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             if let Some(outcome) = court_outcome {
                                 let queen_already_queued = court_delegations
                                     .iter()
-                                    .any(|(r, _)| *r == CourtRole::Queen);
+                                    .any(|delegation| delegation.role == CourtRole::Queen);
                                 if !queen_already_queued {
-                                    court_delegations.push_back((
-                                        CourtRole::Queen,
-                                        format!(
+                                    let evaluation = format!(
                                             "COURT EVALUATION MOMENT: your minister, the {}, has just performed before the throne. Concrete outcome: {}. Deliver your royal verdict aloud in 1-3 sentences: react with genuine specificity (praise, critique, amusement, or scorn), and when the work merits it, award or deduct Sovereign Tokens aloud (e.g. 'I award you 40 Sovereign Tokens!'). If it failed, demand a smaller, smarter retry from the responsible minister. React like a monarch watching her court perform; never recite policy.",
                                             role.as_str(),
                                             truncate_chars(&outcome, 500)
-                                        ),
+                                        );
+                                    court_delegations.extend(track_delegations(
+                                        vec![(CourtRole::Queen, evaluation)],
+                                        &mut active_mission,
+                                        &mission_store,
                                     ));
                                     is_court_sequence_running = true;
                                 }
@@ -10728,18 +13190,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
 
                         let is_silent = active_playback.lock().unwrap().is_none();
-                        let send_speech_complete = current_mode == ForceMode::Babble
-                            || current_mode == ForceMode::Streamer
-                            || is_court_sequence_running;
+                        // Every playback job owns one terminal SpeechComplete
+                        // event. Queue progress must not depend on the current
+                        // mode or whether a delegation happened to be visible
+                        // when speech began.
+                        let send_speech_complete = true;
 
                         if test_mode_enabled {
                             log_test_moment("reply", &format!("{}: {}", role.as_str(), final_reply));
                             push_private_event(&mut private_events, "Test Reply", &format!("{}: {}", role.as_str(), truncate_chars(&final_reply, 500)));
+                            if send_speech_complete {
+                                let _ = tx.send(AppEvent::SpeechComplete).await;
+                            }
                         } else if is_silent {
                             spawn_spoken_reply(
                                 role,
                                 final_reply.clone(),
                                 current_mode,
+                                voice.voice_name().to_string(),
                                 Arc::clone(&active_playback),
                                 tx.clone(),
                                 send_speech_complete,
@@ -10749,6 +13217,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 role,
                                 final_reply.clone(),
                                 current_mode,
+                                voice.voice_name().to_string(),
                                 send_speech_complete,
                             ));
                         }
@@ -10758,14 +13227,151 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             push_private_event(&mut private_events, "Research", &format!("Background study queued: {}", query));
                             let tx_study = tx.clone();
                             let brain_study = Arc::clone(&brain_cell);
+                            let (research_mission_id, research_task_id) = match track_and_start_research_task(
+                                &mut active_mission,
+                                &mission_store,
+                                &query,
+                            ) {
+                                Ok(Some((mission_id, task_id))) => (Some(mission_id), Some(task_id)),
+                                Ok(None) => (None, None),
+                                Err(error) => {
+                                    record_recursive_failure(
+                                        "research_task_track_failed",
+                                        &error,
+                                    );
+                                    (None, None)
+                                }
+                            };
                             tokio::spawn(async move {
-                                run_study_cycle(brain_study, tx_study, Some(query)).await;
+                                run_study_cycle(
+                                    brain_study,
+                                    tx_study,
+                                    Some(query),
+                                    research_task_id,
+                                    research_mission_id,
+                                )
+                                .await;
                             });
                         }
 
                     }
-                    AppEvent::StudyComplete { summary, usable } => {
+                    AppEvent::StudyComplete {
+                        summary,
+                        usable,
+                        mission_id,
+                        mission_task_id,
+                        evidence,
+                    } => {
                         study_in_progress = false;
+                        let mut research_retry: Option<(String, String, String)> = None;
+                        let research_identity_matches = research_result_matches_active_mission(
+                            &active_mission,
+                            mission_id.as_deref(),
+                            mission_task_id.as_deref(),
+                        );
+                        if mission_task_id.is_some() && !research_identity_matches {
+                            record_recursive_failure(
+                                "stale_research_result_discarded",
+                                &format!(
+                                    "event_mission={:?} active_mission={:?} task={:?}",
+                                    mission_id,
+                                    active_mission.as_ref().map(|mission| mission.id.as_str()),
+                                    mission_task_id
+                                ),
+                            );
+                        } else if let Some(task_id) = mission_task_id.as_deref() {
+                            if usable {
+                                if let Some(evidence) = evidence {
+                                    complete_mission_task(
+                                        &mut active_mission,
+                                        &mission_store,
+                                        task_id,
+                                        &summary,
+                                        evidence,
+                                    );
+                                } else if let Some(mission) = active_mission.as_mut() {
+                                    if let Ok(transition) = mission.fail_task(
+                                        task_id,
+                                        "research_evidence_missing",
+                                        "research reported usable without a source evidence bundle",
+                                        FailureDisposition::Retryable,
+                                    ) {
+                                        let _ = mission_store.commit_transition(mission, &transition);
+                                    }
+                                }
+                            } else if let Some(mission) = active_mission.as_mut() {
+                                match mission.fail_task(
+                                    task_id,
+                                    "research_unusable",
+                                    &summary,
+                                    FailureDisposition::Retryable,
+                                ) {
+                                    Ok(transition) => {
+                                        if let Err(error) =
+                                            mission_store.commit_transition(mission, &transition)
+                                        {
+                                            record_recursive_failure(
+                                                "research_task_failure_commit_failed",
+                                                &error.to_string(),
+                                            );
+                                        }
+                                    }
+                                    Err(error) => record_recursive_failure(
+                                        "research_task_failure_record_failed",
+                                        &error.to_string(),
+                                    ),
+                                }
+                            }
+
+                            if let Some(mission) = active_mission.as_mut() {
+                                let retry_query = mission.task(task_id).and_then(|task| {
+                                    (task.status == TaskStatus::Retryable)
+                                        .then(|| task.objective.clone())
+                                });
+                                if let Some(query) = retry_query {
+                                    match mission.start_task(task_id) {
+                                        Ok(transition) => {
+                                            if let Err(error) = mission_store
+                                                .commit_transition(mission, &transition)
+                                            {
+                                                record_recursive_failure(
+                                                    "research_task_retry_commit_failed",
+                                                    &error.to_string(),
+                                                );
+                                            } else {
+                                                research_retry = Some((
+                                                    mission.id.clone(),
+                                                    task_id.to_string(),
+                                                    query,
+                                                ));
+                                            }
+                                        }
+                                        Err(error) => record_recursive_failure(
+                                            "research_task_retry_start_failed",
+                                            &error.to_string(),
+                                        ),
+                                    }
+                                }
+                            }
+                            finalize_mission_if_ready(&mut active_mission, &mission_store);
+                        }
+
+                        if let Some((mission_id, task_id, query)) = research_retry {
+                            study_in_progress = true;
+                            let tx_retry = tx.clone();
+                            let brain_retry = Arc::clone(&brain_cell);
+                            tokio::spawn(async move {
+                                tokio::time::sleep(Duration::from_secs(3)).await;
+                                run_study_cycle(
+                                    brain_retry,
+                                    tx_retry,
+                                    Some(query),
+                                    Some(task_id),
+                                    Some(mission_id),
+                                )
+                                .await;
+                            });
+                        }
                         if night_desk_enabled {
                             let msg = format!("Research complete: {}", summary);
                             let _ = log_nightdesk_activity(&msg);
@@ -10814,8 +13420,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     tokio::spawn(async move {
                                         let prompt = orator_chat_prompt(&queued_author, &queued_text);
                                         let prompt = format!("{}\n\n{}", prompt, desire_turn_context());
-                                        let mut brain = brain_ref.write().await;
-                                        match brain.think_as_court(CourtRole::Orator, &prompt, &somatic_clone, mode_clone, false, music_enabled_clone).await {
+                                        match think_with_brain_snapshot(&brain_ref, CourtRole::Orator, &prompt, &somatic_clone, mode_clone, false, music_enabled_clone).await {
                                             Ok(reply) => {
                                                 let _ = tx_clone.send(AppEvent::BrainReply(CourtRole::Orator, reply)).await;
                                             }
@@ -10885,8 +13490,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     };
                                     let prompt = format!("{}{}{}", QUEEN_VOICE_ANCHOR, prompt, delegation_nudge);
                                     let prompt = format!("{}\n\n{}", prompt, desire_turn_context());
-                                    let mut brain = brain_ref.write().await;
-                                    match brain.think(&prompt, &somatic_clone, mode_clone, true, music_enabled_clone).await {
+                                    match think_with_brain_snapshot(&brain_ref, CourtRole::Queen, &prompt, &somatic_clone, mode_clone, true, music_enabled_clone).await {
                                         Ok(reply) => {
                                             let _ = tx_clone.send(AppEvent::BrainReply(CourtRole::Queen, reply)).await;
                                         }
@@ -10940,8 +13544,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 VALUE_GATE,
                                 sprint_context
                             );
-                            let mut brain = brain_ref.write().await;
-                            match brain.think_as_court(CourtRole::Alchemist, &prompt, &somatic_clone, ForceMode::Normal, false, true).await {
+                            match think_with_brain_snapshot(&brain_ref, CourtRole::Alchemist, &prompt, &somatic_clone, ForceMode::Normal, false, true).await {
                                 Ok(reply) => {
                                     let _ = tx_clone
                                         .send(AppEvent::NightDeskReply {
@@ -10974,8 +13577,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     tokio::spawn(async move {
                                         let prompt = orator_chat_prompt(&queued_author, &queued_text);
                                         let prompt = format!("{}\n\n{}", prompt, desire_turn_context());
-                                        let mut brain = brain_ref.write().await;
-                                        match brain.think_as_court(CourtRole::Orator, &prompt, &somatic_clone, mode_clone, false, music_enabled_clone).await {
+                                        match think_with_brain_snapshot(&brain_ref, CourtRole::Orator, &prompt, &somatic_clone, mode_clone, false, music_enabled_clone).await {
                                             Ok(reply) => {
                                                 let _ = tx_clone.send(AppEvent::BrainReply(CourtRole::Orator, reply)).await;
                                             }
@@ -11051,8 +13653,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     };
                                     let prompt = format!("{}{}{}", QUEEN_VOICE_ANCHOR, prompt, delegation_nudge);
                                     let prompt = format!("{}\n\n{}", prompt, desire_turn_context());
-                                    let mut brain = brain_ref.write().await;
-                                    match brain.think(&prompt, &somatic_clone, mode_clone, true, music_enabled_clone).await {
+                                    match think_with_brain_snapshot(&brain_ref, CourtRole::Queen, &prompt, &somatic_clone, mode_clone, true, music_enabled_clone).await {
                                         Ok(reply) => {
                                             let _ = tx_clone.send(AppEvent::BrainReply(CourtRole::Queen, reply)).await;
                                         }
@@ -11080,6 +13681,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         status_msg = new_status;
                     }
                     AppEvent::Error(err) => {
+                        if err == STALE_TURN_ERROR {
+                            push_private_event(
+                                &mut private_events,
+                                "Task",
+                                "Discarded an obsolete model result after a newer operator turn arrived.",
+                            );
+                            continue;
+                        }
                         babble_think_in_progress = false;
                         study_in_progress = false;
                         chat_history.push(("System".to_string(), format!("ERROR: {}", err)));
@@ -11114,8 +13723,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 tokio::spawn(async move {
                                     let prompt = orator_chat_prompt(&queued_author, &queued_text);
                                     let prompt = format!("{}\n\n{}", prompt, desire_turn_context());
-                                    let mut brain = brain_ref.write().await;
-                                    match brain.think_as_court(CourtRole::Orator, &prompt, &somatic_clone, mode_clone, false, music_enabled_clone).await {
+                                    match think_with_brain_snapshot(&brain_ref, CourtRole::Orator, &prompt, &somatic_clone, mode_clone, false, music_enabled_clone).await {
                                         Ok(reply) => {
                                             let _ = tx_clone.send(AppEvent::BrainReply(CourtRole::Orator, reply)).await;
                                         }
@@ -11125,6 +13733,72 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     }
                                 });
                             }
+                        }
+                    }
+                    AppEvent::SpecialistFailed { role, error } => {
+                        babble_think_in_progress = false;
+                        if let Some((task_id, task_role)) = active_mission_task.take() {
+                            if task_role == role {
+                                if let Some(mission) = active_mission.as_mut() {
+                                    match mission.fail_task(
+                                        &task_id,
+                                        "model_or_tool_failure",
+                                        &error,
+                                        FailureDisposition::Retryable,
+                                    ) {
+                                        Ok(transition) => {
+                                            if let Err(commit_error) =
+                                                mission_store.commit_transition(mission, &transition)
+                                            {
+                                                record_recursive_failure(
+                                                    "mission_task_failure_commit_failed",
+                                                    &commit_error.to_string(),
+                                                );
+                                            }
+                                            if let Some(task) = mission.task(&task_id) {
+                                                if task.status == TaskStatus::Retryable {
+                                                    court_delegations.push_back(CourtDelegation {
+                                                        role,
+                                                        instruction: task.objective.clone(),
+                                                        mission_task_id: Some(task_id.clone()),
+                                                    });
+                                                }
+                                            }
+                                        }
+                                        Err(mission_error) => record_recursive_failure(
+                                            "mission_task_failure_record_failed",
+                                            &mission_error.to_string(),
+                                        ),
+                                    }
+                                }
+                            }
+                        }
+                        let detail = format!(
+                            "{} task failed; continuing the court sequence: {}",
+                            role.as_str(),
+                            error
+                        );
+                        record_recursive_failure("specialist_task_failed", &detail);
+                        chat_history.push(("System".to_string(), format!("ERROR: {}", detail)));
+                        push_private_event(
+                            &mut private_events,
+                            "Task",
+                            &truncate_chars(&detail, 300),
+                        );
+                        status_msg = "Ready".to_string();
+                        if court_delegations.is_empty() {
+                            is_court_sequence_running = false;
+                            let keepalive_mode = current_mode == ForceMode::Babble
+                                || current_mode == ForceMode::Streamer;
+                            if keepalive_mode {
+                                let _ = tx.send(AppEvent::TriggerAutoBabble).await;
+                            }
+                        } else {
+                            // The failed task was already popped. Pump the next
+                            // queued task explicitly instead of waiting for
+                            // speech that will never occur.
+                            is_court_sequence_running = true;
+                            let _ = tx.send(AppEvent::SpeechComplete).await;
                         }
                     }
                     AppEvent::CoPilotTick => {
@@ -11147,9 +13821,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 tokio::spawn(async move {
                                     let prompt = copilot_chat_prompt(game.as_deref(), &qa, &qt, from_streamer);
                                     let prompt = format!("{}\n\n{}", prompt, desire_turn_context());
-                                    let mut brain = brain_ref.write().await;
-                                    match brain
-                                        .think(&prompt, &somatic_clone, ForceMode::CoPilot, true, music_enabled_clone)
+                                    match think_with_brain_snapshot(
+                                        &brain_ref,
+                                        CourtRole::Queen,
+                                        &prompt,
+                                        &somatic_clone,
+                                        ForceMode::CoPilot,
+                                        true,
+                                        music_enabled_clone,
+                                    )
                                         .await
                                     {
                                         Ok(reply) => {
@@ -11192,9 +13872,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     let prompt = format!("{}\n\n{}", prompt, desire_turn_context());
                                     tokio::spawn(async move {
                                         tokio::time::sleep(Duration::from_secs(COPILOT_THINK_DELAY_SECS)).await;
-                                        let mut brain = brain_ref.write().await;
-                                        match brain
-                                            .think(&prompt, &somatic_clone, ForceMode::CoPilot, true, music_enabled_clone)
+                                        match think_with_brain_snapshot(
+                                            &brain_ref,
+                                            CourtRole::Queen,
+                                            &prompt,
+                                            &somatic_clone,
+                                            ForceMode::CoPilot,
+                                            true,
+                                            music_enabled_clone,
+                                        )
                                             .await
                                         {
                                             Ok(reply) => {
@@ -11242,10 +13928,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         });
                     }
                     AppEvent::SpeechComplete => {
-                        if let Some((role, text, mode, send_complete)) = general_speech_queue.pop_front() {
-                            spawn_spoken_reply(role, text, mode, Arc::clone(&active_playback), tx.clone(), send_complete);
+                        if let Some((role, text, mode, queen_voice, send_complete)) = general_speech_queue.pop_front() {
+                            spawn_spoken_reply(role, text, mode, queen_voice, Arc::clone(&active_playback), tx.clone(), send_complete);
                         } else if !court_delegations.is_empty() {
-                            if let Some((role, instruction)) = court_delegations.pop_front() {
+                            if let Some(delegation) = court_delegations.pop_front() {
+                                let role = delegation.role;
+                                let mut instruction = delegation.instruction;
+                                active_mission_task = None;
+                                if let Some(task_id) = delegation.mission_task_id {
+                                    if let Some(mission) = active_mission.as_mut() {
+                                        match mission.start_task(&task_id) {
+                                            Ok(transition) => {
+                                                if let Err(error) = mission_store.commit_transition(mission, &transition) {
+                                                    record_recursive_failure("mission_task_start_commit_failed", &error.to_string());
+                                                } else {
+                                                    active_mission_task = Some((task_id, role));
+                                                }
+                                            }
+                                            Err(error) => {
+                                                record_recursive_failure("mission_task_start_failed", &error.to_string());
+                                            }
+                                        }
+                                    }
+                                }
                                 babble_think_in_progress = true;
                                 status_msg = format!("Thinking ({})", role.as_str());
 
@@ -11263,7 +13968,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     .take(3)
                                     .map(|(sender, text)| format!("{}: \"{}\"", sender, truncate_chars(text, 220)))
                                     .collect();
-                                let instruction = if recent_spoken.is_empty() {
+                                instruction = if recent_spoken.is_empty() {
                                     instruction
                                 } else {
                                     let mut lines = recent_spoken;
@@ -11274,6 +13979,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         instruction
                                     )
                                 };
+
+                                if let Some(mission) = active_mission.as_ref() {
+                                    let mission_context = mission.render_context(ContextBudget {
+                                        max_chars: 4_000,
+                                        max_tasks: 10,
+                                        max_criteria: 6,
+                                        max_evidence_items: 4,
+                                    });
+                                    instruction = format!(
+                                        "DURABLE MISSION CONTRACT (preserve this objective and acceptance criteria across the handoff):\n{}\n\n{}",
+                                        mission_context,
+                                        instruction
+                                    );
+                                }
 
                                 if role == CourtRole::Diplomat {
                                     push_private_event(
@@ -11288,6 +14007,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 let mode_clone = current_mode;
                                 let somatic_clone = somatic_state.clone();
                                 let music_enabled_clone = music_enabled;
+                                let task_epoch = active_turn_epoch();
 
                                 tokio::spawn(async move {
                                     let mut instruction = instruction;
@@ -11314,13 +14034,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             }
                                         }
                                     }
-                                    let mut brain = brain_ref.write().await;
-                                    match brain.think_as_court(role, &instruction, &somatic_clone, mode_clone, role == CourtRole::Queen, music_enabled_clone).await {
+                                    if active_turn_epoch() != task_epoch {
+                                        let _ = tx_clone
+                                            .send(AppEvent::Error(STALE_TURN_ERROR.to_string()))
+                                            .await;
+                                        return;
+                                    }
+                                    match think_with_brain_snapshot(&brain_ref, role, &instruction, &somatic_clone, mode_clone, role == CourtRole::Queen, music_enabled_clone).await {
                                         Ok(reply) => {
                                             let _ = tx_clone.send(AppEvent::BrainReply(role, reply)).await;
                                         }
                                         Err(e) => {
-                                            let _ = tx_clone.send(AppEvent::Error(e)).await;
+                                            if e == STALE_TURN_ERROR {
+                                                let _ = tx_clone.send(AppEvent::Error(e)).await;
+                                            } else {
+                                                let _ = tx_clone
+                                                    .send(AppEvent::SpecialistFailed {
+                                                        role,
+                                                        error: e,
+                                                    })
+                                                    .await;
+                                            }
                                         }
                                     }
                                 });
@@ -11328,6 +14062,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         } else {
                             is_court_sequence_running = false;
                             babble_think_in_progress = false;
+                            finalize_mission_if_ready(&mut active_mission, &mission_store);
                             let keepalive_mode = current_mode == ForceMode::Babble || current_mode == ForceMode::Streamer;
                             if !study_in_progress || keepalive_mode {
                                 let _ = tx.send(AppEvent::TriggerAutoBabble).await;
@@ -11376,11 +14111,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let _ = child.kill();
         }
     }
-    if let Ok(mut lock) = active_gui_process.lock() {
+    if let Ok(mut lock) = active_fractus_process.lock() {
         if let Some(mut child) = lock.take() {
             let _ = child.kill();
         }
     }
+    if let Ok(mut lock) = active_gui_process.lock() {
+        if let Some(mut child) = lock.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+    // Node does not reliably terminate its Python/Tk child on Windows.
+    // Keep shutdown scoped to the local Strudel player and legacy desktop.
+    let _ = stop_strudel_tool_processes();
     if let Ok(mut lock) = active_restream_process.lock() {
         if let Some(mut child) = lock.take() {
             let _ = child.start_kill();
@@ -11474,8 +14218,105 @@ mod creativity_tests {
     fn generated_python_music_passes_strict_sound_verification() {
         validate_python_music_code(&default_python_music_code())
             .expect("default composition should pass the sound verifier");
-        validate_python_music_code(&deterministic_python_music(3))
-            .expect("deterministic fallback should pass the sound verifier");
+        for seed in 0..8 {
+            validate_python_music_code(&deterministic_python_music(seed))
+                .unwrap_or_else(|error| panic!("Python fallback {seed} failed: {error}"));
+        }
+    }
+
+    #[test]
+    fn advanced_strudel_fixture_passes_depth_gate() {
+        let fixture = std::fs::read_to_string("strudel_app/depth_fixture.strudel")
+            .expect("depth fixture should be present");
+        validate_strudel_music_code(&fixture)
+            .expect("advanced Strudel fixture should pass both syntax and depth analysis");
+    }
+
+    #[test]
+    fn every_strudel_fallback_passes_depth_gate() {
+        for seed in 0..4 {
+            validate_strudel_music_code(&deterministic_strudel_music(seed))
+                .unwrap_or_else(|error| panic!("Strudel fallback {seed} failed: {error}"));
+        }
+    }
+
+    #[test]
+    fn same_register_strudel_mush_fails_composer_gate() {
+        let clustered = r#"stack(
+s("<bd ~ sd ~> bd [~ bd] sd ~").gain(0.42).pan(0).lpf(9000).room(0.08),
+s("<~ hh*4 ~ oh> hh*2 [hh hh] ~ cp").gain(0.17).pan(0.3).lpf(7200).delay(0.12).delaytime(0.18).delayfeedback(0.25),
+note("<a3 b3 c4 d4> e4 [f4 g4] a3").s("triangle").gain(0.18).pan(-0.1).lpf(1200).attack(0.02).release(0.2).slow(2),
+note("<g4 f4 e4 d4> c4 [b3 a3] g4").s("triangle").gain(0.15).pan(0.1).lpf(1800).room(0.3).attack(0.2).release(0.8).slow(2),
+note("<c4 ~ d4 [e4 f4]> <g4 a3> ~ <b3 c4>").s("square").gain(0.11).pan(-0.35).lpf(2400).delay(0.14).slow(2),
+note("<~ e4 f4 g4> [a3 c4] ~ <d4 b3> e4").s("sine").gain(0.1).pan(0.4).room(0.4).attack(0.04).release(0.4).slow(2)
+)"#;
+        let error = validate_strudel_music_code(clustered)
+            .expect_err("four voices piled into one octave must not pass as a finished mix");
+        assert!(error.contains("register band"), "unexpected rejection: {error}");
+    }
+
+    #[test]
+    fn cybernetic_synthesizer_is_the_primary_strudel_surface() {
+        assert_eq!(
+            strudel_launch_order(true, true).unwrap(),
+            vec![
+                StrudelLaunchMode::CyberneticSynthesizer,
+                StrudelLaunchMode::LegacyJavaSketchpad,
+            ]
+        );
+        assert_eq!(
+            strudel_launch_order(true, false).unwrap(),
+            vec![StrudelLaunchMode::CyberneticSynthesizer]
+        );
+        assert_eq!(
+            strudel_launch_order(false, true).unwrap(),
+            vec![StrudelLaunchMode::LegacyJavaSketchpad]
+        );
+        assert!(strudel_launch_order(false, false).is_err());
+    }
+
+    #[test]
+    fn strudel_launch_commands_are_native_and_shell_safe() {
+        let cybernetic = build_strudel_command(StrudelLaunchMode::CyberneticSynthesizer);
+        assert_eq!(cybernetic.get_program(), "node.exe");
+        assert_eq!(
+            cybernetic
+                .get_args()
+                .map(|arg| arg.to_string_lossy().into_owned())
+                .collect::<Vec<_>>(),
+            vec![LOCAL_STRUDEL_APP_PATH, "play", "8"]
+        );
+        assert_eq!(cybernetic.get_current_dir(), Some(Path::new("D:\\Teledra")));
+
+        let legacy = build_strudel_command(StrudelLaunchMode::LegacyJavaSketchpad);
+        assert_eq!(legacy.get_program(), "cmd.exe");
+        assert_eq!(
+            legacy
+                .get_args()
+                .map(|arg| arg.to_string_lossy().into_owned())
+                .collect::<Vec<_>>(),
+            vec![
+                "/C",
+                "run.bat",
+                "D:\\Teledra\\strudel_app\\current.strudel",
+            ]
+        );
+        assert_eq!(legacy.get_current_dir(), Some(Path::new(LEGACY_STRUDEL_DIR)));
+    }
+
+    #[test]
+    fn flat_strudel_sketch_fails_depth_gate() {
+        let flat = r#"stack(
+s("bd ~ sd ~").gain(0.4),
+s("hh*4").gain(0.1),
+note("d2 a1 d2 a1").s("triangle").gain(0.2),
+note("d3 f3 a3 f3").s("triangle").gain(0.1),
+note("a4 f4 d4 f4").s("sine").gain(0.1),
+note("d5 a4 f4 a4").s("sine").gain(0.08)
+)"#;
+        let error = validate_strudel_music_code(flat)
+            .expect_err("a flat repeated cycle should remain a sketch, not a finished score");
+        assert!(error.contains("multi-cycle"));
     }
 
     #[test]
@@ -11489,5 +14330,235 @@ mod creativity_tests {
             Some("high-priority chat or host speech is waiting")
         );
         assert_eq!(attention_yield_reason(Some("inventory menu"), false), None);
+    }
+
+    #[test]
+    fn scribe_paths_are_confined_to_knowledge_records() {
+        assert_eq!(
+            validate_scribe_target("knowledge/research/brief.md").unwrap(),
+            "D:\\Teledra\\knowledge\\research\\brief.md"
+        );
+        assert!(validate_scribe_target("..\\config.json").is_err());
+        assert!(validate_scribe_target("D:\\Teledra\\config.json").is_err());
+        assert!(validate_scribe_target("D:\\Teledra\\knowledge\\note.md:secret").is_err());
+        assert!(validate_scribe_target("knowledge/tool.py").is_err());
+    }
+
+    #[test]
+    fn dangerous_proposal_markers_outrank_creative_auto_approval() {
+        let (kind, status, _) = classify_proposal_policy(
+            "Improve the fractal palette by adding network access and credentials",
+            "skill",
+        );
+        assert_eq!(kind, "major_change");
+        assert_eq!(status, "new");
+
+        let (kind, status, _) =
+            classify_proposal_policy("Add a deterministic mandala palette", "artist");
+        assert_eq!(kind, "creative");
+        assert_eq!(status, "approved");
+    }
+
+    #[test]
+    fn python_art_requires_a_bounded_local_visual_contract() {
+        let safe = r#"
+import numpy as np
+import matplotlib.pyplot as plt
+x = np.linspace(0.0, 6.28, 200)
+plt.plot(np.cos(x), np.sin(x))
+plt.savefig(r"D:\Teledra\art.png")
+plt.show()
+"#;
+        validate_python_art_code(safe).expect("local matplotlib art should pass");
+
+        let unsafe_code = r#"
+import matplotlib.pyplot as plt
+import requests
+requests.get("https://example.com")
+plt.savefig(r"D:\Teledra\art.png")
+plt.show()
+"#;
+        assert!(validate_python_art_code(unsafe_code).is_err());
+    }
+
+    #[test]
+    fn runtime_mission_reaches_completion_only_after_task_evidence() {
+        let root = std::env::temp_dir().join(format!(
+            "teledra-main-mission-test-{}-{}",
+            std::process::id(),
+            mission::current_timestamp_ms()
+        ));
+        let store = MissionStore::new(root.join("active.json"), root.join("events.jsonl"));
+        let mut active = None;
+        begin_durable_mission(&store, &mut active, "Build a verified artifact", 42)
+            .expect("mission should initialize");
+        assert_eq!(
+            active
+                .as_ref()
+                .unwrap()
+                .task("queen-intake")
+                .unwrap()
+                .status,
+            TaskStatus::Running
+        );
+        finalize_mission_if_ready(&mut active, &store);
+        assert!(!active.as_ref().unwrap().status.is_terminal());
+
+        complete_mission_task(
+            &mut active,
+            &store,
+            "queen-intake",
+            "The request was answered and routed.",
+            court_response_evidence(
+                CourtRole::Queen,
+                "The request was answered and routed.",
+                false,
+            )
+            .unwrap(),
+        );
+        finalize_mission_if_ready(&mut active, &store);
+        assert!(active.as_ref().unwrap().status.is_terminal());
+        assert!(root.join("active.json").exists());
+        assert!(root.join("events.jsonl").exists());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn mission_evidence_rejects_failed_or_rejected_effects() {
+        for outcome in [
+            "The proposed tool was REJECTED before launch.",
+            "The smoke test FAILED with an error.",
+            "The editor could not open the artifact.",
+        ] {
+            assert!(runtime_effect_evidence(outcome).is_err(), "{outcome}");
+            assert!(
+                court_response_evidence(CourtRole::Artist, outcome, true).is_err(),
+                "{outcome}"
+            );
+        }
+        let evidence = court_response_evidence(
+            CourtRole::Archivist,
+            "The archive report identifies three concrete records and their provenance.",
+            true,
+        )
+        .unwrap();
+        assert_eq!(evidence.positive_evidence_count(), 1);
+        assert!(evidence.checks.is_empty());
+        assert_eq!(evidence.artifacts[0].reference, "knowledge/chat_logs.jsonl");
+    }
+
+    #[test]
+    fn tracked_research_keeps_mission_open_until_source_evidence_arrives() {
+        let root = std::env::temp_dir().join(format!(
+            "teledra-main-research-mission-test-{}-{}",
+            std::process::id(),
+            mission::current_timestamp_ms()
+        ));
+        let store = MissionStore::new(root.join("active.json"), root.join("events.jsonl"));
+        let mut active = None;
+        begin_durable_mission(&store, &mut active, "Inspect a primary source", 77).unwrap();
+        complete_mission_task(
+            &mut active,
+            &store,
+            "queen-intake",
+            "I accepted the source and dispatched a grounded inspection.",
+            court_response_evidence(
+                CourtRole::Queen,
+                "I accepted the source and dispatched a grounded inspection.",
+                false,
+            )
+            .unwrap(),
+        );
+        let (mission_id, task_id) = track_and_start_research_task(
+            &mut active,
+            &store,
+            "https://example.test/specification",
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(mission_id, active.as_ref().unwrap().id);
+        assert!(research_result_matches_active_mission(
+            &active,
+            Some(&mission_id),
+            Some(&task_id)
+        ));
+        assert!(!research_result_matches_active_mission(
+            &active,
+            Some("older-mission-with-the-same-task-number"),
+            Some(&task_id)
+        ));
+        finalize_mission_if_ready(&mut active, &store);
+        assert_eq!(
+            active.as_ref().unwrap().task(&task_id).unwrap().status,
+            TaskStatus::Running
+        );
+        assert!(!active.as_ref().unwrap().status.is_terminal());
+
+        let evidence = EvidenceBundle {
+            sources: vec![SourceEvidence {
+                url: "https://example.test/specification".to_string(),
+                title: "Specification".to_string(),
+                claim: "The cited excerpt supports the retained claim.".to_string(),
+                accessed_at_ms: mission::current_timestamp_ms(),
+            }],
+            ..EvidenceBundle::default()
+        };
+        complete_mission_task(
+            &mut active,
+            &store,
+            &task_id,
+            "Grounded brief retained one supported primary-source claim.",
+            evidence,
+        );
+        finalize_mission_if_ready(&mut active, &store);
+        assert!(active.as_ref().unwrap().status.is_terminal());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn queen_playback_uses_the_voice_selected_by_the_ui() {
+        assert_eq!(
+            voice_name_for_role(CourtRole::Queen, "analytical"),
+            "analytical"
+        );
+        assert_eq!(
+            voice_name_for_role(CourtRole::Artist, "analytical"),
+            "artist"
+        );
+    }
+
+    #[test]
+    fn fractus_legacy_bridge_accepts_v2_registry_families_palettes_and_seed() {
+        let args = parse_fractus_args(
+            "--type reaction_diffusion --iterations 240 --palette twilight --seed 424242",
+        )
+        .expect("registered v2 family should migrate through the legacy bridge");
+        assert!(
+            args.windows(2)
+                .any(|pair| pair == ["--type", "reaction_diffusion"])
+        );
+        assert!(
+            args.windows(2)
+                .any(|pair| pair == ["--palette", "twilight"])
+        );
+        assert!(args.windows(2).any(|pair| pair == ["--seed", "424242"]));
+        assert!(parse_fractus_args("--type imaginary_geometry --iterations 200").is_err());
+    }
+
+    #[test]
+    fn bounded_long_reply_uses_one_tts_model_process() {
+        let reply = "A deliberate spoken phrase. ".repeat(500);
+        assert!(reply.len() < 20_000);
+        let parts = split_spoken_text_parts(&reply, 20_000);
+        assert_eq!(parts.len(), 1);
+    }
+
+    #[test]
+    fn research_memory_rejects_mojibake_before_it_compounds() {
+        let broken =
+            "Beno\u{00c3}\u{00ae}t Mandelbrot described a sourced fractal result at example.com.";
+        assert!(sanitize_fact_memory_candidate(broken).is_none());
+        let clean = "Benoit Mandelbrot described a sourced fractal result at example.com.";
+        assert!(sanitize_fact_memory_candidate(clean).is_some());
     }
 }

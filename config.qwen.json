@@ -1,5 +1,6 @@
 {
   "api_key": "",
   "api_url": "http://localhost:11434/v1/chat/completions",
-  "model": "qwen2.5:7b"
+  "model": "qwen2.5:7b",
+  "code_model": "hf.co/deepreinforce-ai/Ornith-1.0-9B-GGUF:Q4_K_M"
 }

@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import os
 import sys
+import hashlib
+import time
 
 ROOT = os.path.abspath(os.path.dirname(__file__))
 PARENT = os.path.abspath(os.path.join(ROOT, ".."))
@@ -45,13 +47,33 @@ def main() -> int:
         print(f"music verifier import failed: {exc}", file=sys.stderr)
         return 3
 
-    report = verify_file(candidate, min_duration=min_duration)
+    report = verify_file(candidate, min_duration=min_duration, composer_grade=True)
     append_lesson(
         report,
         candidate,
         os.path.join(PARENT, "knowledge", "music_lessons.jsonl"),
     )
     import json
+
+    # Keep compact, factual feedback for the Organist's next research/repair
+    # cycle.  Source hashes distinguish a real revision from a renamed file.
+    try:
+        with open(candidate, "rb") as source_handle:
+            source_bytes = source_handle.read()
+        compact_report = {
+            "timestamp": int(time.time()),
+            "source_sha256": hashlib.sha256(source_bytes).hexdigest(),
+            "ok": bool(report.get("ok")),
+            "quality_score": report.get("quality_score"),
+            "composer_metrics": report.get("composer_metrics", {}),
+            "advisories": report.get("composer_advisories", [])[:5],
+            "issues": report.get("issues", [])[:8],
+        }
+        report_path = os.path.join(PARENT, "knowledge", "music_harness_reports.jsonl")
+        with open(report_path, "a", encoding="utf-8", newline="\n") as handle:
+            handle.write(json.dumps(compact_report, ensure_ascii=True, sort_keys=True) + "\n")
+    except OSError:
+        pass
 
     rendered = json.dumps(report, ensure_ascii=True, sort_keys=True)
     if report["ok"]:
