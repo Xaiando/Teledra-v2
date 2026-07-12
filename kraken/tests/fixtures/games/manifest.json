@@ -36,6 +36,15 @@
       "contract_version": 2,
       "session": "finite",
       "expected_codes": ["STRUCTURE_TRUNCATED"]
+    },
+    {
+      "path": "vault_runner_positive.html",
+      "sha256": "40289EDAF4EED5229E4C337BDB7E84F5BC852C5E1B2E218C44C047063F6964EB",
+      "role": "positive",
+      "profile": "endless_runner",
+      "contract_version": 2,
+      "session": "endless",
+      "expected_codes": []
     }
   ]
 }

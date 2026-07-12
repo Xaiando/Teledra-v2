@@ -190,6 +190,30 @@ window.addEventListener('load', async () => {
       report.telemetry.afterDamage = snapshot();
       report.telemetry.transitions = [snapshot()];
     }
+  } else if (profileName === 'endless_runner') {
+    await sleep(200);
+    report.canvasStart = sampleCanvas();
+    for (const code of ['Space', 'ArrowUp']) key('keydown', code);
+    await sleep(90);
+    report.telemetry.duringJump = snapshot();
+    for (const code of ['Space', 'ArrowUp']) key('keyup', code);
+    await sleep(160);
+
+    for (const code of ['ArrowDown', 'KeyS']) key('keydown', code);
+    await sleep(150);
+    report.telemetry.afterRight = snapshot();
+    for (const code of ['ArrowDown', 'KeyS']) key('keyup', code);
+    await sleep(100);
+
+    if (isV2 && api && typeof api.action === 'function') {
+      try { await Promise.resolve(api.action('damage')); } catch (e) { probe.errors.push('beast damage failed: ' + e); }
+      await sleep(100);
+      report.telemetry.afterDamage = snapshot();
+
+      try { await Promise.resolve(api.action('fail')); } catch (e) { probe.errors.push('beast fail failed: ' + e); }
+      await sleep(100);
+      report.telemetry.transitions = [snapshot()];
+    }
   } else {
     for (const code of ['ArrowRight', 'KeyD']) key('keydown', code);
     await sleep(280);
@@ -442,6 +466,30 @@ def assess_structured(
                 lives1 = _num(damaged, "metrics", "lives") or _num(damaged, "lives")
                 if lives0 is None or lives1 is None or lives1 >= lives0:
                     reasons.append("beast telemetry: collide action did not reduce lives or trigger loss")
+    elif expected_profile == "endless_runner":
+        jump_snap = telemetry.get("duringJump")
+        y0 = _num(initial, "actor", "y") or _num(initial, "player", "y")
+        y1 = _num(jump_snap, "actor", "y") or _num(jump_snap, "player", "y")
+        vy1 = _num(jump_snap, "actor", "vy") or _num(jump_snap, "player", "vy")
+        if y0 is None or y1 is None or vy1 is None or not (y1 < y0 - 0.5 or vy1 < -0.25 or vy1 > 0.25):
+            reasons.append("beast telemetry: Space/Up did not produce an upward jump")
+        posture = moved.get("metrics", {}).get("posture") if moved else None
+        if posture is None:
+            posture = moved.get("posture") if moved else None
+        if posture is None:
+            reasons.append("beast telemetry: holding Down did not set metrics.posture")
+        lives0 = _num(initial, "metrics", "lives") or _num(initial, "lives")
+        lives1 = _num(damaged, "metrics", "lives") or _num(damaged, "lives")
+        if lives0 is None or lives1 is None or lives1 >= lives0:
+            reasons.append("beast telemetry: damage action did not reduce lives")
+        if transitions:
+            term = transitions[-1]
+            state = term.get("state")
+            complete = term.get("complete")
+            if not (complete is True or (state and state in {"lost", "gameover", "game_over"})):
+                reasons.append("beast telemetry: fail action did not trigger a terminal gameover state")
+        else:
+            reasons.append("beast telemetry: fail action produced no progression snapshots")
 
     if int(report.get("audioStarts") or 0) < 1:
         reasons.append("no Web Audio source started during Play or actions")
