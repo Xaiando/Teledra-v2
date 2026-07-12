@@ -1,0 +1,1009 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vault Runner</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0a0a2e; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; font-family: 'Courier New', monospace; user-select: none; -webkit-user-select: none; }
+#game-container { position: relative; width: 800px; height: 600px; }
+canvas { display: block; background: #1a1a3e; border: 2px solid #4a4a8e; cursor: pointer; }
+#start-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; background: rgba(10, 10, 46, 0.95); z-index: 10; }
+#start-overlay h1 { font-size: 32px; color: #ffd700; margin-bottom: 8px; text-shadow: 0 0 10px rgba(255, 215, 0, 0.5); }
+#start-overlay .subtitle { color: #aaa; font-size: 14px; margin-bottom: 6px; max-width: 500px; text-align: center; line-height: 1.5; }
+#start-overlay .controls-hint { color: #88ccff; font-size: 13px; margin-top: 12px; background: rgba(255,255,255,0.06); padding: 10px 18px; border-radius: 6px; }
+#play-btn { padding: 14px 40px; font-size: 20px; background: linear-gradient(135deg, #ffd700, #ffaa00); color: #1a1a2e; border: none; border-radius: 8px; cursor: pointer; font-family: 'Courier New', monospace; font-weight: bold; transition: transform 0.1s, box-shadow 0.1s; margin-top: 15px; }
+#play-btn:hover { transform: scale(1.05); box-shadow: 0 0 20px rgba(255, 215, 0, 0.6); }
+#play-btn:active { transform: scale(0.98); }
+#hud { position: absolute; top: 8px; left: 8px; right: 8px; display: flex; justify-content: space-between; pointer-events: none; z-index: 5; color: #fff; font-size: 14px; text-shadow: 0 0 3px rgba(0,0,0,0.8); }
+#scoreBox { color: #ffd700; }
+#levelBox { color: #88ccff; }
+#livesBox { color: #ff6666; }
+#powerupBox { color: #44ff44; }
+#gameover-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; flex-direction: column; justify-content: center; align-items: center; background: rgba(20, 5, 10, 0.9); z-index: 10; }
+#gameover-overlay h2 { font-size: 36px; color: #ff4444; margin-bottom: 8px; text-shadow: 0 0 10px rgba(255, 68, 68, 0.5); }
+#gameover-overlay .score-final { color: #ffd700; font-size: 18px; margin-bottom: 14px; }
+#gameover-btn { padding: 12px 36px; font-size: 18px; background: linear-gradient(135deg, #4a9eff, #2a7ae0); color: #fff; border: none; border-radius: 6px; cursor: pointer; font-family: 'Courier New', monospace; }
+#gameover-btn:hover { filter: brightness(1.15); }
+#mute-toggle { position: absolute; top: 8px; right: 8px; z-index: 5; background: rgba(0,0,0,0.6); color: #fff; border: 1px solid #4a4a8e; padding: 4px 12px; font-size: 12px; cursor: pointer; font-family: 'Courier New', monospace; }
+#mute-toggle:hover { background: rgba(0,0,0,0.8); }
+</style>
+</head>
+<body>
+
+<div id="game-container">
+<canvas id="game-canvas" tabindex="0"></canvas>
+<div id="start-overlay">
+<h1>Vault Runner</h1>
+<p class="subtitle">Break into vaults, collect treasures, defeat guards and escape!</p>
+<p class="controls-hint">Arrow keys / WASD to move &amp; jump | Space/Up to jump (tap for short hop) | Duck with Down/S to hide under low platforms</p>
+<button id="play-btn">PLAY</button>
+</div>
+<div id="hud">
+<span id="scoreBox"></span><span id="levelBox"></span><span id="livesBox"></span><span id="powerupBox"></span>
+</div>
+<div id="mute-toggle">🔊 Sound On</div>
+<div id="gameover-overlay">
+<h2 id="go-title">GAME OVER</h2>
+<div class="score-final" id="final-score"></div>
+<button id="restart-btn">PLAY AGAIN</button>
+</div>
+</div>
+
+<script>
+(function () {
+'use strict';
+
+// ======================== DOM REFS ========================
+const canvas = document.getElementById('game-canvas');
+canvas.width = 800;
+canvas.height = 600;
+
+const startOverlay = document.getElementById('start-overlay');
+const playBtn = document.getElementById('play-btn');
+const gameoverOverlay = document.getElementById('gameover-overlay');
+const finalScoreEl = document.getElementById('final-score');
+const goTitleEl = document.getElementById('go-title');
+const restartBtn = document.getElementById('restart-btn');
+const muteToggle = document.getElementById('mute-toggle');
+
+// HUD elements - separate dedicated boxes
+const scoreBox = document.getElementById('scoreBox');
+const levelBox = document.getElementById('levelBox');
+const livesBox = document.getElementById('livesBox');
+const powerupBox = document.getElementById('powerupBox');
+
+// ======================== GAME STATE (all at IIFE scope) ========================
+let gameState = 'start'; // start, playing, gameover, won
+let score = 0;
+let lives = 3;
+let levelIndex = 0;
+let totalLevels = 5;
+let wave = 1;
+let spawnTimer = 0;
+let cameraX = 0;
+let distance = 0;
+let spawnInterval = 2.0;
+
+// ======================== PLAYER ========================
+const player = {
+    x: 80, y: 460, width: 32, height: 48,
+    vx: 0, vy: 0, speed: 5.5, jumpForce: -14,
+    grounded: true, ducking: false, duckTimer: 0,
+    invincible: false, invincibleTimer: 0,
+    color: '#ffd700',
+    coyoteTime: 0,
+    coyoteMax: 8, // frames of grace after leaving ground
+};
+
+// ======================== LEVEL DATA ========================
+const GRAVITY = 0.6;
+const GROUND_Y = 490;
+
+function makeLevel(n) {
+    const platforms = [];
+    const enemies = [];
+    const coins = [];
+    const powerups = [];
+    const obstacles = [];
+    let exitX, exitY;
+
+    // Level design: each level has a start platform and an exit at the far right
+    if (n === 0) {
+        // Tutorial level - flat with some platforms
+        platforms.push({x: 0, y: GROUND_Y, w: 1200, h: 40});
+        platforms.push({x: 350, y: 380, w: 120, h: 20});
+        platforms.push({x: 600, y: 320, w: 120, h: 20});
+        platforms.push({x: 900, y: GROUND_Y, w: 400, h: 40});
+        exitX = 1350; exitY = GROUND_Y - 36;
+
+        // Coins on platforms
+        coins.push({x: 200, y: 380-20, w: 18, h: 18, collected: false});
+        coins.push({x: 450, y: 320-20, w: 18, h: 18, collected: false});
+        coins.push({x: 700, y: 320-20, w: 18, h: 18, collected: false});
+        coins.push({x: 950, y: GROUND_Y-60, w: 18, h: 18, collected: false});
+
+        // One patrol enemy
+        enemies.push({x: 400, y: GROUND_Y-24, w: 30, h: 24, vx: -1.5, type: 'patrol', hp: 1, maxHp: 1, color: '#aa3366'});
+
+    } else if (n === 1) {
+        // Gaps and low platforms
+        platforms.push({x: 0, y: GROUND_Y, w: 250, h: 40});
+        platforms.push({x: 300, y: 380, w: 100, h: 20});
+        platforms.push({x: 500, y: 320, w: 100, h: 20});
+        platforms.push({x: 700, y: GROUND_Y, w: 200, h: 40});
+        platforms.push({x: 950, y: 360, w: 100, h: 20});
+        platforms.push({x: 1100, y: GROUND_Y, w: 300, h: 40});
+        exitX = 1450; exitY = GROUND_Y - 36;
+
+        coins.push({x: 120, y: GROUND_Y-60, w: 18, h: 18, collected: false});
+        coins.push({x: 370, y: 380-20, w: 18, h: 18, collected: false});
+        coins.push({x: 560, y: 320-20, w: 18, h: 18, collected: false});
+        coins.push({x: 760, y: GROUND_Y-60, w: 18, h: 18, collected: false});
+        coins.push({x: 990, y: 360-20, w: 18, h: 18, collected: false});
+
+        enemies.push({x: 450, y: GROUND_Y-24, w: 30, h: 24, vx: -1.8, type: 'patrol', hp: 1, maxHp: 1, color: '#aa3366'});
+        enemies.push({x: 750, y: GROUND_Y-24, w: 30, h: 24, vx: -1.8, type: 'patrol', hp: 1, maxHp: 1, color: '#aa3366'});
+
+    } else if (n === 2) {
+        // Moving platforms and spikes
+        platforms.push({x: 0, y: GROUND_Y, w: 200, h: 40});
+        platforms.push({x: 280, y: 360, w: 100, h: 20}); // moving
+        platforms.push({x: 500, y: GROUND_Y, w: 150, h: 40});
+        platforms.push({x: 750, y: 340, w: 100, h: 20}); // moving
+        platforms.push({x: 980, y: GROUND_Y, w: 250, h: 40});
+        exitX = 1300; exitY = GROUND_Y - 36;
+
+        coins.push({x: 100, y: GROUND_Y-60, w: 18, h: 18, collected: false});
+        coins.push({x: 340, y: 360-20, w: 18, h: 18, collected: false});
+        coins.push({x: 570, y: GROUND_Y-60, w: 18, h: 18, collected: false});
+        coins.push({x: 800, y: 340-20, w: 18, h: 18, collected: false});
+
+        enemies.push({x: 350, y: GROUND_Y-24, w: 30, h: 24, vx: -2, type: 'guard', hp: 2, maxHp: 2, color: '#ff4444'});
+        enemies.push({x: 600, y: GROUND_Y-24, w: 30, h: 24, vx: -1.5, type: 'patrol', hp: 1, maxHp: 1, color: '#aa3366'});
+        enemies.push({x: 900, y: GROUND_Y-24, w: 30, h: 24, vx: -2, type: 'guard', hp: 2, maxHp: 2, color: '#ff4444'});
+
+        // Spikes
+        obstacles.push({x: 510, y: GROUND_Y-16, w: 80, h: 16, color: '#555'});
+
+    } else if (n === 3) {
+        // High platforms and speed enemies
+        platforms.push({x: 0, y: GROUND_Y, w: 200, h: 40});
+        platforms.push({x: 250, y: 380, w: 100, h: 20});
+        platforms.push({x: 450, y: 300, w: 100, h: 20});
+        platforms.push({x: 650, y: GROUND_Y, w: 180, h: 40});
+        platforms.push({x: 900, y: 360, w: 100, h: 20});
+        platforms.push({x: 1100, y: GROUND_Y, w: 250, h: 40});
+        exitX = 1400; exitY = GROUND_Y - 36;
+
+        coins.push({x: 80, y: GROUND_Y-60, w: 18, h: 18, collected: false});
+        coins.push({x: 290, y: 380-20, w: 18, h: 18, collected: false});
+        coins.push({x: 490, y: 300-20, w: 18, h: 18, collected: false});
+        coins.push({x: 690, y: GROUND_Y-60, w: 18, h: 18, collected: false});
+        coins.push({x: 940, y: 360-20, w: 18, h: 18, collected: false});
+
+        enemies.push({x: 300, y: GROUND_Y-24, w: 30, h: 24, vx: -2.5, type: 'guard', hp: 2, maxHp: 2, color: '#ff4444'});
+        enemies.push({x: 680, y: GROUND_Y-24, w: 30, h: 24, vx: -1.5, type: 'patrol', hp: 1, maxHp: 1, color: '#aa3366'});
+        enemies.push({x: 950, y: GROUND_Y-24, w: 30, h: 24, vx: -2.5, type: 'guard', hp: 2, maxHp: 2, color: '#ff4444'});
+
+    } else {
+        // Final boss level
+        platforms.push({x: 0, y: GROUND_Y, w: 300, h: 40});
+        platforms.push({x: 400, y: 420, w: 150, h: 20});
+        platforms.push({x: 650, y: 380, w: 150, h: 20});
+        platforms.push({x: 900, y: GROUND_Y, w: 400, h: 40});
+        exitX = 1350; exitY = GROUND_Y - 36;
+
+        coins.push({x: 120, y: GROUND_Y-60, w: 18, h: 18, collected: false});
+        coins.push({x: 475, y: 420-20, w: 18, h: 18, collected: false});
+        coins.push({x: 725, y: 380-20, w: 18, h: 18, collected: false});
+
+        enemies.push({x: 450, y: GROUND_Y-24, w: 36, h: 28, vx: -2.2, type: 'boss', hp: 4, maxHp: 4, color: '#ff0000'});
+        enemies.push({x: 700, y: GROUND_Y-24, w: 36, h: 28, vx: -1.8, type: 'boss', hp: 4, maxHp: 4, color: '#ff0000'});
+        enemies.push({x: 950, y: GROUND_Y-24, w: 36, h: 28, vx: -2.2, type: 'boss', hp: 4, maxHp: 4, color: '#ff0000'});
+
+        // Spikes
+        obstacles.push({x: 510, y: GROUND_Y-16, w: 100, h: 16, color: '#555'});
+    }
+
+    return { platforms, enemies, coins, powerups, obstacles, exitX, exitY };
+}
+
+// ======================== AUDIO SYSTEM ========================
+let audioCtx = null;
+let musicOscillators = [];
+let isMuted = false;
+
+function initAudio() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+}
+
+function ensureUnlocked() {
+    if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume().catch(() => {});
+    } else if (!audioCtx) {
+        initAudio();
+    }
+}
+
+function playSound(type) {
+    try {
+        ensureUnlocked();
+        const ctx = audioCtx;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        switch (type) {
+            case 'jump':
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(200, ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(400, ctx.currentTime + 0.1);
+                gain.gain.setValueAtTime(0.15, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
+                osc.start(ctx.currentTime);
+                osc.stop(ctx.currentTime + 0.1);
+                break;
+            case 'coin':
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(800, ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(1200, ctx.currentTime + 0.15);
+                gain.gain.setValueAtTime(0.12, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
+                osc.start(ctx.currentTime);
+                osc.stop(ctx.currentTime + 0.15);
+                break;
+            case 'hit':
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(120, ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(60, ctx.currentTime + 0.2);
+                gain.gain.setValueAtTime(0.2, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+                osc.start(ctx.currentTime);
+                osc.stop(ctx.currentTime + 0.2);
+                break;
+            case 'powerup':
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(400, ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(1500, ctx.currentTime + 0.3);
+                gain.gain.setValueAtTime(0.12, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+                osc.start(ctx.currentTime);
+                osc.stop(ctx.currentTime + 0.3);
+                break;
+            case 'enemyDeath':
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(250, ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(80, ctx.currentTime + 0.15);
+                gain.gain.setValueAtTime(0.15, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
+                osc.start(ctx.currentTime);
+                osc.stop(ctx.currentTime + 0.15);
+                break;
+            case 'gameover':
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(200, ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(50, ctx.currentTime + 0.6);
+                gain.gain.setValueAtTime(0.18, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.6);
+                osc.start(ctx.currentTime);
+                osc.stop(ctx.currentTime + 0.6);
+                break;
+            case 'win':
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(523, ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(659, ctx.currentTime + 0.15);
+                osc.frequency.exponentialRampToValueAtTime(784, ctx.currentTime + 0.3);
+                gain.gain.setValueAtTime(0.2, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+                osc.start(ctx.currentTime);
+                osc.stop(ctx.currentTime + 0.5);
+                break;
+        }
+    } catch (e) { /* audio init failed silently */ }
+}
+
+function startMusic() {
+    try {
+        ensureUnlocked();
+        const ctx = audioCtx;
+        if (!isMuted) {
+            // Simple looping melody - 4 notes in a loop
+            const noteFreqs = [261.63, 329.63, 392.00, 523.25]; // C E G C
+            let time = ctx.currentTime;
+            for (let i = 0; i < 8; i++) {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.value = noteFreqs[i % noteFreqs.length];
+                gain.gain.setValueAtTime(0.06, time);
+                gain.gain.exponentialRampToValueAtTime(0.01, time + 0.35);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start(time);
+                osc.stop(time + 0.4);
+                musicOscillators.push({osc, gain});
+                time += 0.4;
+            }
+        }
+    } catch (e) { /* ignore */ }
+}
+
+function stopMusic() {
+    try {
+        if (!isMuted && audioCtx) {
+            for (const m of musicOscillators) {
+                try { m.osc.stop(); } catch(e){}
+                try { m.gain.disconnect(); } catch(e){}
+            }
+            musicOscillators = [];
+        }
+    } catch (e) {}
+}
+
+muteToggle.addEventListener('click', function() {
+    isMuted = !isMuted;
+    muteToggle.textContent = isMuted ? '🔇 Sound Off' : '🔊 Sound On';
+});
+
+// ======================== INPUT HANDLING ========================
+const keys = {};
+
+document.addEventListener('keydown', function (e) {
+    keys[e.code] = true;
+    if ((gameState === 'start' || gameState === 'won') && (e.code === 'Enter' || e.code === 'Space')) {
+        startGame();
+        e.preventDefault();
+    }
+});
+
+document.addEventListener('keyup', function (e) {
+    keys[e.code] = false;
+});
+
+// ======================== GAME FUNCTIONS ========================
+function startGame() {
+    gameState = 'playing';
+    score = 0; lives = 3; levelIndex = 0; wave = 1; spawnTimer = 0;
+    player.x = 80; player.y = GROUND_Y - player.height;
+    player.vx = 0; player.vy = 0;
+    player.grounded = true; player.ducking = false;
+    player.invincible = true; player.invincibleTimer = 120; // 2 sec at 60fps
+    player.coyoteTime = 0;
+
+    const lvl = makeLevel(levelIndex);
+    loadLevelData(lvl);
+
+    startOverlay.style.display = 'none';
+    gameoverOverlay.style.display = 'none';
+    updateHUD();
+    startMusic();
+}
+
+function restartGame() {
+    gameState = 'playing';
+    score = 0; lives = 3; levelIndex = 0; wave = 1; spawnTimer = 0;
+    player.x = 80; player.y = GROUND_Y - player.height;
+    player.vx = 0; player.vy = 0;
+    player.grounded = true; player.ducking = false;
+    player.invincible = true; player.invincibleTimer = 120;
+    player.coyoteTime = 0;
+
+    const lvl = makeLevel(levelIndex);
+    loadLevelData(lvl);
+
+    gameoverOverlay.style.display = 'none';
+    updateHUD();
+}
+
+function loadLevelData(lvl) {
+    enemies = []; coins = []; powerups = []; particles = []; obstacles = [];
+    cameraX = 0; distance = 0; spawnInterval = 2.0;
+
+    // Place platforms as solid ground for collision
+    for (const p of lvl.platforms) {
+        obstacles.push({x: p.x, y: p.y, w: p.w, h: p.h, color: '#4ecca3', isPlatform: true});
+    }
+
+    // Place enemies
+    for (let i = 0; i < lvl.enemies.length; i++) {
+        const e = lvl.enemies[i];
+        enemies.push({
+            x: e.x + cameraX, y: e.y, w: e.w, h: e.h,
+            vx: e.vx, vy: 0, type: e.type, hp: e.hp, maxHp: e.maxHp,
+            color: e.color, patrolStart: e.x - cameraX, patrolEnd: e.x + 200 - cameraX,
+            speed: Math.abs(e.vx), direction: e.vx < 0 ? -1 : 1
+        });
+    }
+
+    // Place coins
+    for (const c of lvl.coins) {
+        coins.push({x: c.x + cameraX, y: c.y, w: c.w, h: c.h, collected: false});
+    }
+
+    // Extract exit coordinates from level data
+    const exit = lvl.exit;
+    if (!exit) {
+        exit = { x: 1350, y: GROUND_Y - 36 };
+    }
+
+    // Spawn initial powerup if level has one
+    if (levelIndex >= 2 && Math.random() < 0.3) {
+        spawnPowerup();
+    }
+}
+
+function loadLevel(n) {
+    if (n >= totalLevels) return;
+    const lvl = makeLevel(n);
+    loadLevelData(lvl);
+    levelIndex = n;
+    updateHUD();
+}
+
+// ======================== SPAWN HELPERS ========================
+function spawnEnemy() {
+    // Safe spawn: far from player, exits, and other enemies
+    const minDist = 300;
+    let attempts = 0;
+    while (attempts < 20) {
+        const typeRoll = Math.random();
+        let type, hp, color, speed, w, h;
+
+        if (levelIndex >= 4 && levelIndex <= totalLevels - 1 && typeRoll > 0.75) {
+            // Boss variant on later levels
+            type = 'boss'; hp = 3 + Math.floor(levelIndex / 2); color = '#ff0000'; speed = 1.8; w = 36; h = 28;
+        } else if (typeRoll > 0.5) {
+            type = 'guard'; hp = 2; color = '#ff4444'; speed = 2 + levelIndex * 0.3; w = 32; h = 26;
+        } else {
+            type = 'patrol'; hp = 1; color = '#aa3366'; speed = 1.5 + levelIndex * 0.2; w = 30; h = 24;
+        }
+
+        const spawnX = player.x + cameraX + minDist + Math.random() * 400;
+        const spawnY = GROUND_Y - h;
+
+        // Check distance from player
+        if (Math.abs(spawnX - player.x) < minDist) { attempts++; continue; }
+        // Check distance from exit
+        if (Math.abs(spawnX - exit.x) < 150) { attempts++; continue; }
+        // Check distance from other enemies
+        let tooClose = false;
+        for (const e of enemies) {
+            if (Math.abs((spawnX + w/2) - (e.x + e.w/2)) < minDist / 2) { tooClose = true; break; }
+        }
+        if (tooClose) { attempts++; continue; }
+
+        enemies.push({
+            x: spawnX, y: spawnY, w: w, h: h,
+            vx: -speed * player.x < cameraX + 400 ? -1 : speed, vy: 0, type: type, hp: hp, maxHp: hp,
+            color: color, patrolStart: spawnX, patrolEnd: spawnX + 250,
+            speed: speed, direction: player.x < cameraX + 400 ? -1 : 1
+        });
+        break;
+    }
+}
+
+function spawnCoin() {
+    const yOptions = [GROUND_Y - 60, GROUND_Y - 80];
+    coins.push({
+        x: player.x + cameraX + 400 + Math.random() * 300,
+        y: yOptions[Math.floor(Math.random() * 2)], w: 18, h: 18, collected: false
+    });
+}
+
+function spawnPowerup() {
+    powerups.push({
+        x: player.x + cameraX + 400 + Math.random() * 300,
+        y: GROUND_Y - 90, w: 24, h: 24, type: 'shield', collected: false, color: '#44ff44'
+    });
+}
+
+function createParticles(x, y, color, count) {
+    for (let i = 0; i < count; i++) {
+        particles.push({
+            x: x, y: y, vx: (Math.random() - 0.5) * 4, vy: (Math.random() - 0.5) * 4,
+            life: 1.0, color: color, size: Math.random() * 3 + 2
+        });
+    }
+}
+
+// ======================== COLLISION ========================
+function rectCollide(a, b) {
+    return a.x < b.x + b.w && a.x + a.w > b.x &&
+           a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+// ======================== UPDATE PLAYER ========================
+function updatePlayer(dt) {
+    // Movement - horizontal
+    if (keys['ArrowLeft'] || keys['KeyA']) player.vx = -player.speed;
+    else if (keys['ArrowRight'] || keys['KeyD']) player.vx = player.speed;
+    else player.vx = 0;
+
+    // Ducking
+    const wantDuck = (keys['ArrowDown'] || keys['KeyS']) && player.grounded;
+    if (wantDuck) {
+        player.ducking = true;
+        player.height = 28;
+    } else {
+        player.ducking = false;
+        player.height = 48;
+    }
+
+    // Jump - edge triggered with coyote time and jump buffer
+    if ((keys['ArrowUp'] || keys['KeyW'] || keys['Space']) && !player.jumpPressed) {
+        if (player.grounded || player.coyoteTime > 0) {
+            player.vy = player.jumpForce;
+            player.grounded = false;
+            player.coyoteTime = 0;
+            player.jumpPressed = true; // edge trigger - only fires once per press
+            playSound('jump');
+            createParticles(player.x + player.width / 2, player.y + player.height, '#fff', 5);
+        }
+    }
+
+    // Variable jump height: release early for shorter hop
+    if (!keys['ArrowUp'] && !keys['KeyW'] && !keys['Space']) {
+        if (player.vy < -6) {
+            player.vy = -6;
+        }
+    }
+
+    // Coyote time
+    if (!player.grounded) {
+        player.coyoteTime--;
+        if (player.coyoteTime <= 0) player.grounded = false;
+    } else {
+        player.coyoteTime = player.coyoteMax;
+    }
+
+    // Gravity
+    player.vy += GRAVITY;
+    player.y += player.vy;
+
+    // Platform collision - push out to nearest edge
+    for (const plat of obstacles) {
+        if (!plat.isPlatform || !plat.w || !plat.h) continue;
+        const px = player.x, py = player.y, pw = player.width, ph = player.height;
+        const plx = plat.x, ply = plat.y, plw = plat.w, plh = plat.h;
+
+        // Check if player overlaps platform
+        if (px < plx + plw && px + pw > plx && py < ply + plh && py + ph > ply) {
+            // Determine side of collision
+            const bottomOverlap = (py + ph) - ply;
+            const topOverlap = (ply + plh) - py;
+            const leftOverlap = px - plx;
+            const rightOverlap = (px + pw) - (plx + plw);
+
+            if (bottomOverlap <= topOverlap && bottomOverlap <= leftOverlap && bottomOverlap <= rightOverlap) {
+                // Landing on top
+                player.y = ply - ph;
+                player.vy = 0;
+                player.grounded = true;
+                player.coyoteTime = player.coyoteMax;
+            } else if (topOverlap < leftOverlap && topOverlap < rightOverlap) {
+                // Hitting bottom of head
+                player.y = ply + plh;
+                player.vy = 0;
+            } else if (leftOverlap < rightOverlap) {
+                // Hit left side
+                player.x = plx - pw;
+                player.vx = Math.abs(player.vx);
+            } else {
+                // Hit right side
+                player.x = plx + plw;
+                player.vx = -Math.abs(player.vx);
+            }
+        }
+    }
+
+    // Ground floor as last resort
+    if (player.y + player.height >= GROUND_Y) {
+        player.y = GROUND_Y - player.height;
+        player.vy = 0;
+        player.grounded = true;
+        player.coyoteTime = player.coyoteMax;
+    }
+
+    // Screen bounds
+    if (player.x < 20) { player.x = 20; player.vx = 0; }
+    if (player.x > cameraX + 760) { player.x = cameraX + 760; player.vx = 0; }
+
+    // Invincibility timer
+    if (player.invincible) {
+        player.invincibleTimer--;
+        if (player.invincibleTimer <= 0) player.invincible = false;
+    }
+}
+
+// ======================== UPDATE ENEMIES ========================
+function updateEnemies(dt) {
+    for (let i = enemies.length - 1; i >= 0; i--) {
+        const e = enemies[i];
+        // Patrol movement
+        if (e.type === 'patrol' || e.type === 'guard') {
+            e.x += e.vx * e.speed;
+            if (Math.abs(e.x - e.patrolStart) > 10 && Math.abs(e.x - e.patrolEnd) > 10) {
+                // Keep within patrol range
+                if (e.x < e.patrolStart + 20 || e.x > e.patrolEnd - 20) {
+                    e.vx *= -1;
+                }
+            }
+        } else if (e.type === 'boss') {
+            // Boss: moves toward player slowly, then patrols
+            const distToPlayer = Math.abs(e.x - player.x);
+            if (distToPlayer > 200) {
+                e.vx = -(player.x > e.x ? 1 : -1) * e.speed;
+            } else {
+                // Patrol in a small area
+                e.x += e.vx * e.speed;
+                if (e.x < e.patrolStart + 50 || e.x > e.patrolEnd - 50) {
+                    e.vx *= -1;
+                }
+            }
+        }
+
+        // Remove enemies that have travelled far off the left edge
+        if (e.x + e.w < cameraX - 80) {
+            enemies.splice(i, 1);
+            continue;
+        }
+
+        // Collision with player
+        if (!player.invincible && rectCollide(player, e)) {
+            lives--;
+            playSound('hit');
+            createParticles(e.x + e.w / 2, e.y + e.h / 2, '#ff4444', 10);
+
+            // Enemy death - drop powerup with chance
+            if (Math.random() < 0.3) {
+                spawnPowerup();
+            }
+
+            enemies.splice(i, 1);
+
+            if (lives <= 0) {
+                gameOver();
+                return;
+            } else {
+                player.invincible = true;
+                player.invincibleTimer = 90; // 1.5 sec at 60fps
+            }
+        }
+    }
+}
+
+// ======================== UPDATE COINS ========================
+function updateCoins(dt) {
+    for (let i = coins.length - 1; i >= 0; i--) {
+        const c = coins[i];
+        if (!c.collected && rectCollide(player, c)) {
+            score += 10;
+            playSound('coin');
+            createParticles(c.x + c.w / 2, c.y + c.h / 2, '#ffd700', 8);
+            coins.splice(i, 1);
+        } else if (c.collected) {
+            coins.splice(i, 1);
+        }
+    }
+}
+
+// ======================== UPDATE POWERUPS ========================
+function updatePowerups(dt) {
+    for (let i = powerups.length - 1; i >= 0; i--) {
+        const p = powerups[i];
+        if (!p.collected && rectCollide(player, p)) {
+            player.invincible = true;
+            player.invincibleTimer = 300; // 5 sec at 60fps
+            playSound('powerup');
+            createParticles(p.x + p.w / 2, p.y + p.h / 2, '#44ff44', 12);
+            powerups.splice(i, 1);
+        } else if (p.collected) {
+            powerups.splice(i, 1);
+        }
+    }
+}
+
+// ======================== UPDATE PARTICLES ========================
+function updateParticles(dt) {
+    for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.life -= dt * 2.5;
+        if (p.life <= 0) particles.splice(i, 1);
+    }
+}
+
+// ======================== GAME OVER / WIN ========================
+function gameOver() {
+    gameState = 'gameover';
+    playSound('gameover');
+    stopMusic();
+    finalScoreEl.textContent = 'Final Score: ' + Math.floor(score) + ' | Level: ' + (levelIndex + 1);
+    goTitleEl.textContent = 'GAME OVER';
+    gameoverOverlay.style.display = 'flex';
+}
+
+function winGame() {
+    gameState = 'won';
+    playSound('win');
+    stopMusic();
+    finalScoreEl.textContent = 'VICTORY! Final Score: ' + Math.floor(score);
+    goTitleEl.textContent = 'VICTORY!';
+    gameoverOverlay.style.display = 'flex';
+}
+
+// ======================== UPDATE WAVE / SPAWN ========================
+function updateWave(dt) {
+    // Spawn enemies based on distance traveled
+    const maxOnScreen = 4 + levelIndex;
+    spawnTimer += dt;
+
+    if (spawnTimer >= spawnInterval && enemies.length < maxOnScreen) {
+        spawnEnemy();
+        spawnTimer = 0;
+    }
+
+    // Spawn coins and powerups periodically
+    if (Math.random() < 0.025) spawnCoin();
+    if (levelIndex >= 1 && Math.random() < 0.01) spawnPowerup();
+}
+
+// ======================== DRAW FUNCTIONS ========================
+function drawBackground(ctx, camX) {
+    // Parallax layer 1 - distant stars / vault ceiling
+    ctx.fillStyle = '#0d0d35';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Distant stars (parallax slow)
+    const starOffset = -(camX * 0.2) % 200;
+    for (let sx = -100 + starOffset; sx < canvas.width + 100; sx += 200) {
+        for (let sy = 0; sy < canvas.height; sy += 80 + Math.random() * 60) {
+            ctx.fillStyle = `rgba(255, 255, 255, ${0.15 + Math.random() * 0.2})`;
+            ctx.fillRect(sx, sy, 1.5, 1.5);
+        }
+    }
+
+    // Vault ceiling grid (parallax medium)
+    const ceilingOffset = -(camX * 0.5) % 60;
+    ctx.strokeStyle = 'rgba(74, 74, 142, 0.2)';
+    ctx.lineWidth = 1;
+    for (let x = -ceilingOffset; x < canvas.width + 60; x += 60) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, 80);
+        ctx.stroke();
+    }
+
+    // Parallax layer 2 - closer vault walls
+    const wallOffset = -(camX * 1.0) % 40;
+    for (let x = -wallOffset; x < canvas.width + 40; x += 40) {
+        ctx.strokeStyle = 'rgba(74, 74, 142, 0.35)';
+        ctx.beginPath();
+        ctx.moveTo(x, 80);
+        ctx.lineTo(x, GROUND_Y);
+        ctx.stroke();
+    }
+
+    // Ground line with glow
+    const grad = ctx.createLinearGradient(0, GROUND_Y - 10, 0, GROUND_Y + 20);
+    grad.addColorStop(0, 'rgba(255, 215, 0, 0.4)');
+    grad.addColorStop(1, 'rgba(255, 215, 0, 0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, GROUND_Y - 10, canvas.width, 30);
+
+    // Ground line
+    ctx.strokeStyle = '#ffd700';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, GROUND_Y);
+    ctx.lineTo(canvas.width, GROUND_Y);
+    ctx.stroke();
+}
+
+function drawPlatforms(ctx) {
+    for (const plat of obstacles) {
+        if (!plat.isPlatform || !plat.w || !plat.h) continue;
+        const px = plat.x - cameraX;
+        if (px + plat.w < -20 || px > canvas.width + 20) continue;
+
+        // Main fill
+        ctx.fillStyle = '#4ecca3';
+        ctx.fillRect(px, plat.y, plat.w, plat.h);
+
+        // Highlight top edge
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+        ctx.fillRect(px, plat.y, plat.w, 3);
+
+        // Darker bottom
+        ctx.fillStyle = '#3a9e7a';
+        ctx.fillRect(px, plat.y + plat.h - 4, plat.w, 4);
+    }
+}
+
+function drawPlayer(ctx) {
+    if (gameState !== 'playing' && gameState !== 'won') return;
+    const px = player.x - cameraX;
+    const py = player.y;
+
+    // Flash when invincible
+    if (player.invincible && Math.floor(Date.now() / 100) % 2 === 0) {
+        ctx.fillStyle = '#ffffff';
+    } else {
+        ctx.fillStyle = player.color;
+    }
+
+    // Body
+    ctx.fillRect(px, py, player.width, player.height);
+
+    // Eyes - direction based
+    if (player.vx > 0.5) {
+        ctx.fillStyle = '#1a1a2e';
+        ctx.fillRect(px + player.width - 7, py + 8, 4, 4);
+        ctx.fillRect(px + player.width - 7, py + 16, 4, 4);
+    } else if (player.vx < -0.5) {
+        ctx.fillStyle = '#1a1a2e';
+        ctx.fillRect(px + 3, py + 8, 4, 4);
+        ctx.fillRect(px + 3, py + 16, 4, 4);
+    } else {
+        // Facing right default
+        ctx.fillStyle = '#1a1a2e';
+        ctx.fillRect(px + player.width - 7, py + 8, 4, 4);
+        ctx.fillRect(px + player.width - 7, py + 16, 4, 4);
+    }
+
+    // Duck indicator bar
+    if (player.ducking) {
+        ctx.fillStyle = '#ffaa00';
+        ctx.fillRect(px + 6, py + 20, player.width - 12, 3);
+    }
+
+    // Shield glow when invincible
+    if (player.invincible && Math.floor(Date.now() / 150) % 2 === 0) {
+        ctx.strokeStyle = 'rgba(68, 255, 68, 0.5)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(px + player.width/2, py + player.height/2, Math.max(player.width, player.height) / 2 + 4, 0, Math.PI * 2);
+        ctx.stroke();
+    }
+}
+
+function drawEnemies(ctx) {
+    for (const e of enemies) {
+        const ex = e.x - cameraX;
+        if (ex < -50 || ex > canvas.width + 50) continue;
+
+        // Body
+        ctx.fillStyle = e.color;
+        ctx.fillRect(ex, e.y, e.w, e.h);
+
+        // HP bar for guards/bosses
+        if ((e.type === 'guard' || e.type === 'boss') && e.hp < e.maxHp) {
+            const barX = ex - 2;
+            const barY = e.y - 10;
+            ctx.fillStyle = '#333';
+            ctx.fillRect(barX, barY, e.w + 4, 5);
+            const hpRatio = e.hp / e.maxHp;
+            if (hpRatio > 0.6) ctx.fillStyle = '#44ff44';
+            else if (hpRatio > 0.3) ctx.fillStyle = '#ffff44';
+            else ctx.fillStyle = '#ff0000';
+            ctx.fillRect(barX, barY, (e.w + 4) * hpRatio, 5);
+        }
+
+        // Eyes - look at player
+        const eyeDir = Math.abs(e.x - player.x) < 200 ? (player.x > e.x ? 1 : -1) : 1;
+        ctx.fillStyle = '#fff';
+        if (eyeDir === 1) {
+            ctx.fillRect(ex + e.w - 8, e.y + 4, 3, 3);
+        } else {
+            ctx.fillRect(ex + 2, e.y + 4, 3, 3);
+        }
+
+        // Boss indicator
+        if (e.type === 'boss') {
+            ctx.fillStyle = '#ff0000';
+            ctx.font = '10px Courier New';
+            ctx.textAlign = 'center';
+            ctx.fillText('BOSS', ex + e.w/2, e.y - 4);
+        }
+    }
+}
+
+function drawCoins(ctx) {
+    for (const c of coins) {
+        const cx = c.x - cameraX;
+        if (cx < -30 || cx > canvas.width + 30) continue;
+
+        ctx.fillStyle = '#ffd700';
+        ctx.beginPath();
+        ctx.arc(cx + c.w / 2, c.y + c.h / 2, c.w / 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#ffaa00';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        // Sparkle animation
+        if (Math.floor(Date.now() / 150) % 2 === 0) {
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+            ctx.beginPath();
+            ctx.arc(cx + c.w/2 - 3, c.y + c.h/2 - 4, 2, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+}
+
+function drawPowerups(ctx) {
+    for (const p of powerups) {
+        const px = p.x - cameraX;
+        if (px < -30 || px > canvas.width + 30) continue;
+
+        // Glow pulse
+        const pulse = Math.sin(Date.now() / 200) * 4;
+        ctx.fillStyle = 'rgba(68, 255, 68, 0.15)';
+        ctx.beginPath();
+        ctx.arc(px + p.w/2, p.y + p.h/2, (p.w/2 + pulse), 0, Math.PI * 2);
+        ctx.fill();
+
+        // Main body
+        ctx.fillStyle = '#44ff44';
+        ctx.beginPath();
+        ctx.arc(px + p.w / 2, p.y + p.h / 2, p.w / 2, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Shield icon
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(px + p.w / 2, p.y + p.h / 2, p.w / 3, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Label
+        ctx.fillStyle = '#fff';
+        ctx.font = '9px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillText('S', px + p.w/2, p.y + p.h/2 + 4);
+    }
+}
+
+function drawObstacles(ctx) {
+    for (const o of obstacles) {
+        if (!o.isPlatform || !o.w || !o.h) continue;
+        const ox = o.x - cameraX;
+        if (ox < -60 || ox > canvas.width + 60) continue;
+
+        ctx.fillStyle = '#555';
+        ctx.fillRect(ox, o.y, o.w, o.h);
+        ctx.strokeStyle = '#777';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(ox, o.y, o.w, o.h);
+    }
+}
+
+function drawParticles(ctx) {
+    for (const p of particles) {
+        const alpha = Math.max(0, p.life * p.life);
+        ctx.fillStyle = p.color + Math.floor(alpha * 255).toString(16).padStart(2, '0');
+        ctx.globalAlpha = alpha;
+        ctx.fillRect(p.x - cameraX, p.y, p.size, p.size);
+    }
+    ctx.globalAlpha = 1.0;
+}
+
+// ======================== UPDATE HUD ========================
+function updateHUD() {
+    scoreBox.textContent = 'SCORE: ' + Math.floor(score);
+    levelBox.textContent = 'LVL: ' + (levelIndex + 1) + '/' + totalLevels;
+    livesBox.textContent = 'HP: ' + '❤'.repeat(lives);
+    powerupBox.textContent = '';
+}
+
+// ======================== MAIN GAME LOOP ========================
+let lastTime = 0;
+
+function gameLoop(timestamp) {
+    requestAnimationFrame(gameLoop);
+
+    const dt = Math.min((timestamp - lastTime) / 16.67, 2

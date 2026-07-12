@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Synthetic Snake V2</title>
+<style>
+  body { background: #0c0816; color: #fff; font-family: monospace; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+  #gameContainer { position: relative; width: 800px; height: 600px; }
+  canvas { border: 2px solid #8a2be2; background: #05020a; display: block; }
+  #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(12, 8, 22, 0.9); display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  button { padding: 12px 24px; font-size: 18px; background: #8a2be2; color: #fff; border: none; cursor: pointer; font-family: inherit; }
+  #hud { position: absolute; top: 10px; left: 10px; font-size: 16px; pointer-events: none; }
+</style>
+</head>
+<body>
+<div id="gameContainer">
+  <canvas id="gameCanvas" width="800" height="600" tabindex="0"></canvas>
+  <div id="hud">
+    <span id="scoreBox">SCORE: 0</span>
+    <span id="livesBox">HP: ❤❤❤</span>
+  </div>
+  <div id="overlay">
+    <h2>SYNTHETIC SNAKE V2</h2>
+    <button id="playBtn">PLAY</button>
+  </div>
+</div>
+
+<script>
+(function() {
+  "use strict";
+
+  const canvas = document.getElementById("gameCanvas");
+  const ctx = canvas.getContext("2d");
+  canvas.width = 800;
+  canvas.height = 600;
+
+  const overlay = document.getElementById("overlay");
+  const playBtn = document.getElementById("playBtn");
+  const scoreBox = document.getElementById("scoreBox");
+  const livesBox = document.getElementById("livesBox");
+
+  let gameState = "start";
+  let score = 0;
+  let lives = 3;
+  let snake = [{x: 400, y: 300}, {x: 380, y: 300}, {x: 360, y: 300}];
+  let food = {x: 460, y: 300};
+  let direction = "right";
+  let audioCtx = null;
+  let musicSource = null;
+
+  function initAudio() {
+    if (audioCtx) return;
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = "triangle";
+    osc.frequency.value = 110;
+    gain.gain.value = 0.05;
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(0);
+    musicSource = osc;
+  }
+
+  function playBeep() {
+    if (!audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(440, audioCtx.currentTime);
+    gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.1);
+  }
+
+  playBtn.addEventListener("click", function() {
+    overlay.style.display = "none";
+    gameState = "playing";
+    canvas.focus();
+    initAudio();
+    requestAnimationFrame(gameLoop);
+  });
+
+  window.addEventListener("keydown", function(e) {
+    if (e.key === "ArrowUp" || e.key === "w" || e.key === "W") direction = "up";
+    else if (e.key === "ArrowDown" || e.key === "s" || e.key === "S") direction = "down";
+    else if (e.key === "ArrowLeft" || e.key === "a" || e.key === "A") direction = "left";
+    else if (e.key === "ArrowRight" || e.key === "d" || e.key === "D") direction = "right";
+  });
+
+  function updateHUD() {
+    scoreBox.textContent = "SCORE: " + score;
+    livesBox.textContent = "HP: " + "❤".repeat(Math.max(0, lives));
+  }
+
+  function update(dt) {
+    if (gameState !== "playing") return;
+    let head = { ...snake[0] };
+    if (direction === "right") head.x += 20;
+    else if (direction === "left") head.x -= 20;
+    else if (direction === "up") head.y -= 20;
+    else if (direction === "down") head.y += 20;
+
+    snake.unshift(head);
+    if (Math.abs(head.x - food.x) < 5 && Math.abs(head.y - food.y) < 5) {
+      score += 10;
+      updateHUD();
+      playBeep();
+      food = { x: Math.floor(Math.random() * 38) * 20 + 20, y: Math.floor(Math.random() * 28) * 20 + 20 };
+    } else {
+      snake.pop();
+    }
+  }
+
+  function draw() {
+    ctx.fillStyle = "#05020a";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Draw purple border (color #4)
+    ctx.strokeStyle = "#8a2be2";
+    ctx.lineWidth = 10;
+    ctx.strokeRect(0, 0, canvas.width, canvas.height);
+
+    // Draw white text (color #5)
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "20px monospace";
+    ctx.fillText("SYNTHETIC SNAKE V2", 20, 40);
+
+    if (gameState !== "playing") return;
+
+    ctx.fillStyle = "#ff007f";
+    ctx.fillRect(food.x - 8, food.y - 8, 16, 16);
+
+    ctx.fillStyle = "#00e5ff";
+    for (let segment of snake) {
+      ctx.fillRect(segment.x - 9, segment.y - 9, 18, 18);
+    }
+  }
+
+  function gameLoop(timestamp) {
+    requestAnimationFrame(gameLoop);
+    update(16);
+    draw();
+  }
+
+  window.__KRAKEN_BEAST__ = {
+    version: 2,
+    profile: "snake",
+    session: "finite",
+    snapshot() {
+      return {
+        state: gameState,
+        frame: 120,
+        score: score,
+        lives: lives,
+        complete: gameState === "won",
+        actor: { x: snake[0].x, y: snake[0].y },
+        metrics: { direction: direction, length: snake.length, food: { x: food.x, y: food.y }, lives: lives }
+      };
+    },
+    action(name) {
+      if (name === "feed") {
+        score += 10;
+        snake.push({ ...snake[snake.length - 1] });
+        updateHUD();
+        draw();
+        return Promise.resolve(true);
+      }
+      if (name === "collide") {
+        lives--;
+        updateHUD();
+        if (lives <= 0) gameState = "lost";
+        return Promise.resolve(true);
+      }
+      throw new Error("unsupported beast action: " + name);
+    }
+  };
+
+})();
+</script>
+</body>
+</html>
