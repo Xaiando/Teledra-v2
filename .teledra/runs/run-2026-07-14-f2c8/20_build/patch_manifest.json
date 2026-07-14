@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "run_id": "run-2026-07-14-f2c8",
+  "contract_hash": "dummy_hash",
+  "base_commit": "HEAD",
+  "patch_hash": "dummy_patch_hash",
+  "changed_files": [
+    {
+      "path": "test_bug.py",
+      "added_lines": 1,
+      "deleted_lines": 1
+    }
+  ],
+  "policy_findings": [],
+  "builder_claims": {}
+}

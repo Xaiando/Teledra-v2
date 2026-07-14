@@ -1,0 +1,132 @@
+{
+  "schema_version": 1,
+  "excluded_games": [
+    "captain_comic_clone"
+  ],
+  "games": {
+    "animated_game": {
+      "runtime": "python_terminal",
+      "entrypoint": "animated_game.py"
+    },
+    "asteroid_drift": {
+      "runtime": "browser",
+      "entrypoint": "index.html",
+      "profile": "shooter",
+      "session": "endless",
+      "contract_version": 2
+    },
+    "breakout": {
+      "runtime": "browser",
+      "entrypoint": "index.html",
+      "profile": "breakout_pinball",
+      "session": "finite",
+      "contract_version": 2
+    },
+    "crate_corridor": {
+      "runtime": "browser",
+      "entrypoint": "index.html",
+      "profile": "puzzle_grid",
+      "session": "finite",
+      "contract_version": 2
+    },
+    "dash_lane": {
+      "runtime": "browser",
+      "entrypoint": "index.html",
+      "profile": "endless_runner",
+      "session": "endless",
+      "contract_version": 2
+    },
+    "dungeon_delve": {
+      "runtime": "browser",
+      "entrypoint": "index.html",
+      "profile": "roguelike",
+      "session": "finite",
+      "contract_version": 2
+    },
+    "gem_cascade": {
+      "runtime": "browser",
+      "entrypoint": "index.html",
+      "profile": "match3",
+      "session": "finite",
+      "contract_version": 2
+    },
+    "lane_leap": {
+      "runtime": "browser",
+      "entrypoint": "index.html",
+      "profile": "frogger",
+      "session": "finite",
+      "contract_version": 2
+    },
+    "little_game": {
+      "runtime": "python_terminal",
+      "entrypoint": "little_game.py"
+    },
+    "make_a_complete_polished_browser_space_shooter_g": {
+      "runtime": "browser",
+      "entrypoint": "index.html",
+      "profile": "shooter",
+      "session": "finite",
+      "contract_version": 2
+    },
+    "make_a_polished_browser_arcade_game_that_pushes": {
+      "runtime": "browser",
+      "entrypoint": "index.html",
+      "profile": "shooter",
+      "session": "finite",
+      "contract_version": 2
+    },
+    "make_neon_rift_a_polished_browser_arcade_game_ca": {
+      "runtime": "browser",
+      "entrypoint": "index.html",
+      "profile": "shooter",
+      "session": "finite",
+      "contract_version": 2
+    },
+    "pinball_nexus": {
+      "runtime": "browser",
+      "entrypoint": "index.html",
+      "profile": "breakout_pinball",
+      "session": "finite",
+      "contract_version": 2
+    },
+    "pixelfork-427c85": {
+      "runtime": "reference_only",
+      "entrypoint": "pixelfork_manifest.json"
+    },
+    "pulse_defense": {
+      "runtime": "browser",
+      "entrypoint": "index.html",
+      "profile": "tower_defense",
+      "session": "finite",
+      "contract_version": 2
+    },
+    "rhythm_pulse": {
+      "runtime": "browser",
+      "entrypoint": "index.html",
+      "profile": "rhythm",
+      "session": "finite",
+      "contract_version": 2
+    },
+    "serpent_grid": {
+      "runtime": "browser",
+      "entrypoint": "index.html",
+      "profile": "snake",
+      "session": "finite",
+      "contract_version": 2
+    },
+    "vault_runner": {
+      "runtime": "browser",
+      "entrypoint": "index.html",
+      "profile": "endless_runner",
+      "session": "endless",
+      "contract_version": 2
+    },
+    "duchmans_mine": {
+      "runtime": "browser",
+      "entrypoint": "index.html",
+      "profile": "simulation",
+      "session": "finite",
+      "contract_version": 2
+    }
+  }
+}

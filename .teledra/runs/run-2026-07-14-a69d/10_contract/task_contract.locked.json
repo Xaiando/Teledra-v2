@@ -1,0 +1,27 @@
+{
+  "schema_version": "1.0",
+  "run_id": "run-2026-07-14-a69d",
+  "task_id": "task-001",
+  "repository": {
+    "base_commit": "HEAD",
+    "environment_image": "python:3.12"
+  },
+  "objective": {
+    "summary": "Fix simple bug",
+    "user_visible_result": "Works"
+  },
+  "scope": {
+    "allowed_paths": [
+      "test_bug.py"
+    ]
+  },
+  "acceptance_criteria": [],
+  "work_units": [],
+  "risk": {
+    "tier": "low"
+  },
+  "budgets": {
+    "builder_wall_seconds": 300
+  },
+  "escalation_conditions": []
+}

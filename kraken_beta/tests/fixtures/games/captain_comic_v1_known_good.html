@@ -1,0 +1,1529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Captain Comic: Treasures of Tambi</title>
+<style>
+:root {
+  color-scheme: dark;
+  font-family: "Courier New", Consolas, monospace;
+  background: #090a16;
+}
+* { box-sizing: border-box; }
+html, body { width: 100%; min-height: 100%; margin: 0; }
+body {
+  min-height: 100svh;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: #090a16;
+  color: #f8f4d8;
+}
+button { font: inherit; letter-spacing: 0; }
+[hidden] { display: none !important; }
+#gameShell {
+  width: min(100vw, calc(100svh * 1.333333), 800px);
+  max-width: 800px;
+  user-select: none;
+}
+#gameShell:fullscreen,
+#gameShell.fullscreenFallback {
+  width: 100vw;
+  max-width: none;
+  height: 100vh;
+  display: grid;
+  place-items: center;
+  background: #090a16;
+}
+#gameShell.fullscreenFallback {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+}
+#gameShell:fullscreen #stage,
+#gameShell.fullscreenFallback #stage {
+  width: min(100vw, calc(100vh * 1.333333));
+  border: 0;
+  box-shadow: none;
+}
+#stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  background: #11152b;
+  border: 2px solid #ef476f;
+  box-shadow: 0 0 0 2px #171a35, 0 14px 40px rgba(0, 0, 0, 0.45);
+  touch-action: none;
+}
+#gameCanvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  outline: none;
+}
+#hud {
+  position: absolute;
+  z-index: 4;
+  top: 8px;
+  left: 8px;
+  right: 8px;
+  min-height: 42px;
+  display: grid;
+  grid-template-columns: 1.05fr 1.2fr 1.2fr 1.1fr 1fr;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 88px 7px 10px;
+  border: 1px solid rgba(248, 244, 216, 0.34);
+  background: rgba(9, 10, 22, 0.82);
+  color: #f8f4d8;
+  font-size: 13px;
+  line-height: 1.15;
+  pointer-events: none;
+}
+#hud span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#scoreBox { color: #ffd166; }
+#livesBox { color: #ff668a; }
+#shieldBox { color: #63d2ff; }
+#weaponBox { color: #a8ff78; }
+#treasureBox { color: #f8f4d8; text-align: right; }
+#muteBtn {
+  position: absolute;
+  z-index: 8;
+  top: 12px;
+  right: 12px;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid #ffd166;
+  border-radius: 4px;
+  background: #171a35;
+  color: #ffd166;
+  cursor: pointer;
+  font-size: 19px;
+}
+#fullscreenBtn {
+  position: absolute;
+  z-index: 8;
+  top: 12px;
+  right: 54px;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid #63d2ff;
+  border-radius: 4px;
+  background: #171a35;
+  color: #63d2ff;
+  cursor: pointer;
+  font-size: 19px;
+}
+#fullscreenBtn:focus-visible, #muteBtn:focus-visible, .commandBtn:focus-visible, .touchBtn:focus-visible {
+  outline: 2px solid #63d2ff;
+  outline-offset: 2px;
+}
+.screen {
+  position: absolute;
+  z-index: 7;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 28px;
+  text-align: center;
+  background: rgba(9, 10, 22, 0.9);
+}
+.screen h1, .screen h2 { margin: 0; letter-spacing: 0; }
+.screen h1 {
+  max-width: 760px;
+  color: #ffd166;
+  font-size: 48px;
+  line-height: 0.98;
+  text-shadow: 4px 4px 0 #ef476f;
+}
+.screen h2 { color: #63d2ff; font-size: 34px; }
+.screen p {
+  max-width: 620px;
+  margin: 18px 0 0;
+  color: #cfd4ef;
+  font-size: 16px;
+  line-height: 1.45;
+}
+.screen .mission { color: #a8ff78; font-size: 15px; }
+.commandRow { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 26px; }
+.commandBtn {
+  min-width: 164px;
+  min-height: 46px;
+  padding: 11px 22px;
+  border: 2px solid #ffd166;
+  border-radius: 4px;
+  background: #ef476f;
+  color: #fff;
+  cursor: pointer;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.commandBtn:hover { background: #d73960; }
+.commandBtn.secondary { border-color: #63d2ff; background: #26305f; }
+#toast {
+  position: absolute;
+  z-index: 6;
+  left: 50%;
+  bottom: 66px;
+  min-width: 220px;
+  max-width: 72%;
+  transform: translateX(-50%);
+  padding: 9px 14px;
+  border: 1px solid #ffd166;
+  border-radius: 4px;
+  background: rgba(9, 10, 22, 0.92);
+  color: #ffd166;
+  text-align: center;
+  font-size: 13px;
+  pointer-events: none;
+}
+#touchControls {
+  position: absolute;
+  z-index: 5;
+  inset: auto 10px 10px 10px;
+  display: none;
+  justify-content: space-between;
+  align-items: end;
+  pointer-events: none;
+}
+.touchCluster { display: flex; gap: 8px; pointer-events: auto; }
+.touchBtn {
+  width: 50px;
+  height: 50px;
+  padding: 0;
+  border: 1px solid rgba(248, 244, 216, 0.7);
+  border-radius: 6px;
+  background: rgba(23, 26, 53, 0.76);
+  color: #fff;
+  font-size: 23px;
+  font-weight: 700;
+  touch-action: none;
+}
+.touchBtn.active { background: rgba(239, 71, 111, 0.9); }
+@media (max-width: 700px), (pointer: coarse) {
+  #touchControls { display: flex; }
+  #hud { top: 5px; left: 5px; right: 5px; gap: 3px; padding: 5px 42px 5px 7px; font-size: 10px; }
+  #muteBtn { top: 8px; right: 8px; width: 30px; height: 30px; font-size: 16px; }
+  #fullscreenBtn { display: none; }
+  .screen h1 { font-size: 34px; }
+  .screen h2 { font-size: 27px; }
+  .screen p { font-size: 13px; }
+  .commandBtn { min-width: 140px; min-height: 42px; }
+  #toast { bottom: 72px; font-size: 11px; }
+}
+@media (max-height: 520px) {
+  .screen { padding: 18px; }
+  .screen h1 { font-size: 30px; }
+  .screen p { margin-top: 10px; }
+  .commandRow { margin-top: 16px; }
+}
+</style>
+</head>
+<body>
+<main id="gameShell" aria-label="Captain Comic game">
+  <section id="stage">
+    <canvas id="gameCanvas" width="800" height="600" tabindex="0" aria-label="Captain Comic playfield" aria-keyshortcuts="ArrowLeft ArrowRight Space X Insert E P M F"></canvas>
+    <div id="hud" hidden aria-live="polite">
+      <span id="scoreBox">SCORE 000000</span>
+      <span id="livesBox">HP ❤❤❤❤❤</span>
+      <span id="shieldBox">SHIELD 100</span>
+      <span id="weaponBox">BLASTOLA 1 · 100</span>
+      <span id="treasureBox">TREASURES 0/3</span>
+    </div>
+    <button id="muteBtn" type="button" title="Toggle sound" aria-label="Toggle sound" aria-pressed="false">♪</button>
+    <button id="fullscreenBtn" type="button" title="Enter fullscreen" aria-label="Enter fullscreen" aria-pressed="false">⛶</button>
+
+    <div id="startScreen" class="screen">
+      <h1>CAPTAIN COMIC</h1>
+      <p class="mission">TREASURES OF TAMBI</p>
+      <p>Three stolen treasures wait beyond the night forest, the moon caves, and the lantern castle.</p>
+      <div class="commandRow">
+        <button id="playBtn" class="commandBtn" type="button">Begin Mission</button>
+      </div>
+    </div>
+
+    <div id="pauseScreen" class="screen" hidden>
+      <h2>MISSION PAUSED</h2>
+      <p id="pauseSummary">Tambi is still out there.</p>
+      <div class="commandRow">
+        <button id="resumeBtn" class="commandBtn" type="button">Resume</button>
+        <button id="restartMissionBtn" class="commandBtn secondary" type="button">Restart</button>
+      </div>
+    </div>
+
+    <div id="endScreen" class="screen" hidden>
+      <h2 id="endTitle">MISSION COMPLETE</h2>
+      <p id="endMessage">The treasures are safe.</p>
+      <div class="commandRow">
+        <button id="playAgainBtn" class="commandBtn" type="button">Play Again</button>
+      </div>
+    </div>
+
+    <div id="toast" hidden>CHECKPOINT</div>
+
+    <div id="touchControls" aria-label="Touch controls">
+      <div class="touchCluster">
+        <button class="touchBtn" type="button" data-code="ArrowLeft" aria-label="Move left">◀</button>
+        <button class="touchBtn" type="button" data-code="ArrowRight" aria-label="Move right">▶</button>
+      </div>
+      <div class="touchCluster">
+        <button class="touchBtn" type="button" data-code="KeyE" aria-label="Open door">◆</button>
+        <button class="touchBtn" type="button" data-code="KeyX" aria-label="Fire Blastola">●</button>
+        <button class="touchBtn" type="button" data-code="Space" aria-label="Jump">▲</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+(() => {
+'use strict';
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+canvas.width = 800;
+canvas.height = 600;
+ctx.imageSmoothingEnabled = false;
+
+const hudEl = document.getElementById('hud');
+const scoreBox = document.getElementById('scoreBox');
+const livesBox = document.getElementById('livesBox');
+const shieldBox = document.getElementById('shieldBox');
+const weaponBox = document.getElementById('weaponBox');
+const treasureBox = document.getElementById('treasureBox');
+const startScreen = document.getElementById('startScreen');
+const pauseScreen = document.getElementById('pauseScreen');
+const endScreen = document.getElementById('endScreen');
+const endTitle = document.getElementById('endTitle');
+const endMessage = document.getElementById('endMessage');
+const pauseSummary = document.getElementById('pauseSummary');
+const toastEl = document.getElementById('toast');
+const muteBtn = document.getElementById('muteBtn');
+const fullscreenBtn = document.getElementById('fullscreenBtn');
+const gameShell = document.getElementById('gameShell');
+
+const VIEW_W = 800;
+const VIEW_H = 600;
+const FIXED_STEP = 1 / 60;
+const GRAVITY = 1780;
+const MAX_FALL = 860;
+const PLAYER_W = 30;
+const PLAYER_H = 46;
+const CONTROL_CODES = new Set([
+  'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
+  'KeyA', 'KeyD', 'KeyW', 'KeyS', 'Space', 'KeyX',
+  'Insert', 'KeyE', 'AltLeft', 'AltRight', 'KeyP', 'Escape', 'KeyM', 'KeyF'
+]);
+const JUMP_CODES = ['Space', 'ArrowUp', 'KeyW'];
+const FIRE_CODES = ['KeyX', 'Insert'];
+const INTERACT_CODES = ['KeyE', 'AltLeft', 'AltRight'];
+
+const held = new Set();
+const pressed = new Set();
+let gameState = 'menu';
+let frameCount = 0;
+let gameTime = 0;
+let score = 0;
+let lives = 5;
+let shield = 100;
+let weaponEnergy = 100;
+let blastolaLevel = 1;
+let treasures = 0;
+let highScore = 0;
+let zoneIndex = 0;
+let currentZone = null;
+let liveEnemies = [];
+let pickups = [];
+let projectiles = [];
+let enemyProjectiles = [];
+let particles = [];
+let cameraX = 0;
+let checkpointX = 76;
+let checkpointY = 440;
+let screenShake = 0;
+let zoneBanner = 0;
+let toastTimer = 0;
+let accumulator = 0;
+let lastTimestamp = 0;
+
+const inventory = {
+  key: false,
+  boots: false,
+  lantern: false,
+  wand: false,
+  corkscrew: false
+};
+
+const player = {
+  x: 76, y: 440, w: PLAYER_W, h: PLAYER_H,
+  vx: 0, vy: 0, facing: 1, grounded: false,
+  coyote: 0, jumpBuffer: 0, jumpHeld: false,
+  invulnerable: 0, fireCooldown: 0,
+  anim: 0, state: 'idle', previousY: 440
+};
+
+function platform(x, y, w, h = 80) { return {x, y, w, h}; }
+function spike(x, y, w) { return {x, y, w, h: 26}; }
+function enemy(type, x, y, minX, maxX, speed = 90) {
+  return {type, x, y, baseX: x, baseY: y, minX, maxX, speed, w: 34, h: 30, dir: 1, hp: type === 'turret' ? 3 : 2, alive: true, anim: 0, phase: x * 0.013, cooldown: 1.2};
+}
+function pickup(kind, x, y) { return {kind, x, y, w: 24, h: 24, collected: false, anim: x * 0.01}; }
+
+const ZONES = [
+  {
+    name: 'NIGHT FOREST', treasureName: 'GEMS', worldWidth: 2600,
+    colors: {sky:'#11152b', far:'#26305f', near:'#185f66', ground:'#4f6f52', top:'#a8ff78', accent:'#ffd166', danger:'#ef476f'},
+    spawn: {x:76,y:440}, checkpoints: [76, 720, 1430, 2020],
+    platforms: [
+      platform(0,520,760), platform(850,520,650), platform(1600,520,1000),
+      platform(260,430,160,22), platform(500,365,150,22), platform(910,430,170,22),
+      platform(1170,350,170,22), platform(1450,430,120,22), platform(1720,410,170,22),
+      platform(1940,335,150,22), platform(2190,410,160,22), platform(2390,350,150,22)
+    ],
+    hazards: [spike(760,548,90), spike(1500,548,100)],
+    enemies: [
+      enemy('walker',360,488,240,690,92), enemy('flyer',980,330,850,1250,105),
+      enemy('hopper',1320,470,1100,1470,85), enemy('walker',1760,378,1700,1860,105),
+      enemy('turret',2010,303,2010,2010,0), enemy('flyer',2280,280,2140,2450,125)
+    ],
+    pickups: [
+      pickup('blastola',210,482), pickup('coin',330,394), pickup('coin',555,329),
+      pickup('shield',980,394), pickup('boots',1220,314), pickup('coin',1485,394),
+      pickup('key',1810,374), pickup('blastola',1995,299), pickup('coin',2250,374)
+    ],
+    door: {x:2328,y:390,w:36,h:130,open:false},
+    treasure: {kind:'treasure', name:'GEMS', x:2480,y:472,w:34,h:44,collected:false}
+  },
+  {
+    name: 'MOON CAVES', treasureName: 'COINS', worldWidth: 2600,
+    colors: {sky:'#090a16', far:'#3b3769', near:'#586994', ground:'#61697a', top:'#b8e7ff', accent:'#ff9f1c', danger:'#ff477e'},
+    spawn: {x:72,y:430}, checkpoints: [72, 660, 1340, 2030],
+    platforms: [
+      platform(0,520,650), platform(760,520,560), platform(1430,520,570), platform(2110,520,490),
+      platform(180,425,150,22), platform(420,340,150,22), platform(790,410,170,22),
+      platform(1060,330,160,22), platform(1320,430,100,22), platform(1530,370,180,22),
+      platform(1800,300,150,22), platform(2020,420,80,22), platform(2230,350,160,22)
+    ],
+    hazards: [spike(650,548,110), spike(1320,548,110), spike(2000,548,110)],
+    enemies: [
+      enemy('hopper',290,392,150,590,100), enemy('flyer',840,290,760,1120,120),
+      enemy('walker',1120,298,1040,1220,110), enemy('turret',1600,338,1600,1600,0),
+      enemy('flyer',1880,225,1700,1980,140), enemy('hopper',2260,318,2160,2410,115)
+    ],
+    pickups: [
+      pickup('coin',230,389), pickup('shield',470,304), pickup('blastola',840,374),
+      pickup('coin',1110,294), pickup('corkscrew',1570,334), pickup('lantern',1860,264),
+      pickup('shield',2050,384), pickup('blastola',2280,314)
+    ],
+    door: {x:2398,y:390,w:36,h:130,open:false},
+    treasure: {kind:'treasure', name:'COINS', x:2490,y:472,w:38,h:44,collected:false}
+  },
+  {
+    name: 'LANTERN CASTLE', treasureName: 'CROWN', worldWidth: 2700,
+    colors: {sky:'#15101f', far:'#4d315d', near:'#7d4e57', ground:'#6d4c41', top:'#ffd166', accent:'#63d2ff', danger:'#ef476f'},
+    spawn: {x:70,y:430}, checkpoints: [70, 720, 1460, 2140],
+    platforms: [
+      platform(0,520,700), platform(810,520,620), platform(1540,520,560), platform(2200,520,500),
+      platform(210,420,150,22), platform(470,340,160,22), platform(720,440,80,22),
+      platform(920,390,180,22), platform(1200,310,150,22), platform(1440,430,90,22),
+      platform(1650,360,170,22), platform(1920,290,150,22), platform(2110,420,80,22),
+      platform(2300,350,150,22), platform(2500,280,150,22)
+    ],
+    hazards: [spike(700,548,110), spike(1430,548,110), spike(2100,548,100)],
+    enemies: [
+      enemy('walker',310,388,180,620,120), enemy('turret',520,308,520,520,0),
+      enemy('flyer',980,270,830,1220,145), enemy('hopper',1280,278,1160,1380,125),
+      enemy('walker',1720,328,1600,1830,135), enemy('turret',1980,258,1980,1980,0),
+      enemy('flyer',2380,240,2240,2580,160)
+    ],
+    pickups: [
+      pickup('shield',260,384), pickup('coin',520,304), pickup('blastola',950,354),
+      pickup('wand',1250,274), pickup('coin',1690,324), pickup('shield',1960,254),
+      pickup('blastola',2350,314), pickup('coin',2540,244)
+    ],
+    door: {x:2570,y:390,w:36,h:130,open:false},
+    treasure: {kind:'treasure', name:'CROWN', x:2630,y:462,w:40,h:54,collected:false}
+  },
+  {
+    name: 'CRYSTAL DEPTHS', treasureName: 'ORB', worldWidth: 2700,
+    colors: {sky:'#0a0f1e', far:'#1e2f5a', near:'#2f6f8f', ground:'#3a5a6a', top:'#7defff', accent:'#ff6ec7', danger:'#ef476f'},
+    spawn: {x:74,y:430}, checkpoints: [74, 700, 1420, 2100],
+    platforms: [
+      platform(0,520,720), platform(820,520,600), platform(1500,520,560), platform(2160,520,540),
+      platform(240,430,150,22), platform(500,350,150,22), platform(880,420,170,22),
+      platform(1150,340,160,22), platform(1420,430,110,22), platform(1640,360,170,22),
+      platform(1900,300,150,22), platform(2110,410,90,22), platform(2320,340,160,22)
+    ],
+    hazards: [spike(720,548,100), spike(1420,548,80), spike(2100,548,60)],
+    enemies: [
+      enemy('walker',300,488,200,660,110), enemy('flyer',960,320,860,1200,130),
+      enemy('hopper',1230,470,1120,1360,120), enemy('turret',1700,328,1700,1700,0),
+      enemy('flyer',1960,240,1820,2100,140), enemy('hopper',2360,308,2260,2500,120)
+    ],
+    pickups: [
+      pickup('shield',290,384), pickup('coin',540,314), pickup('blastola',930,374),
+      pickup('boots',1200,304), pickup('coin',1470,394), pickup('key',1710,324),
+      pickup('blastola',1950,264), pickup('coin',2160,374), pickup('coin',2380,304)
+    ],
+    door: {x:2470,y:390,w:36,h:130,open:false},
+    treasure: {kind:'treasure', name:'ORB', x:2580,y:466,w:38,h:48,collected:false}
+  },
+  {
+    name: 'SKY FORTRESS', treasureName: 'STAR', worldWidth: 2800,
+    colors: {sky:'#141a33', far:'#2a3f7a', near:'#4f7fbf', ground:'#5a6a8a', top:'#ffe27a', accent:'#63d2ff', danger:'#ff477e'},
+    spawn: {x:72,y:430}, checkpoints: [72, 760, 1520, 2200],
+    platforms: [
+      platform(0,520,560), platform(680,520,480), platform(1280,520,500), platform(1900,520,480), platform(2480,520,320),
+      platform(200,420,140,22), platform(430,340,140,22), platform(720,400,160,22),
+      platform(980,320,150,22), platform(1250,410,120,22), platform(1470,340,160,22),
+      platform(1720,290,150,22), platform(1980,400,90,22), platform(2200,330,150,22), platform(2420,270,150,22)
+    ],
+    hazards: [spike(560,548,120), spike(1160,548,120), spike(1780,548,120), spike(2380,548,100)],
+    enemies: [
+      enemy('flyer',300,300,200,620,140), enemy('walker',760,368,680,1120,120),
+      enemy('turret',1050,288,1050,1050,0), enemy('hopper',1320,470,1220,1440,120),
+      enemy('flyer',1780,250,1640,1940,150), enemy('walker',2020,378,1940,2140,130),
+      enemy('flyer',2480,240,2340,2680,160)
+    ],
+    pickups: [
+      pickup('coin',250,384), pickup('shield',470,304), pickup('blastola',770,364),
+      pickup('boots',1020,284), pickup('coin',1300,374), pickup('corkscrew',1520,304),
+      pickup('coin',1770,254), pickup('shield',2020,364), pickup('blastola',2260,294), pickup('coin',2470,234)
+    ],
+    door: {x:2620,y:390,w:36,h:130,open:false},
+    treasure: {kind:'treasure', name:'STAR', x:2720,y:462,w:40,h:52,collected:false}
+  },
+  {
+    name: 'VOLCANO CORE', treasureName: 'HEART', worldWidth: 2900,
+    colors: {sky:'#1a0808', far:'#5d1f22', near:'#8f3a2a', ground:'#6a3a2a', top:'#ffb347', accent:'#ffd166', danger:'#ff2d2d'},
+    spawn: {x:70,y:430}, checkpoints: [70, 780, 1560, 2280],
+    platforms: [
+      platform(0,520,620), platform(740,520,520), platform(1360,520,520), platform(1980,520,480), platform(2560,520,340),
+      platform(220,420,150,22), platform(480,340,150,22), platform(760,430,90,22),
+      platform(960,360,170,22), platform(1240,300,150,22), platform(1480,420,100,22),
+      platform(1700,350,170,22), platform(1980,290,150,22), platform(2200,410,90,22),
+      platform(2400,340,150,22), platform(2620,280,150,22)
+    ],
+    hazards: [spike(620,548,120), spike(1260,548,100), spike(1880,548,100), spike(2460,548,100)],
+    enemies: [
+      enemy('walker',320,388,200,640,130), enemy('turret',540,308,540,540,0),
+      enemy('flyer',1020,280,880,1260,150), enemy('hopper',1300,278,1180,1420,135),
+      enemy('walker',1760,318,1640,1880,140), enemy('turret',2040,258,2040,2040,0),
+      enemy('flyer',2440,240,2300,2660,160), enemy('hopper',2660,258,2560,2760,140)
+    ],
+    pickups: [
+      pickup('shield',270,384), pickup('coin',540,304), pickup('blastola',1000,324),
+      pickup('wand',1300,264), pickup('coin',1740,314), pickup('shield',2020,254),
+      pickup('blastola',2260,374), pickup('coin',2460,304), pickup('coin',2680,244)
+    ],
+    door: {x:2700,y:390,w:36,h:130,open:false},
+    treasure: {kind:'treasure', name:'HEART', x:2810,y:460,w:42,h:54,collected:false}
+  }
+];
+
+function cloneZone(index) {
+  const source = ZONES[index];
+  return {
+    ...source,
+    colors: {...source.colors},
+    spawn: {...source.spawn},
+    checkpoints: [...source.checkpoints],
+    platforms: source.platforms.map(item => ({...item})),
+    hazards: source.hazards.map(item => ({...item})),
+    enemies: source.enemies.map(item => ({...item})),
+    pickups: source.pickups.map(item => ({...item})),
+    door: {...source.door},
+    treasure: {...source.treasure}
+  };
+}
+
+function anyHeld(codes) { return codes.some(code => held.has(code)); }
+function anyPressed(codes) { return codes.some(code => pressed.has(code)); }
+function overlap(a, b) {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+function approach(value, target, amount) {
+  if (value < target) return Math.min(value + amount, target);
+  if (value > target) return Math.max(value - amount, target);
+  return target;
+}
+function clamp(value, min, max) { return Math.max(min, Math.min(max, value)); }
+
+function showToast(text, seconds = 1.5) {
+  toastEl.textContent = text;
+  toastEl.hidden = false;
+  toastTimer = seconds;
+}
+
+function updateHUD() {
+  scoreBox.textContent = 'SCORE ' + String(Math.max(0, score)).padStart(6, '0');
+  livesBox.textContent = 'HP ' + '❤'.repeat(Math.max(0, lives));
+  shieldBox.textContent = 'SHIELD ' + String(Math.ceil(shield)).padStart(3, '0');
+  weaponBox.textContent = 'BLASTOLA ' + blastolaLevel + ' · ' + String(Math.ceil(weaponEnergy)).padStart(3, '0');
+  treasureBox.textContent = 'TREASURES ' + treasures + '/' + ZONES.length;
+}
+
+function resetInventory() {
+  inventory.key = false;
+  inventory.boots = false;
+  inventory.lantern = false;
+  inventory.wand = false;
+  inventory.corkscrew = false;
+}
+
+function resetPlayerAt(x, y) {
+  player.x = x;
+  player.y = y;
+  player.vx = 0;
+  player.vy = 0;
+  player.previousY = y;
+  player.grounded = false;
+  player.coyote = 0;
+  player.jumpBuffer = 0;
+  player.invulnerable = 1.2;
+  player.fireCooldown = 0;
+  player.state = 'idle';
+}
+
+function loadZone(index) {
+  zoneIndex = index;
+  currentZone = cloneZone(index);
+  liveEnemies = currentZone.enemies.map(item => ({...item, alive:true}));
+  pickups = currentZone.pickups.map(item => ({...item, collected:false}));
+  projectiles = [];
+  enemyProjectiles = [];
+  particles = [];
+  checkpointX = currentZone.spawn.x;
+  checkpointY = currentZone.spawn.y;
+  resetPlayerAt(checkpointX, checkpointY);
+  cameraX = 0;
+  zoneBanner = 2.3;
+  updateHUD();
+  showToast(currentZone.name, 1.4);
+  startMusic();
+}
+
+function newGame() {
+  initAudio();
+  if (audioContext && audioContext.state === 'suspended') audioContext.resume();
+  gameState = 'playing';
+  score = 0;
+  lives = 5;
+  shield = 100;
+  weaponEnergy = 100;
+  blastolaLevel = 1;
+  treasures = 0;
+  frameCount = 0;
+  gameTime = 0;
+  resetInventory();
+  startScreen.hidden = true;
+  pauseScreen.hidden = true;
+  endScreen.hidden = true;
+  hudEl.hidden = false;
+  canvas.focus();
+  loadZone(0);
+}
+
+function togglePause(forceResume = false) {
+  if (forceResume && gameState === 'paused') {
+    gameState = 'playing';
+    pauseScreen.hidden = true;
+    canvas.focus();
+    return;
+  }
+  if (gameState === 'playing') {
+    gameState = 'paused';
+    pauseSummary.textContent = currentZone.name + ' · ' + treasures + '/' + ZONES.length + ' treasures';
+    pauseScreen.hidden = false;
+  } else if (gameState === 'paused') {
+    gameState = 'playing';
+    pauseScreen.hidden = true;
+    canvas.focus();
+  }
+}
+
+function finishGame(won) {
+  gameState = won ? 'won' : 'lost';
+  stopMusic();
+  sfx(won ? 'victory' : 'gameOver');
+  endTitle.textContent = won ? 'TAMBI RESTORED' : 'MISSION LOST';
+  endMessage.textContent = won
+    ? 'Gems, coins, and crown recovered. Final score: ' + score
+    : 'Captain Comic will try again. Final score: ' + score;
+  endScreen.hidden = false;
+  try {
+    highScore = Math.max(highScore, score);
+    localStorage.setItem('captainComicBeastHigh', String(highScore));
+  } catch (_) {}
+}
+
+function loseLife() {
+  lives -= 1;
+  screenShake = 12;
+  spawnBurst(player.x + player.w / 2, player.y + player.h / 2, '#ef476f', 24, 260);
+  sfx('lifeLost');
+  if (lives <= 0) {
+    updateHUD();
+    finishGame(false);
+    return;
+  }
+  shield = 100;
+  resetPlayerAt(checkpointX, checkpointY);
+  updateHUD();
+  showToast('CHECKPOINT RESTORE');
+}
+
+function damagePlayer(amount, forceLifeLoss = false) {
+  if (gameState !== 'playing') return false;
+  if (player.invulnerable > 0 && !forceLifeLoss) return false;
+  player.invulnerable = 1.15;
+  player.vy = -330;
+  player.vx = -player.facing * 210;
+  shield = forceLifeLoss ? 0 : shield - amount;
+  screenShake = 7;
+  sfx('damage');
+  spawnBurst(player.x + player.w / 2, player.y + 18, '#ff668a', 14, 180);
+  if (shield <= 0) loseLife();
+  updateHUD();
+  return true;
+}
+
+function solidRects() {
+  const solids = currentZone.platforms.slice();
+  if (!currentZone.door.open) solids.push(currentZone.door);
+  return solids;
+}
+
+function resolveHorizontal(previousX) {
+  for (const solid of solidRects()) {
+    if (!overlap(player, solid)) continue;
+    if (player.vx > 0 && previousX + player.w <= solid.x + 5) player.x = solid.x - player.w;
+    else if (player.vx < 0 && previousX >= solid.x + solid.w - 5) player.x = solid.x + solid.w;
+    player.vx = 0;
+  }
+}
+
+function resolveVertical(previousY) {
+  player.grounded = false;
+  for (const solid of solidRects()) {
+    if (!overlap(player, solid)) continue;
+    const previousBottom = previousY + player.h;
+    if (player.vy >= 0 && previousBottom <= solid.y + 8) {
+      player.y = solid.y - player.h;
+      player.vy = 0;
+      player.grounded = true;
+    } else if (player.vy < 0 && previousY >= solid.y + solid.h - 8) {
+      player.y = solid.y + solid.h;
+      player.vy = 0;
+    }
+  }
+}
+
+function updatePlayer(dt) {
+  const moveLeft = held.has('ArrowLeft') || held.has('KeyA');
+  const moveRight = held.has('ArrowRight') || held.has('KeyD');
+  const move = (moveRight ? 1 : 0) - (moveLeft ? 1 : 0);
+  const runSpeed = inventory.boots ? 300 : 255;
+  const acceleration = player.grounded ? 1700 : 1060;
+  const targetVx = move * runSpeed;
+  player.vx = approach(player.vx, targetVx, acceleration * dt);
+  if (!move && player.grounded) player.vx = approach(player.vx, 0, 2100 * dt);
+  if (move) player.facing = move;
+
+  if (anyPressed(JUMP_CODES)) player.jumpBuffer = 0.14;
+  player.jumpHeld = anyHeld(JUMP_CODES);
+  player.jumpBuffer = Math.max(0, player.jumpBuffer - dt);
+  player.coyote = player.grounded ? 0.12 : Math.max(0, player.coyote - dt);
+  if (player.jumpBuffer > 0 && player.coyote > 0) {
+    player.vy = inventory.boots ? -690 : -620;
+    player.grounded = false;
+    player.coyote = 0;
+    player.jumpBuffer = 0;
+    sfx('jump');
+    spawnBurst(player.x + player.w / 2, player.y + player.h, currentZone.colors.top, 7, 80);
+  }
+  if (!player.jumpHeld && player.vy < -230) player.vy += GRAVITY * 1.7 * dt;
+
+  player.previousY = player.y;
+  const previousX = player.x;
+  player.x += player.vx * dt;
+  resolveHorizontal(previousX);
+  const previousY = player.y;
+  player.vy = Math.min(MAX_FALL, player.vy + GRAVITY * dt);
+  player.y += player.vy * dt;
+  resolveVertical(previousY);
+  player.x = clamp(player.x, 0, currentZone.worldWidth - player.w);
+
+  if (player.y > VIEW_H + 100) loseLife();
+  for (const hazard of currentZone.hazards) {
+    if (overlap(player, hazard)) {
+      damagePlayer(999, true);
+      break;
+    }
+  }
+
+  if (player.invulnerable > 0) player.invulnerable = Math.max(0, player.invulnerable - dt);
+  if (player.fireCooldown > 0) player.fireCooldown = Math.max(0, player.fireCooldown - dt);
+  weaponEnergy = Math.min(100, weaponEnergy + (anyHeld(FIRE_CODES) ? 7 : 21) * dt);
+  if (anyPressed(FIRE_CODES) || anyHeld(FIRE_CODES)) fireBlastola();
+
+  if (!player.grounded) player.state = player.vy < 0 ? 'jump' : 'fall';
+  else if (Math.abs(player.vx) > 24) player.state = 'run';
+  else player.state = 'idle';
+  player.anim += dt * (player.state === 'run' ? 11 : 4);
+}
+
+function fireBlastola() {
+  if (player.fireCooldown > 0 || weaponEnergy < 9) return;
+  const activeShots = projectiles.filter(shot => !shot.dead).length;
+  if (activeShots >= blastolaLevel) return;
+  weaponEnergy -= 9;
+  player.fireCooldown = Math.max(0.09, 0.25 - blastolaLevel * 0.025);
+  projectiles.push({
+    x: player.x + (player.facing > 0 ? player.w + 2 : -12),
+    y: player.y + 18,
+    baseY: player.y + 18,
+    w: 13, h: 8, vx: player.facing * 540,
+    life: 1.6, age: 0, dead: false, corkscrew: inventory.corkscrew
+  });
+  player.state = 'fire';
+  sfx('fire');
+}
+
+function killEnemy(target) {
+  if (!target.alive) return;
+  target.alive = false;
+  score += target.type === 'turret' ? 450 : 250;
+  screenShake = 4;
+  spawnBurst(target.x + target.w / 2, target.y + target.h / 2, currentZone.colors.danger, 18, 220);
+  sfx('enemyDefeat');
+  spawnEnemyDrop(target);
+  updateHUD();
+}
+
+function spawnEnemyDrop(target) {
+  if (Math.random() > 0.4) return;
+  const kind = Math.random() < 0.64 ? 'coin' : (Math.random() < 0.5 ? 'shield' : 'energy');
+  pickups.push({kind, x:target.x + 5, y:Math.min(target.y, 476), w:24, h:24, collected:false, anim:0, dropped:true});
+}
+
+function updateEnemies(dt) {
+  for (const target of liveEnemies) {
+    if (!target.alive) continue;
+    target.anim += dt * 8;
+    if (target.type === 'walker') {
+      target.x += target.dir * target.speed * dt;
+      if (target.x <= target.minX || target.x >= target.maxX) {
+        target.x = clamp(target.x, target.minX, target.maxX);
+        target.dir *= -1;
+      }
+    } else if (target.type === 'flyer') {
+      target.phase += dt * (1.3 + target.speed / 220);
+      const center = (target.minX + target.maxX) / 2;
+      const radius = (target.maxX - target.minX) / 2;
+      target.x = center + Math.sin(target.phase) * radius;
+      target.y = target.baseY + Math.cos(target.phase * 1.7) * 46;
+      target.dir = Math.cos(target.phase) >= 0 ? 1 : -1;
+    } else if (target.type === 'hopper') {
+      target.phase += dt * 2.7;
+      target.x += target.dir * target.speed * dt;
+      if (target.x <= target.minX || target.x >= target.maxX) target.dir *= -1;
+      target.y = target.baseY - Math.abs(Math.sin(target.phase)) * 58;
+    } else if (target.type === 'turret') {
+      target.cooldown -= dt;
+      target.dir = player.x >= target.x ? 1 : -1;
+      if (target.cooldown <= 0 && Math.abs(player.x - target.x) < 520) {
+        target.cooldown = 1.45;
+        const dx = player.x - target.x;
+        const dy = (player.y + 18) - (target.y + 12);
+        const length = Math.max(1, Math.hypot(dx, dy));
+        enemyProjectiles.push({x:target.x + 14,y:target.y + 12,w:9,h:9,vx:dx/length*240,vy:dy/length*240,life:3});
+      }
+    }
+
+    if (overlap(player, target)) {
+      const stomp = player.vy > 120 && player.previousY + player.h <= target.y + 12;
+      if (stomp) {
+        killEnemy(target);
+        player.vy = -410;
+      } else {
+        damagePlayer(34);
+      }
+    }
+  }
+}
+
+function updateProjectiles(dt) {
+  for (const shot of projectiles) {
+    if (shot.dead) continue;
+    shot.age += dt;
+    shot.life -= dt;
+    shot.x += shot.vx * dt;
+    if (shot.corkscrew) shot.y = shot.baseY + Math.sin(shot.age * 18) * 24;
+    if (shot.life <= 0 || shot.x < -50 || shot.x > currentZone.worldWidth + 50) shot.dead = true;
+    for (const target of liveEnemies) {
+      if (!shot.dead && target.alive && overlap(shot, target)) {
+        shot.dead = true;
+        target.hp -= 1;
+        spawnBurst(shot.x, shot.y, '#ffd166', 6, 120);
+        sfx('enemyHit');
+        if (target.hp <= 0) killEnemy(target);
+      }
+    }
+  }
+  projectiles = projectiles.filter(shot => !shot.dead);
+
+  for (const shot of enemyProjectiles) {
+    shot.x += shot.vx * dt;
+    shot.y += shot.vy * dt;
+    shot.life -= dt;
+    if (overlap(player, shot)) {
+      shot.life = 0;
+      damagePlayer(28);
+    }
+  }
+  enemyProjectiles = enemyProjectiles.filter(shot => shot.life > 0);
+}
+
+function applyPickup(item) {
+  item.collected = true;
+  if (item.kind === 'coin') score += 100;
+  else if (item.kind === 'shield') shield = Math.min(100, shield + 48);
+  else if (item.kind === 'energy') weaponEnergy = Math.min(100, weaponEnergy + 52);
+  else if (item.kind === 'blastola') blastolaLevel = Math.min(5, blastolaLevel + 1);
+  else if (item.kind === 'key') inventory.key = true;
+  else if (item.kind === 'boots') inventory.boots = true;
+  else if (item.kind === 'lantern') inventory.lantern = true;
+  else if (item.kind === 'wand') inventory.wand = true;
+  else if (item.kind === 'corkscrew') inventory.corkscrew = true;
+  const labels = {
+    coin:'100 POINTS', shield:'SHIELD RESTORED', energy:'WEAPON CHARGED',
+    blastola:'BLASTOLA UPGRADED', key:'DOOR KEY ACQUIRED', boots:'JUMP BOOTS ACQUIRED',
+    lantern:'LANTERN ACQUIRED', wand:'WAND ACQUIRED', corkscrew:'CORKSCREW SHOTS'
+  };
+  showToast(labels[item.kind] || 'ITEM ACQUIRED');
+  spawnBurst(item.x + 12, item.y + 12, currentZone.colors.accent, 14, 170);
+  sfx(item.kind === 'coin' ? 'collect' : 'upgrade');
+  updateHUD();
+}
+
+function updatePickups() {
+  for (const item of pickups) {
+    item.anim += FIXED_STEP * 5;
+    if (!item.collected && overlap(player, item)) applyPickup(item);
+  }
+  const treasure = currentZone.treasure;
+  if (!treasure.collected && overlap(player, treasure)) {
+    treasure.collected = true;
+    treasures += 1;
+    lives = Math.min(7, lives + 1);
+    score += 5000;
+    spawnBurst(treasure.x + treasure.w / 2, treasure.y + 20, '#ffd166', 42, 310);
+    sfx('treasure');
+    updateHUD();
+    if (zoneIndex >= ZONES.length - 1 || treasures >= ZONES.length) {
+      finishGame(true);
+    } else {
+      showToast(treasure.name + ' RECOVERED', 1.2);
+      loadZone(zoneIndex + 1);
+    }
+    return true;
+  }
+  return false;
+}
+
+function updateDoor() {
+  const door = currentZone.door;
+  if (door.open) return;
+  const nearDoor = Math.abs((player.x + player.w / 2) - (door.x + door.w / 2)) < 64 && Math.abs(player.y - door.y) < 150;
+  if (nearDoor && anyPressed(INTERACT_CODES)) {
+    if (inventory.key) {
+      door.open = true;
+      score += 300;
+      sfx('door');
+      spawnBurst(door.x + door.w / 2, door.y + 50, currentZone.colors.accent, 20, 160);
+      showToast('DOOR OPEN');
+    } else {
+      showToast('KEY REQUIRED');
+    }
+  }
+}
+
+function updateCheckpoints() {
+  for (const point of currentZone.checkpoints) {
+    if (player.x >= point && point > checkpointX + 120) {
+      checkpointX = point;
+      checkpointY = 430;
+      showToast('CHECKPOINT');
+      sfx('checkpoint');
+    }
+  }
+}
+
+function updateParticles(dt) {
+  for (const particle of particles) {
+    particle.life -= dt;
+    particle.x += particle.vx * dt;
+    particle.y += particle.vy * dt;
+    particle.vy += 420 * dt;
+  }
+  particles = particles.filter(particle => particle.life > 0);
+}
+
+function spawnBurst(x, y, color, count, speed) {
+  for (let i = 0; i < count; i += 1) {
+    const angle = (i / count) * Math.PI * 2 + Math.random() * 0.4;
+    const force = speed * (0.35 + Math.random() * 0.65);
+    particles.push({x,y,vx:Math.cos(angle)*force,vy:Math.sin(angle)*force,life:0.35+Math.random()*0.55,size:2+Math.random()*4,color});
+  }
+}
+
+function updateStep(dt) {
+  if (gameState !== 'playing' || !currentZone) return;
+  frameCount += 1;
+  gameTime += dt;
+  if (toastTimer > 0) {
+    toastTimer -= dt;
+    if (toastTimer <= 0) toastEl.hidden = true;
+  }
+  if (zoneBanner > 0) zoneBanner -= dt;
+  if (screenShake > 0) screenShake = Math.max(0, screenShake - 30 * dt);
+  updatePlayer(dt);
+  updateDoor();
+  updateEnemies(dt);
+  updateProjectiles(dt);
+  if (updatePickups()) {
+    pressed.clear();
+    return;
+  }
+  updateCheckpoints();
+  updateParticles(dt);
+  const targetCamera = clamp(player.x - VIEW_W * 0.37 + player.vx * 0.16, 0, currentZone.worldWidth - VIEW_W);
+  cameraX += (targetCamera - cameraX) * Math.min(1, dt * 7.5);
+  if (frameCount % 10 === 0) updateHUD();
+  pressed.clear();
+}
+
+function drawBackground(zone) {
+  // Two-rate parallax scenery keeps each zone moving without external assets.
+  const colors = zone.colors;
+  ctx.fillStyle = colors.sky;
+  ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+
+  ctx.fillStyle = colors.far;
+  const farOffset = -((cameraX * 0.12) % 180);
+  for (let i = -1; i < 7; i += 1) {
+    const x = farOffset + i * 180;
+    const peak = 250 + (i % 2) * 45;
+    ctx.beginPath();
+    ctx.moveTo(x - 60, 520);
+    ctx.lineTo(x + 55, peak);
+    ctx.lineTo(x + 180, 520);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  ctx.fillStyle = colors.accent;
+  for (let i = 0; i < 34; i += 1) {
+    const x = ((i * 97 - cameraX * 0.04) % 860 + 860) % 860 - 30;
+    const y = 70 + (i * 53) % 240;
+    const pulse = 1 + ((Math.sin(gameTime * 3 + i) + 1) > 1.5 ? 1 : 0);
+    ctx.fillRect(Math.floor(x), y, pulse, pulse);
+  }
+
+  ctx.fillStyle = colors.near;
+  const nearOffset = -((cameraX * 0.28) % 120);
+  for (let i = -1; i < 9; i += 1) {
+    const x = nearOffset + i * 120;
+    if (zoneIndex === 0) {
+      ctx.fillRect(x + 50, 330, 18, 190);
+      ctx.beginPath();
+      ctx.moveTo(x + 5, 390);
+      ctx.lineTo(x + 60, 245);
+      ctx.lineTo(x + 115, 390);
+      ctx.closePath();
+      ctx.fill();
+    } else if (zoneIndex === 1) {
+      ctx.beginPath();
+      ctx.arc(x + 55, 435, 48 + (i % 3) * 10, Math.PI, Math.PI * 2);
+      ctx.fill();
+    } else {
+      ctx.fillRect(x + 18, 350, 84, 170);
+      ctx.fillRect(x + 5, 328, 110, 22);
+      ctx.fillRect(x + 32, 300, 18, 28);
+      ctx.fillRect(x + 72, 300, 18, 28);
+    }
+  }
+}
+
+function drawPlatform(item, colors) {
+  ctx.fillStyle = colors.ground;
+  ctx.fillRect(item.x, item.y, item.w, item.h);
+  ctx.fillStyle = colors.top;
+  ctx.fillRect(item.x, item.y, item.w, 5);
+  ctx.fillStyle = colors.near;
+  for (let x = item.x + 8; x < item.x + item.w; x += 24) ctx.fillRect(x, item.y + 16, 10, 5);
+}
+
+function drawHazard(item, colors) {
+  ctx.fillStyle = colors.danger;
+  const count = Math.ceil(item.w / 18);
+  for (let i = 0; i < count; i += 1) {
+    const x = item.x + i * 18;
+    ctx.beginPath();
+    ctx.moveTo(x, item.y + item.h);
+    ctx.lineTo(x + 9, item.y);
+    ctx.lineTo(x + 18, item.y + item.h);
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
+function drawDoor(door) {
+  if (door.open) {
+    ctx.fillStyle = 'rgba(99,210,255,0.25)';
+    ctx.fillRect(door.x + 10, door.y, 16, door.h);
+    return;
+  }
+  ctx.fillStyle = '#352946';
+  ctx.fillRect(door.x, door.y, door.w, door.h);
+  ctx.fillStyle = currentZone.colors.accent;
+  ctx.fillRect(door.x + 5, door.y + 6, door.w - 10, 7);
+  ctx.fillRect(door.x + 5, door.y + 30, door.w - 10, 5);
+  ctx.fillRect(door.x + 5, door.y + 58, door.w - 10, 5);
+  ctx.fillStyle = '#ffd166';
+  ctx.fillRect(door.x + 8, door.y + 88, 6, 6);
+}
+
+function drawPickup(item) {
+  if (item.collected) return;
+  const bob = Math.sin(gameTime * 5 + item.anim) * 4;
+  const x = item.x;
+  const y = item.y + bob;
+  const palette = {
+    coin:'#ffd166', shield:'#63d2ff', energy:'#a8ff78', blastola:'#ef476f',
+    key:'#ffd166', boots:'#ff9f1c', lantern:'#f8f4d8', wand:'#c77dff', corkscrew:'#63d2ff'
+  };
+  ctx.fillStyle = palette[item.kind] || '#fff';
+  if (item.kind === 'coin') {
+    const width = 6 + Math.abs(Math.sin(gameTime * 7 + item.anim)) * 14;
+    ctx.fillRect(x + 12 - width / 2, y + 2, width, 20);
+    ctx.fillStyle = '#fff3b0';
+    ctx.fillRect(x + 10, y + 6, 4, 12);
+  } else if (item.kind === 'boots') {
+    ctx.fillRect(x + 2, y + 4, 8, 17);
+    ctx.fillRect(x + 11, y + 10, 11, 11);
+  } else if (item.kind === 'key') {
+    ctx.beginPath(); ctx.arc(x + 7, y + 9, 6, 0, Math.PI * 2); ctx.fill();
+    ctx.fillRect(x + 12, y + 7, 11, 4); ctx.fillRect(x + 19, y + 10, 4, 6);
+  } else if (item.kind === 'lantern') {
+    ctx.fillRect(x + 5, y + 6, 14, 15);
+    ctx.strokeStyle = '#f8f4d8'; ctx.lineWidth = 2; ctx.strokeRect(x + 8, y + 1, 8, 7);
+  } else if (item.kind === 'wand') {
+    ctx.save(); ctx.translate(x + 12, y + 12); ctx.rotate(-0.55); ctx.fillRect(-2, -12, 4, 24); ctx.restore();
+  } else if (item.kind === 'corkscrew') {
+    ctx.lineWidth = 4; ctx.strokeStyle = '#63d2ff'; ctx.beginPath();
+    for (let i = 0; i < 22; i += 2) ctx.lineTo(x + i, y + 12 + Math.sin(i * 0.7) * 7);
+    ctx.stroke();
+  } else {
+    ctx.fillRect(x + 2, y + 2, 20, 20);
+    ctx.fillStyle = '#fff'; ctx.fillRect(x + 9, y + 6, 6, 12);
+  }
+}
+
+function drawTreasure(item) {
+  if (item.collected) return;
+  const bob = Math.sin(gameTime * 3.4) * 6;
+  ctx.save();
+  ctx.translate(item.x, item.y + bob);
+  ctx.fillStyle = '#ffd166';
+  if (item.name === 'GEMS') {
+    ctx.fillStyle = '#63d2ff';
+    ctx.beginPath(); ctx.moveTo(17,0); ctx.lineTo(34,18); ctx.lineTo(17,42); ctx.lineTo(0,18); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.fillRect(14,8,6,18);
+  } else if (item.name === 'COINS') {
+    ctx.fillRect(1,12,36,28); ctx.fillStyle = '#ef476f'; ctx.fillRect(4,8,30,8);
+    ctx.fillStyle = '#ffd166'; ctx.beginPath(); ctx.arc(19,24,8,0,Math.PI*2); ctx.fill();
+  } else {
+    ctx.fillRect(5,17,30,24); ctx.fillRect(1,8,7,14); ctx.fillRect(16,2,7,20); ctx.fillRect(32,8,7,14);
+    ctx.fillStyle = '#ef476f'; ctx.fillRect(9,22,6,6); ctx.fillStyle = '#63d2ff'; ctx.fillRect(24,22,6,6);
+  }
+  ctx.restore();
+}
+
+function drawEnemy(target) {
+  if (!target.alive) return;
+  const phase = Math.sin(target.anim);
+  ctx.save();
+  ctx.translate(target.x + target.w / 2, target.y + target.h / 2);
+  if (target.dir < 0) ctx.scale(-1, 1);
+  if (target.type === 'walker') {
+    ctx.fillStyle = '#ef476f'; ctx.fillRect(-15,-12,30,22);
+    ctx.fillStyle = '#ffd166'; ctx.fillRect(3,-7,7,7);
+    ctx.fillStyle = '#5b1838'; ctx.fillRect(-12,9+phase*2,8,7); ctx.fillRect(5,9-phase*2,8,7);
+  } else if (target.type === 'flyer') {
+    ctx.fillStyle = '#c77dff'; ctx.fillRect(-10,-9,20,20);
+    ctx.fillStyle = '#63d2ff';
+    ctx.beginPath(); ctx.moveTo(-9,-4); ctx.lineTo(-25,-15-phase*5); ctx.lineTo(-18,5); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(9,-4); ctx.lineTo(25,-15+phase*5); ctx.lineTo(18,5); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.fillRect(3,-4,5,5);
+  } else if (target.type === 'hopper') {
+    ctx.fillStyle = '#ff9f1c'; ctx.fillRect(-14,-11,28,21);
+    ctx.fillStyle = '#a8ff78'; ctx.fillRect(2,-7,6,6);
+    ctx.strokeStyle = '#ff9f1c'; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(-8,9); ctx.lineTo(-14,15+phase*3); ctx.lineTo(-4,15); ctx.moveTo(8,9); ctx.lineTo(14,15-phase*3); ctx.lineTo(4,15); ctx.stroke();
+  } else {
+    ctx.fillStyle = '#7d4e57'; ctx.fillRect(-16,-12,32,26);
+    ctx.fillStyle = '#ef476f'; ctx.fillRect(target.dir > 0 ? 7 : -13,-5,13,9);
+    ctx.fillStyle = '#ffd166'; ctx.fillRect(-5,-7,7,7);
+  }
+  ctx.restore();
+}
+
+function drawPlayer() {
+  if (player.invulnerable > 0 && Math.floor(player.invulnerable * 14) % 2 === 0) return;
+  const run = Math.sin(player.anim * Math.PI);
+  const bob = player.state === 'idle' ? Math.sin(gameTime * 4) * 1.5 : 0;
+  ctx.save();
+  ctx.translate(Math.round(player.x + player.w / 2), Math.round(player.y + player.h / 2 + bob));
+  if (player.facing < 0) ctx.scale(-1, 1);
+
+  ctx.fillStyle = '#3349a3';
+  ctx.fillRect(-17,-9,7,24);
+  ctx.fillStyle = '#e7f6ff';
+  ctx.fillRect(-11,-20,23,18);
+  ctx.fillStyle = '#63d2ff';
+  ctx.fillRect(-4,-16,14,7);
+  ctx.fillStyle = '#151a35';
+  ctx.fillRect(5,-14,5,4);
+  ctx.fillStyle = '#ef476f';
+  ctx.fillRect(-11,-2,23,24);
+  ctx.fillStyle = '#ffd166';
+  ctx.fillRect(-8,2,17,5);
+  ctx.fillStyle = '#e7f6ff';
+  const armY = player.state === 'fire' ? 1 : 5;
+  ctx.fillRect(9,armY,12,6);
+  ctx.fillStyle = '#3349a3';
+  if (player.state === 'jump' || player.state === 'fall') {
+    ctx.fillRect(-9,20,8,7); ctx.fillRect(5,17,8,7);
+  } else {
+    ctx.fillRect(-9,19 + run * 3,8,9); ctx.fillRect(5,19 - run * 3,8,9);
+  }
+  ctx.fillStyle = '#63d2ff';
+  ctx.fillRect(-10,26 + Math.max(0,run*3),10,5); ctx.fillRect(4,26 + Math.max(0,-run*3),10,5);
+  if (player.state === 'fire') {
+    ctx.fillStyle = '#ffd166'; ctx.fillRect(21,armY+1,8,4);
+  }
+  ctx.restore();
+}
+
+function drawWorld() {
+  const colors = currentZone.colors;
+  const shakeX = screenShake > 0 ? (Math.random() - 0.5) * screenShake : 0;
+  const shakeY = screenShake > 0 ? (Math.random() - 0.5) * screenShake : 0;
+  ctx.save();
+  ctx.translate(Math.round(-cameraX + shakeX), Math.round(shakeY));
+  for (const item of currentZone.platforms) drawPlatform(item, colors);
+  for (const item of currentZone.hazards) drawHazard(item, colors);
+  drawDoor(currentZone.door);
+  for (const item of pickups) drawPickup(item);
+  drawTreasure(currentZone.treasure);
+  for (const target of liveEnemies) drawEnemy(target);
+
+  ctx.fillStyle = '#ffd166';
+  for (const shot of projectiles) {
+    ctx.fillRect(shot.x, shot.y, shot.w, shot.h);
+    ctx.fillStyle = '#fff'; ctx.fillRect(shot.x + (shot.vx > 0 ? 8 : 1), shot.y + 2, 4, 3); ctx.fillStyle = '#ffd166';
+  }
+  ctx.fillStyle = '#ff668a';
+  for (const shot of enemyProjectiles) {
+    ctx.beginPath(); ctx.arc(shot.x + 4, shot.y + 4, 5, 0, Math.PI * 2); ctx.fill();
+  }
+  drawPlayer();
+  for (const particle of particles) {
+    ctx.globalAlpha = clamp(particle.life * 2, 0, 1);
+    ctx.fillStyle = particle.color;
+    ctx.fillRect(particle.x, particle.y, particle.size, particle.size);
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
+function drawOverlays() {
+  if (zoneIndex === 2 && !inventory.lantern) {
+    ctx.fillStyle = 'rgba(0,0,0,0.58)';
+    ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+    ctx.save();
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.beginPath();
+    ctx.arc(player.x - cameraX + player.w / 2, player.y + player.h / 2, 118, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+  if (zoneBanner > 0) {
+    ctx.fillStyle = 'rgba(9,10,22,0.84)';
+    ctx.fillRect(220, 250, 360, 74);
+    ctx.strokeStyle = currentZone.colors.accent;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(220, 250, 360, 74);
+    ctx.fillStyle = '#f8f4d8';
+    ctx.font = 'bold 22px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(currentZone.name, 400, 294);
+  }
+  ctx.fillStyle = 'rgba(0,0,0,0.08)';
+  for (let y = 0; y < VIEW_H; y += 4) ctx.fillRect(0, y, VIEW_W, 1);
+}
+
+function draw() {
+  if (!currentZone) currentZone = cloneZone(0);
+  drawBackground(currentZone);
+  drawWorld();
+  drawOverlays();
+}
+
+let audioContext = null;
+let masterGain = null;
+let musicTimer = null;
+let musicStep = 0;
+let soundEnabled = true;
+const MUSIC_MELODY = [523,0,659,784,659,0,587,659,523,0,440,494,523,659,0,392];
+const MUSIC_BASS = [131,131,165,165,147,147,196,196];
+
+function initAudio() {
+  if (audioContext) return;
+  const AudioCtor = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtor) return;
+  audioContext = new AudioCtor();
+  masterGain = audioContext.createGain();
+  masterGain.gain.setValueAtTime(soundEnabled ? 0.68 : 0, audioContext.currentTime);
+  masterGain.connect(audioContext.destination);
+}
+
+function tone(frequency, duration, type = 'square', volume = 0.06, delay = 0) {
+  if (!soundEnabled || !audioContext || !masterGain || !frequency) return;
+  const start = audioContext.currentTime + delay;
+  const oscillator = audioContext.createOscillator();
+  const gain = audioContext.createGain();
+  oscillator.type = type;
+  oscillator.frequency.setValueAtTime(Math.max(40, frequency), start);
+  gain.gain.setValueAtTime(Math.max(0.0001, volume), start);
+  gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+  oscillator.connect(gain);
+  gain.connect(masterGain);
+  oscillator.start(start);
+  oscillator.stop(start + duration + 0.02);
+}
+
+function sfx(name) {
+  if (!audioContext || !soundEnabled) return;
+  const patterns = {
+    jump:[[280,0.08,'square',0.07,0],[430,0.1,'square',0.05,0.06]],
+    fire:[[880,0.06,'sawtooth',0.055,0],[430,0.08,'square',0.045,0.04]],
+    collect:[[740,0.07,'sine',0.06,0],[1040,0.1,'sine',0.055,0.07]],
+    upgrade:[[440,0.1,'square',0.06,0],[554,0.1,'square',0.06,0.1],[659,0.14,'square',0.06,0.2]],
+    enemyHit:[[250,0.08,'square',0.05,0]],
+    enemyDefeat:[[190,0.12,'sawtooth',0.07,0],[95,0.18,'square',0.06,0.08]],
+    damage:[[180,0.18,'sawtooth',0.09,0],[120,0.22,'square',0.06,0.08]],
+    lifeLost:[[330,0.14,'square',0.07,0],[220,0.18,'square',0.07,0.12],[110,0.24,'square',0.07,0.25]],
+    door:[[262,0.12,'sine',0.05,0],[330,0.12,'sine',0.05,0.12],[392,0.18,'sine',0.05,0.24]],
+    checkpoint:[[660,0.07,'sine',0.045,0],[880,0.09,'sine',0.04,0.08]],
+    treasure:[[523,0.12,'square',0.07,0],[659,0.12,'square',0.07,0.12],[784,0.12,'square',0.07,0.24],[1047,0.3,'sine',0.08,0.36]],
+    victory:[[392,0.15,'square',0.06,0],[523,0.15,'square',0.06,0.16],[659,0.15,'square',0.06,0.32],[784,0.45,'sine',0.08,0.48]],
+    gameOver:[[294,0.2,'sawtooth',0.07,0],[220,0.25,'sawtooth',0.07,0.2],[147,0.4,'square',0.07,0.42]]
+  };
+  for (const note of patterns[name] || []) tone(note[0], note[1], note[2], note[3], note[4]);
+}
+
+function musicTick() {
+  if (gameState !== 'playing' || !soundEnabled || !audioContext) return;
+  const transpose = zoneIndex === 1 ? 1.122 : (zoneIndex === 2 ? 0.89 : 1);
+  const melody = MUSIC_MELODY[musicStep % MUSIC_MELODY.length];
+  const bass = MUSIC_BASS[Math.floor(musicStep / 2) % MUSIC_BASS.length];
+  if (melody) tone(melody * transpose, 0.12, zoneIndex === 2 ? 'triangle' : 'square', 0.018);
+  if (musicStep % 2 === 0) tone(bass * transpose, 0.22, 'triangle', 0.024);
+  musicStep += 1;
+}
+
+function startMusic() {
+  stopMusic();
+  musicStep = 0;
+  musicTick();
+  musicTimer = window.setInterval(musicTick, 155);
+}
+
+function stopMusic() {
+  if (musicTimer !== null) window.clearInterval(musicTimer);
+  musicTimer = null;
+}
+
+function toggleMute() {
+  soundEnabled = !soundEnabled;
+  muteBtn.textContent = soundEnabled ? '♪' : '×';
+  muteBtn.setAttribute('aria-pressed', String(!soundEnabled));
+  muteBtn.title = soundEnabled ? 'Mute sound' : 'Enable sound';
+  if (masterGain && audioContext) {
+    masterGain.gain.setValueAtTime(soundEnabled ? 0.68 : 0, audioContext.currentTime);
+  }
+  if (soundEnabled && gameState === 'playing') startMusic();
+  else if (!soundEnabled) stopMusic();
+}
+
+function fullscreenElement() {
+  return document.fullscreenElement || document.webkitFullscreenElement || null;
+}
+
+function fullscreenActive() {
+  return Boolean(fullscreenElement()) || gameShell.classList.contains('fullscreenFallback');
+}
+
+async function toggleFullscreen() {
+  if (gameShell.classList.contains('fullscreenFallback')) {
+    gameShell.classList.remove('fullscreenFallback');
+    syncFullscreenButton();
+    canvas.focus();
+    return;
+  }
+  try {
+    if (fullscreenElement()) {
+      const exit = document.exitFullscreen || document.webkitExitFullscreen;
+      if (exit) await exit.call(document);
+    } else {
+      const request = gameShell.requestFullscreen || gameShell.webkitRequestFullscreen;
+      if (!request) throw new Error('Fullscreen API unavailable');
+      await request.call(gameShell);
+    }
+  } catch (_) {
+    gameShell.classList.add('fullscreenFallback');
+    syncFullscreenButton();
+    canvas.focus();
+  }
+}
+
+function syncFullscreenButton() {
+  const active = fullscreenActive();
+  fullscreenBtn.setAttribute('aria-pressed', String(active));
+  fullscreenBtn.setAttribute('aria-label', active ? 'Exit fullscreen' : 'Enter fullscreen');
+  fullscreenBtn.title = active ? 'Exit fullscreen' : 'Enter fullscreen';
+  if (active) canvas.focus();
+}
+
+function handleKeyDown(event) {
+  if (CONTROL_CODES.has(event.code)) event.preventDefault();
+  if (event.code === 'Escape' && gameShell.classList.contains('fullscreenFallback')) {
+    gameShell.classList.remove('fullscreenFallback');
+    syncFullscreenButton();
+    canvas.focus();
+    return;
+  }
+  if (!held.has(event.code)) pressed.add(event.code);
+  held.add(event.code);
+  if (event.code === 'KeyM' && !event.repeat) toggleMute();
+  if (event.code === 'KeyF' && !event.repeat) toggleFullscreen();
+  if ((event.code === 'KeyP' || event.code === 'Escape') && !event.repeat && (gameState === 'playing' || gameState === 'paused')) togglePause();
+}
+
+function handleKeyUp(event) {
+  if (CONTROL_CODES.has(event.code)) event.preventDefault();
+  held.delete(event.code);
+}
+
+window.addEventListener('keydown', handleKeyDown, {passive:false});
+window.addEventListener('keyup', handleKeyUp, {passive:false});
+window.addEventListener('blur', () => held.clear());
+document.addEventListener('fullscreenchange', syncFullscreenButton);
+document.addEventListener('webkitfullscreenchange', syncFullscreenButton);
+
+for (const button of document.querySelectorAll('.touchBtn')) {
+  const code = button.dataset.code;
+  const pressButton = event => {
+    event.preventDefault();
+    if (!held.has(code)) pressed.add(code);
+    held.add(code);
+    button.classList.add('active');
+    canvas.focus();
+  };
+  const releaseButton = event => {
+    event.preventDefault();
+    held.delete(code);
+    button.classList.remove('active');
+  };
+  button.addEventListener('pointerdown', pressButton);
+  button.addEventListener('pointerup', releaseButton);
+  button.addEventListener('pointercancel', releaseButton);
+  button.addEventListener('pointerleave', releaseButton);
+}
+
+document.getElementById('playBtn').addEventListener('click', newGame);
+document.getElementById('resumeBtn').addEventListener('click', () => togglePause(true));
+document.getElementById('restartMissionBtn').addEventListener('click', newGame);
+document.getElementById('playAgainBtn').addEventListener('click', newGame);
+muteBtn.addEventListener('click', toggleMute);
+fullscreenBtn.addEventListener('click', toggleFullscreen);
+canvas.addEventListener('pointerdown', () => canvas.focus());
+
+function gameLoop(timestamp) {
+  if (!lastTimestamp) lastTimestamp = timestamp;
+  const delta = Math.min(0.05, Math.max(0, (timestamp - lastTimestamp) / 1000));
+  lastTimestamp = timestamp;
+  if (gameState === 'playing') {
+    accumulator += delta;
+    let safety = 0;
+    while (accumulator >= FIXED_STEP && safety < 5) {
+      updateStep(FIXED_STEP);
+      accumulator -= FIXED_STEP;
+      safety += 1;
+    }
+  }
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+
+try { highScore = Number(localStorage.getItem('captainComicBeastHigh') || 0); } catch (_) {}
+currentZone = cloneZone(0);
+liveEnemies = currentZone.enemies.map(item => ({...item}));
+pickups = currentZone.pickups.map(item => ({...item}));
+resetPlayerAt(currentZone.spawn.x, currentZone.spawn.y);
+draw();
+requestAnimationFrame(gameLoop);
+
+if (location.search.includes('krakenTest')) {
+  window.__KRAKEN_BEAST__ = {
+    snapshot() {
+      return {
+        state: gameState,
+        level: zoneIndex,
+        score,
+        lives,
+        player: {x:player.x, y:player.y, vx:player.vx, vy:player.vy},
+        enemies: liveEnemies.filter(item => item.alive).length,
+        frame: frameCount,
+        complete: gameState === 'won'
+      };
+    },
+    damage() {
+      damagePlayer(999, true);
+    },
+    completeLevel() {
+      if (gameState !== 'playing' || !currentZone || currentZone.treasure.collected) return;
+      const target = currentZone.treasure;
+      player.x = target.x;
+      player.y = target.y;
+      player.vx = 0;
+      player.vy = 0;
+    }
+  };
+}
+
+})();
+</script>
+</body>
+</html>

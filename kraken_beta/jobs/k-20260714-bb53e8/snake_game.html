@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Snake</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#1a1a2e; display:flex; justify-content:center; align-items:center; min-height:100vh; font-family:'Courier New', monospace; color:#fff; overflow:hidden; }
+#gameCanvas { border:3px solid #e94560; background:#0f0f23; cursor:none; width:800px; height:600px; display:block; }
+#overlay { position:fixed; top:0; left:0; width:100%; height:100%; display:flex; flex-direction:column; justify-content:center; align-items:center; background:rgba(0,0,0,0.85); z-index:10; }
+#overlay.hidden { display:none; }
+.btn { background:#e94560; color:#fff; border:none; padding:15px 40px; font-size:1.3em; cursor:pointer; margin:10px; font-family:'Courier New', monospace; transition:background .2s; }
+.btn:hover { background:#c73e54; }
+#hud { position:fixed; top:10px; left:50%; transform:translateX(-50%); display:flex; gap:30px; color:#fff; z-index:5; pointer-events:none; font-size:1.1em; text-shadow:2px 2px #000; }
+#muteBtn { position:fixed; top:10px; right:15px; z-index:8; background:#333; color:#fff; border:1px solid #666; padding:8px 14px; font-family:'Courier New', monospace; cursor:pointer; }
+#muteBtn:hover { background:#555; }
+</style>
+</head>
+<body>
+<canvas id="gameCanvas" tabindex="0" width="800" height="600"></canvas>
+<div id="overlay">
+  <h1 style="font-size:3em; margin-bottom:20px; color:#e94560;">SNAKE</h1>
+  <p style="margin-bottom:15px; font-size:1.1em; color:#aaa;">Use Arrow Keys or WASD to move</p>
+  <button class="btn" id="playBtn">PLAY GAME</button>
+</div>
+<div id="hud"><span id="scoreEl">Score: 0</span><span id="lengthEl">Length: 3</span></div>
+<button id="muteBtn">Mute</button>
+<script>
+(function() {
+'use strict';
+
+// DOM refs - declared once at top of IIFE
+const canvas = document.getElementById('gameCanvas');
+canvas.width = 800;
+canvas.height = 600;
+const ctx = canvas.getContext('2d');
+
+const overlay = document.getElementById('overlay');
+const playBtn = document.getElementById('playBtn');
+const muteBtn = document.getElementById('muteBtn');
+const scoreEl = document.getElementById('scoreEl');
+const lengthEl = document.getElementById('lengthEl');
+
+// Game state
+let gameState = 'start'; // start, playing, won, lost
+let score = 0;
+let snakeLength = 3;
+let foodsEaten = 0;
+let deaths = 0;
+let targetFoods = 15;
+let gridW = 40, gridH = 30;
+let cellSize = canvas.width / gridW;
+
+// Snake state
+let snake = [];
+let dirX = 1, dirY = 0;
+let nextDirX = 1, nextDirY = 0;
+let food = null;
+let foodsOnBoard = 0;
+
+// Speed - logarithmic increase based on length
+let baseSpeed = 80; // ms per tick at start
+let currentTickMs = baseSpeed;
+
+// Particles & effects
+let particles = [];
+let bgLayers = [];
+
+// Audio
+let audioCtx = null;
+let musicOscillators = [];
+let muted = false;
+
+// Background parallax layers
+function initBg() {
+  bgLayers = [
+    { x: 0, y: 0, speed: 0.2, color: '#1a1a3e', size: 4 },
+    { x: 50, y: 50, speed: 0.4, color: '#2a2a5e', size: 6 },
+    { x: -100, y: -100, speed: 0.6, color: '#3a3a7e', size: 8 }
+  ];
+}
+
+// Audio system
+function initAudio() {
+  if (audioCtx) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+}
+
+function playSFX(type) {
+  if (!audioCtx || muted) return;
+  try {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    
+    switch(type) {
+      case 'eat':
+        osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.1);
+        gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+        osc.start(audioCtx.currentTime);
+        osc.stop(audioCtx.currentTime + 0.15);
+        break;
+      case 'move':
+        osc.frequency.setValueAtTime(200, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.05);
+        osc.start(audioCtx.currentTime);
+        osc.stop(audioCtx.currentTime + 0.05);
+        break;
+      case 'die':
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(400, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(50, audioCtx.currentTime + 0.5);
+        gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+        osc.start(audioCtx.currentTime);
+        osc.stop(audioCtx.currentTime + 0.5);
+        break;
+      case 'win':
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(440, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.3);
+        gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.6);
+        osc.start(audioCtx.currentTime);
+        osc.stop(audioCtx.currentTime + 0.6);
+        break;
+      case 'powerup':
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(1600, audioCtx.currentTime + 0.2);
+        gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+        osc.start(audioCtx.currentTime);
+        osc.stop(audioCtx.currentTime + 0.3);
+        break;
+    }
+  } catch(e) {}
+}
+
+function startMusic() {
+  if (!audioCtx || muted) return;
+  try {
+    const now = audioCtx.currentTime;
+    // Simple looping melody using multiple oscillators
+    musicOscillators.forEach(o => o.stop());
+    musicOscillators = [];
+    
+    const notes = [261.63, 329.63, 392.00, 523.25]; // C D E G
+    
+    for (let i = 0; i < 4; i++) {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = notes[i];
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      
+      // Play note every 1.5 seconds in a loop
+      const startTime = now + (i * 0.3);
+      const duration = 0.4;
+      gain.gain.setValueAtTime(0, startTime);
+      gain.gain.linearRampToValueAtTime(0.12, startTime + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+      
+      osc.start(startTime);
+      osc.stop(startTime + duration + 0.1);
+      musicOscillators.push({osc, gain});
+    }
+    
+    // Loop: restart after first cycle
+    setTimeout(() => {
+      if (gameState === 'playing' && !muted) startMusic();
+    }, notes.length * 1500 + 200);
+  } catch(e) {}
+}
+
+function toggleMute() {
+  muted = !muted;
+  muteBtn.textContent = muted ? 'Unmute' : 'Mute';
+  if (!muted && audioCtx && gameState === 'playing') startMusic();
+}
+
+// Food generation - logarithmic spacing based on snake length
+function generateFood() {
+  const occupied = new Set(snake.map(s => s.x + ',' + s.y));
+  let attempts = 0;
+  while (attempts < 100) {
+    const fx = Math.floor(Math.random() * gridW);
+    const fy = Math.floor(Math.random() * gridH);
+    if (!occupied.has(fx + ',' + fy)) {
+      food = { x: fx, y: fy };
+      foodsOnBoard++;
+      return;
+    }
+    attempts++;
+  }
+}
+
+function spawnParticles(x, y, color, count) {
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x: x + cellSize/2,
+      y: y + cellSize/2,
+      vx: (Math.random() - 0.5) * 4,
+      vy: (Math.random() - 0.5) * 4,
+      life: 1.0,
+      color: color,
+      size: Math.random() * 3 + 1
+    });
+  }
+}
+
+function updateParticles() {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.life -= 0.03;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x - p.size/2, p.y - p.size/2, p.size, p.size);
+  }
+  ctx.globalAlpha = 1.0;
+}
+
+function drawBg() {
+  // Parallax background layers
+  for (const layer of bgLayers) {
+    const offsetX = -(layer.x + cameraX * layer.speed) % canvas.width;
+    ctx.fillStyle = layer.color;
+    
+    // Draw multiple copies for seamless tiling
+    for (let i = -1; i <= 2; i++) {
+      for (let j = -1; j <= 2; j++) {
+        const x = offsetX + i * canvas.width;
+        const y = layer.y + j * canvas.height;
+        
+        // Draw grid pattern
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+        ctx.lineWidth = 1;
+        for (let gx = 0; gx < gridW; gx++) {
+          ctx.beginPath();
+          ctx.moveTo(gx * cellSize, 0);
+          ctx.lineTo(gx * cellSize, canvas.height);
+          ctx.stroke();
+        }
+        for (let gy = 0; gy < gridH; gy++) {
+          ctx.beginPath();
+          ctx.moveTo(0, gy * cellSize);
+          ctx.lineTo(canvas.width, gy * cellSize);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+    }
+  }
+}
+
+// Camera tracking
+let cameraX = 0;
+
+function updateCamera() {
+  const head = snake[0];
+  cameraX = (head.x - gridW/2) * cellSize;
+}
+
+function isOppositeDir(nx, ny) {
+  return nx === -dirX && ny === -dirY;
+}
+
+function moveSnake() {
+  dirX = nextDirX;
+  dirY = nextDirY;
+  
+  const head = { x: snake[0].x + dirX, y: snake[0].y + dirY };
+  
+  // Wall collision
+  if (head.x < 0 || head.x >= gridW || head.y < 0 || head.y >= gridH) {
+    return 'wall';
+  }
+  
+  // Self collision
+  for (const seg of snake) {
+    if (seg.x === head.x && seg.y === head.y) {
+      return 'self';
+    }
+  }
+  
+  snake.unshift(head);
+  
+  // Check food
+  if (food && head.x === food.x && head.y === food.y) {
+    score += 10;
+    foodsEaten++;
+    spawnParticles(food.x * cellSize, food.y * cellSize, '#ff6b35', 12);
+    playSFX('eat');
+    
+    // Logarithmic speed increase: every 5 foods eaten, reduce tick time by ~8%
+    const growthFactor = Math.log(snakeLength + 1) / Math.log(4);
+    currentTickMs = baseSpeed * (0.92 ** Math.min(foodsEaten, 30));
+    
+    if (foodsEaten >= targetFoods) {
+      gameState = 'won';
+      playSFX('win');
+      spawnParticles(snake[snake.length-1].x * cellSize + cellSize/2, snake[snake.length-1].y * cellSize + cellSize/2, '#ffd700', 30);
+    } else {
+      generateFood();
+    }
+  } else {
+    snake.pop();
+  }
+  
+  updateCamera();
+}
+
+function drawSnake() {
+  // Draw body segments with gradient effect
+  for (let i = snake.length - 1; i >= 0; i--) {
+    const seg = snake[i];
+    const ratio = i / snake.length;
+    
+    if (i === 0) {
+      // Head - brighter, distinct color
+      ctx.fillStyle = '#4ecca3';
+      ctx.shadowColor = '#4ecca3';
+      ctx.shadowBlur = 8;
+    } else if (ratio > 0.7) {
+      // Front body - bright green
+      ctx.fillStyle = `rgb(${126 + Math.floor(ratio*5)}, ${204 + Math.floor(ratio*30)}, ${163 + Math.floor(ratio*20)})`;
+    } else if (ratio > 0.4) {
+      // Middle body - medium green
+      ctx.fillStyle = `rgb(${80 + Math.floor(ratio*50)}, ${170 + Math.floor(ratio*40)}, ${130 + Math.floor(ratio*30)})`;
+    } else {
+      // Tail - darker green
+      ctx.fillStyle = `rgb(${60 + Math.floor(ratio*80)}, ${140 + Math.floor(ratio*70)}, ${90 + Math.floor(ratio*50)})`;
+    }
+    
+    const sx = seg.x * cellSize;
+    const sy = seg.y * cellSize;
+    const sw = cellSize - 1;
+    const sh = cellSize - 1;
+    
+    // Rounded rectangle effect
+    ctx.beginPath();
+    ctx.moveTo(sx + 2, sy);
+    ctx.lineTo(sx + sw - 2, sy);
+    ctx.quadraticCurveTo(sx + sw, sy, sx + sw, sy + 2);
+    ctx.lineTo(sx + sw, sy + sh - 2);
+    ctx.quadraticCurveTo(sx + sw, sy + sh, sx + sw - 2, sy + sh);
+    ctx.lineTo(sx + 2, sy + sh);
+    ctx.quadraticCurveTo(sx, sy + sh, sx, sy + sh - 2);
+    ctx.lineTo(sx, sy + 2);
+    ctx.quadraticCurveTo(sx, sy, sx + 2, sy);
+    ctx.closePath();
+    ctx.fill();
+    
+    // Eyes on head
+    if (i === 0) {
+      ctx.shadowBlur = 0;
+      const eyeOffsetX = dirX * 4;
+      const eyeOffsetY = dirY * 4;
+      
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.arc(sx + cellSize/2 - 3 + eyeOffsetX, sy + cellSize/2 - 3 + eyeOffsetY, 3, 0, Math.PI*2);
+      ctx.fill();
+      
+      ctx.beginPath();
+      ctx.arc(sx + cellSize/2 + 3 + eyeOffsetX, sy + cellSize/2 - 3 + eyeOffsetY, 3, 0, Math.PI*2);
+      ctx.fill();
+      
+      ctx.fillStyle = '#1a1a2e';
+      ctx.beginPath();
+      ctx.arc(sx + cellSize/2 - 3 + eyeOffsetX + dirX, sy + cellSize/2 - 3 + eyeOffsetY + dirY, 1.5, 0, Math.PI*2);
+      ctx.fill();
+      
+      ctx.beginPath();
+      ctx.arc(sx + cellSize/2 + 3 + eyeOffsetX + dirX, sy + cellSize/2 - 3 + eyeOffsetY + dirY, 1.5, 0, Math.PI*2);
+      ctx.fill();
+    }
+    
+    ctx.shadowBlur = 0;
+  }
+}
+
+function drawFood() {
+  if (!food) return;
+  
+  const fx = food.x * cellSize + cellSize/2;
+  const fy = food.y * cellSize + cellSize/2;
+  
+  // Pulsing animation
+  const pulse = 1 + Math.sin(Date.now() / 200) * 0.15;
+  
+  ctx.fillStyle = '#ff4757';
+  ctx.shadowColor = '#ff4757';
+  ctx.shadowBlur = 12;
+  
+  // Draw apple shape (circle with stem)
+  ctx.beginPath();
+  ctx.arc(fx, fy, cellSize/3 * pulse, 0, Math.PI*2);
+  ctx.fill();
+  
+  ctx.fillStyle = '#2ed573';
+  ctx.fillRect(fx - 1, fy - cellSize/4 - 2, 2, cellSize/4 + 2);
+  
+  ctx.shadowBlur = 0;
+}
+
+function drawHUD() {
+  // Score and length already in DOM elements via updateHUD
+}
+
+function updateHUD() {
+  scoreEl.textContent = 'Score: ' + score;
+  lengthEl.textContent = 'Length: ' + snake.length;
+}
+
+// Input handling - addEventListener ONLY, no inline handlers
+document.addEventListener('keydown', e => {
+  const code = e.code;
+  
+  // Prevent default for arrow keys and WASD to avoid page scrolling
+  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(code)) {
+    e.preventDefault();
+  }
+  
+  switch(code) {
+    case 'ArrowUp':
+    case 'KeyW':
+      if (!isOppositeDir(0, -1)) { nextDirX = 0; nextDirY = -1; }
+      break;
+    case 'ArrowDown':
+    case 'KeyS':
+      if (!isOppositeDir(0, 1)) { nextDirX = 0; nextDirY = 1; }
+      break;
+    case 'ArrowLeft':
+    case 'KeyA':
+      if (!isOppositeDir(-1, 0)) { nextDirX = -1; nextDirY = 0; }
+      break;
+    case 'ArrowRight':
+    case 'KeyD':
+      if (!isOppositeDir(1, 0)) { nextDirX = 1; nextDirY = 0; }
+      break;
+  }
+});
+
+// Touch/swipe support
+let touchStartX = 0, touchStartY = 0;
+canvas.addEventListener('touchstart', e => {
+  const t = e.touches[0];
+  touchStartX = t.clientX;
+  touchStartY = t.clientY;
+}, false);
+
+canvas.addEventListener('touchend', e => {
+  const t = e.changedTouches[0];
+  const dx = t.clientX - touchStartX;
+  const dy = t.clientY - touchStartY;
+  
+  if (Math.abs(dx) > Math.abs(dy)) {
+    // Horizontal swipe
+    if (!isOppositeDir(dx > 0 ? 1 : -1, 0)) { nextDirX = dx > 0 ? 1 : -1; nextDirY = 0; }
+  } else {
+    // Vertical swipe
+    if (!isOppositeDir(0, dy > 0 ? 1 : -1)) { nextDirX = 0; nextDirY = dy > 0 ? 1 : -1; }
+  }
+}, false);
+
+// Game tick loop (separate from RAF for speed control)
+let lastTickTime = 0;
+function gameLoop(timestamp) { if (gameState !== "playing") { requestAnimationFrame(gameLoop); return; } 
+  if (!lastTickTime) lastTickTime = timestamp;
+  
+  const elapsed = timestamp - lastTickTime;
+  
+  // Update particles every frame
+  updateParticles();
+  
+  // Game tick based on current speed
+  if (elapsed >= currentTickMs && gameState === 'playing') {
+    lastTickTime = timestamp;
+    
+    const result = moveSnake();
+    
+    if (result === 'wall' || result === 'self') {
+      deaths++;
+      playSFX('die');
+      
+      // Death particles
+      for (let i = 0; i < snake.length; i++) {
+        spawnParticles(snake[i].x * cellSize, snake[i].y * cellSize, '#4ecca3', 2);
+      }
+      
+      gameState = 'lost';
+    } else if (result === undefined) {
+      // Normal move - no food eaten
+    }
+    
+    updateHUD();
+  }
+  
+  drawBg();
+  drawFood();
+  drawSnake();
+  drawParticles();
+  
+  requestAnimationFrame(gameLoop);
+}
+
+// Start game handler
+function startGame() {
+  initAudio();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  
+  // Reset all state
+  snake = [];
+  dirX = 1; dirY = 0; nextDirX = 1; nextDirY = 0;
+  score = 0; foodsEaten = 0; deaths = 0;
+  currentTickMs = baseSpeed;
+  
+  // Initial snake segments
+  for (let i = 0; i < 3; i++) {
+    snake.push({ x: 15 - i, y: 15 });
+  }
+  
+  generateFood();
+  initBg();
+  updateCamera();
+  updateHUD();
+  
+  // Hide overlay immediately
+  overlay.classList.add('hidden');
+  gameState = 'playing';
+  canvas.focus();
+  
+  // Start audio
+  startMusic();
+  
+  // Kick off game loop
+  lastTickTime = performance.now();
+  requestAnimationFrame(gameLoop);
+}
+
+// Wire Play button with addEventListener (unique ID)
+playBtn.addEventListener('click', () => {
+  initAudio();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  
+  overlay.classList.add('hidden');
+  gameState = 'playing';
+  canvas.focus();
+  
+  // Start music and loop
+  startMusic();
+  lastTickTime = performance.now();
+  requestAnimationFrame(gameLoop);
+});
+
+// Wire mute button with addEventListener (unique ID)
+muteBtn.addEventListener('click', () => {
+  toggleMute();
+});
+
+// Initial draw to show something before play
+function initialDraw() {
+  ctx.fillStyle = '#0f0f23';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  
+  // Draw grid
+  ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+  ctx.lineWidth = 1;
+  for (let x = 0; x <= gridW; x++) {
+    ctx.beginPath();
+    ctx.moveTo(x * cellSize, 0);
+    ctx.lineTo(x * cellSize, canvas.height);
+    ctx.stroke();
+  }
+  for (let y = 0; y <= gridH; y++) {
+    ctx.beginPath();
+    ctx.moveTo(0, y * cellSize);
+    ctx.lineTo(canvas.width, y * cellSize);
+    ctx.stroke();
+  }
+  
+  // Draw title text
+  ctx.fillStyle = '#e94560';
+  ctx.font = '24px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillText('SNAKE', canvas.width/2, canvas.height/2 - 30);
+  ctx.fillStyle = '#aaa';
+  ctx.font = '14px Courier New';
+  ctx.fillText('Click PLAY to start', canvas.width/2, canvas.height/2 + 15);
+}
+
+initialDraw();
+})();
+</script>
+</body>
+</html>

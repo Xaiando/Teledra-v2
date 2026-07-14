@@ -1,0 +1,50 @@
+{
+  "": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "run_id",
+    "candidate_patch_hash",
+    "contract_hash",
+    "status",
+    "merge_authorized",
+    "checks",
+    "risk"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "candidate_patch_hash": {
+      "type": "string"
+    },
+    "contract_hash": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "APPROVE",
+        "REWORK",
+        "REJECT",
+        "ESCALATE",
+        "INFRASTRUCTURE_ERROR"
+      ]
+    },
+    "merge_authorized": {
+      "type": "boolean"
+    },
+    "reason_codes": {
+      "type": "array"
+    },
+    "checks": {
+      "type": "array"
+    },
+    "risk": {
+      "type": "object"
+    }
+  }
+}

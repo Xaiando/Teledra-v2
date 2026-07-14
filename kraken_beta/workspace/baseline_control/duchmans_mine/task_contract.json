@@ -1,0 +1,142 @@
+{
+    "task": {
+        "name": "Do not implement the Lost Dutchman Mine application",
+        "description": "Produce a complete contract that decomposes it into independently buildable increments, each small enough for a 7B worker, with interfaces, acceptance tests, dependency assumptions, and stop conditions.",
+        "architecturalBlueprint": {
+            "gameName": "Lost Dutchman Mine (1989)",
+            "platforms": ["MS-DOS", "Amiga", "Atari ST"],
+            "primaryObjective": "Survive the harsh environmental conditions of the Superstition Mountains, accumulate liquid currency through resource extraction and bounty hunting, assemble a fragmented map, and ultimately locate the legendary Lost Dutchman Mine to stake a permanent claim.",
+            "exclusions": [
+                "Avoid implementing mechanics from 2006 point-and-click adventure Al Emmo and the Lost Dutchman's Mine developed by Himalaya Studios",
+                "Disregard any specifications related to the Search for The Lost Dutchman's Gold Mine corporate team-building board game"
+            ],
+            "narrativeFramework": {
+                "lore": [
+                    "Jacob Waltz, a German immigrant who purportedly discovered an immensely rich gold vein in the region between 1868 and 1886",
+                    "Supplementary legends: Peralta family, Jesuit priests, Elisha Reavis, Dr. Thorne"
+                ],
+                "dialogueAssets": [
+                    "NPC dialogue algorithms should randomly pull from a database of supplementary legends to enhance world-building"
+                ]
+            },
+            "coreSystemArchitecture": {
+                "finiteStateMachine": {
+                    "states": [
+                        {"identifier": "State_Town", "description": "The town of Goldfield. Serves as the primary economic hub where the player manages inventory, executes trades, restores health, and interacts with NPCs.", "renderingParadigm": "2D static screens or pseudo-3D storefronts", "inputHandling": "Strictly mouse-driven for UI interactions and menu selections"},
+                        {"identifier": "State_Desert", "description": "The Superstition Mountains overworld. The player navigates a procedurally generated environment, manages real-time survival meters, and engages in random encounters.", "renderingParadigm": "Top-down or expansive 2D side-scrolling field", "inputHandling": "Keyboard or joystick driven for movement and combat; mouse for UI status panel"},
+                        {"identifier": "State_River", "description": "A specific environmental instance utilized for resource gathering, specifically panning for gold dust, catching fish, and refilling hydration vessels.", "renderingParadigm": "2D fixed perspective adjacent to a water body", "inputHandling": "Mixed input: Keyboard for positional adjustments, mouse for executing gathering actions"},
+                        {"identifier": "State_Cave", "description": "The interior of procedurally generated mine shafts. The player navigates platforms, utilizes illumination tools, and extracts raw gold ore from the geometry.", "renderingParadigm": "2D sideways cutaway platformer view", "inputHandling": "Keyboard driven for jumping, climbing, and mining interactions"},
+                        {"identifier": "State_Poker", "description": "A dedicated logic subroutine for executing a five-card draw poker simulation against the NPC Dapper Dan within the Saloon environment.", "renderingParadigm": "Static 2D overlay featuring cards and wagering UI", "inputHandling": "Mouse-driven selection for holding, folding, and betting"}
+                    ]
+                },
+                "survivalEngine": {
+                    "mathematicalModels": [
+                        {"metric": "Hydration (Thirst)", "degradationAlgorithm": "Canteen consumption; temperature check multiplies base depletion rate above 90 degrees Fahrenheit"},
+                        {"metric": "Caloric intake (Hunger)", "degradationAlgorithm": "Food items; low-temperature multiplier nullified by 'Long Johns' apparel when ambient temperature drops below 50 degrees Fahrenheit"},
+                        {"metric": "Health (Vitality)", "degradationAlgorithm": "Acute events: combat damage, venomous snake bites, prolonged zero hydration or caloric intake; no passive health regeneration over time"}
+                    ],
+                    "statusPanelUI": {
+                        "components": [
+                            {"component": "Thermometer", "description": "Dynamic visual gauge ranging from 20 to 120 degrees Fahrenheit"},
+                            {"component": "Clock and Calendar", "description": "Real-time display of the current time and day of the week"},
+                            {"component": "Cash Indicator", "description": "Displays liquid currency currently on hand, excluding banked money or estimated value of unassayed gold ore"},
+                            {"component": "Health Indicator", "description": "Color-coded visual representation of player's vitality: Green (Good), Yellow (Fair), Red (Poor), Flashing Red (Extreme Danger/Critical)"},
+                            {"component": "Inventory Icons", "description": "Clickable UI elements representing distinct categories of carried items: Food, Canteens, Tools, Ammunition (Shots)"}
+                        ]
+                    }
+                },
+                "chronologicalSystems": {
+                    "day/nightCycle": {
+                        "environmentalHazards": [
+                            {"event": "Temperature drops at night", "effect": "Base depletion rate of hydration and hunger metrics increased"}
+                        ],
+                        "townEconomy": [
+                            {"building": "Saloon and Livery Stable", "operationHours": "6:00 PM (18:00) to morning"},
+                            {"interactionHitboxes": "Disabled between 18:00 and the following morning for closed buildings"}
+                        ]
+                    }
+                },
+                "economicSubsystems": {
+                    "goldfieldTownOperations": [
+                        {"facilityName": "Assay Office", "keyNPCEntity": "Old Ned", "primaryFunctions": ["Converts raw gold ore into liquid cash; provides tutorial vectors"], "systemicIntegrations": ["Narrative strings advising on required survival gear and warnings about Dapper Dan"]},
+                        {"facilityName": "Mercantile (General Store)", "keyNPCEntity": "Store Clerk", "primaryFunctions": ["Selling survival essentials: Pick, Shovel, Pan, Gun, Anti-venom, Fish hooks, Long johns, Lantern, Matches, Rope, Gloves, Canteens, Food rations"]},
+                        {"facilityName": "Livery Stable", "keyNPCEntity": "Stable Master", "primaryFunctions": ["Purchasing Burros; doubles carrying capacity"], "systemicIntegrations": ["Global boolean or multiplier for total carrying capacity"]},
+                        {"facilityName": "Saloon", "keyNPCEntity": "Bartender / Dapper Dan", "primaryFunctions": ["Selling beverages, allowing player to sleep, hosting poker minigame; dispensing narrative rumors"], "systemicIntegrations": ["Poker minigame for map piece retrieval"]},
+                        {"facilityName": "Doctor / Apothecary", "keyNPCEntity": "Town Doctor", "primaryFunctions": ["Instantly restores health, cures venom status effects, removes projectile wounds; implements unique debt mechanic"], "systemicIntegrations": ["Cash value of $0 triggers free healing with recorded debt"]},
+                        {"facilityName": "Jail", "keyNPCEntity": "Sheriff", "primaryFunctions": ["Exchanging captured bandits for cash bounties; supports 'wounded/subdued' state for enemies"], "systemicIntegrations": ["Combat logic to support subdued state"]}
+                    ]
+                },
+                "proceduralGenerationAlgorithms": {
+                    "superstitionMountains": {
+                        "mapCoordinatesAndPOIs": [
+                            {"entity": "The River", "description": "Vital spline or continuous biome for gold panning, fishing, and refilling canteens; guaranteed reachable distance from town"},
+                            {"entity": "Caves and Mine Shafts", "description": "Over 100 distinct cave entrance coordinates with unique IDs linking to specific interior layouts; placement ensures proximity to Weaver's Needle"},
+                            {"entity": "Weaver's Needle", "description": "Prominent, pointed peak landmark serving as primary visual and narrative clue for locating the Lost Dutchman Mine (LDM)"},
+                            {"entity": "Lost Dutchman Mine (LDM)", "description": "Coordinates always spawned in a strictly defined proximity radius relative to Weaver's Needle; exact X/Y position heavily obfuscated"}
+                        ],
+                        "caveInteriorGenerationAndMiningPhysics": {
+                            "visibilityAlgorithm": "Cave is rendered in total darkness upon entry; player must possess 'Lantern' and 'Matches' for illumination",
+                            "oreNodes": "Specific pockets of gold distributed randomly across geometry; interaction with 'Pickax' triggers yield calculation, health pool increment, or structural integrity subsystem"
+                        }
+                    },
+                    "dualInputArchitecture": {
+                        "explorationAndCombatSystems": [
+                            {"inputScheme": "Mouse clicks for user interface, inventory management, economic trading, and dialogue interactions"},
+                            {"inputScheme": "Keyboard (or specific joystick) inputs for overworld movement, cave platforming, and combat mechanics"}
+                        ],
+                        "enemyAIandEntityBehaviors": {
+                            "nativeAmericans": {
+                                "behaviorTreeLogicAndTargetPriority": "Spawn dynamically; target player's logistical supplies with high priority on stealing burros/mules",
+                                "combatResolutionAndPlayerInteraction": "Can be deterred without lethal force; logic allows scaring them off or engaging in minor combat exchanges"
+                            },
+                            "bandits/Robbers": {
+                                "behaviorTreeLogicAndTargetPriority": "Spawn dynamically, higher probability if player is carrying significant wealth; target liquid cash and raw gold ore",
+                                "combatResolutionAndPlayerInteraction": "Aggressive; must be wounded or killed to terminate encounter; subdued state triggers bounty logic"
+                            },
+                            "rattlesnakes": {
+                                "behaviorTreeLogicAndTargetPriority": "Stationary or highly slow-moving environmental hazards; bite event applies severe poison status effect",
+                                "combatResolutionAndPlayerInteraction": "Immediate, lethal gunfight if accused of cheating; UI includes dialogue choice to trigger combat state"
+                            }
+                        },
+                        "resourceExtractionSubsystemsAndEmbeddedMinigames": {
+                            "riverOperations": {
+                                "panningMechanic": "Randomized yield formula for micro-amounts of gold dust",
+                                "fishingMechanic": "RNG success rate for generating food items (fish)"
+                            },
+                            "pokerMinigame": {
+                                "dapperDanAI": "Highly competent poker strategies, calculating probabilities and bluffing effectively; minigame narrative progression"
+                            }
+                        }
+                    },
+                    "endgameSequence": {
+                        "mapAssemblyAndProximityLogic": "Fragmented map pieces distributed as rare loot within 100+ caves; first piece held by Dapper Dan",
+                        "verticalDescentAndSpiderEvasionMechanics": {
+                            "requirements": ["'Rope', 'Lantern', and 'Gloves' in inventory"],
+                            "mechanics": "Precise collision detection for spider avoidance minigame"
+                        },
+                        "caveInTrapAndVictoryCondition": {
+                            "penaltySequenceBreak": "Descending entrance rope triggers massive, scripted cave-in event; only valid exit vector is secondary set of 'spider ropes' to surface",
+                            "victoryScreen": "Calculates final score based on accumulated wealth and presents player with a 'Claim Number'"
+                        }
+                    },
+                    "audiovisualSpecificationsAndRetroConstraints": {
+                        "renderingEngine": "Graphics emulate 16-bit EGA or VGA color palettes; town and desert environments in top-down or pseudo-3D sideways perspective, caves strictly 2D sideways cutaways",
+                        "audioImplementation": "MIDI synthesizer wrapper for distinct atmosphere-setting soundtrack; discrete high-impact sound effects for critical player feedback"
+                    }
+                },
+                "implementationDirectives": {
+                    "taskForceAlpha": ["Core Engine & FSM", "Master game loop, state transition manager, global clock/temperature tick system"],
+                    "taskForceBeta": ["UI & Survival Math", "Rendering bottom status panel and wiring to underlying health, food, water floats; complex environmental modifiers, inventory payload limits"],
+                    "taskForceGamma": ["Procedural Generation", "RNG algorithms for populating desert grid with river, cave entrances, Weaver's Needle, LDM endgame package"],
+                    "taskForceDelta": ["Combat & AI", "Rigid keyboard-bound combat controller, behavior trees governing Bandits, Native Americans, Snakes; subdual and bounty payout logic"],
+                    "taskForceEpsilon": ["Minigames & Logic", "Panning RNG yield calculator, cave mining hit-detection, precise spider-rope avoidance geometry, 5-Card Draw Poker AI for Dapper Dan encounters"]
+                }
+            }
+        },
+        "stopConditions": [
+            "Strictly adhere to the detailed blueprint",
+            "Respect mathematical rigor of survival engine",
+            "Accurately replicate dual-input mechanics and retro aesthetic"
+        ]
+    }
+}

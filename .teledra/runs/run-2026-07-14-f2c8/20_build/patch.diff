@@ -1,0 +1,7 @@
+--- test_bug.py
++++ test_bug.py
+@@ -1,2 +1,2 @@
+-def bad():
+-  return 1
++def bad():
++  return 2

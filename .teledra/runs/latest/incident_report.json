@@ -1,0 +1,22 @@
+{
+  "schema_version": "1.0",
+  "incident_id": "incident-1784035621",
+  "score_hash": "sha256:unknown",
+  "render_hash": "sha256:unknown",
+  "failure_class": "ENVIRONMENT_FAILURE",
+  "failure_code": "runtime_error",
+  "observed": {
+    "message": "ImportError: No module named 'nonexistent_fake_package'",
+    "code": "runtime_error",
+    "traceback": "Traceback (most recent call last):\n  File \"D:\\Teledra\\music_verify.py\", line 122, in verify_file\n    namespace = runpy.run_path(candidate, run_name=\"__main__\")\n                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<frozen runpy>\", line 287, in run_path\n  File \"<frozen runpy>\", line 98, in _run_module_code\n  File \"<frozen runpy>\", line 88, in _run_code\n  File \"D:\\Teledra\\fake_candidate.py\", line 1, in <module>\n    import nonexistent_fake_package\nModuleNotFoundError: No module named 'nonexistent_fake_package'\n",
+    "exc_type": "ImportError"
+  },
+  "reproduction": {
+    "command_id": "verify-canonical-render",
+    "arguments": {
+      "candidate": "D:\\Teledra\\fake_candidate.py"
+    },
+    "expected_exit_code": 0,
+    "actual_exit_code": 1
+  }
+}

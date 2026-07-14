@@ -1,0 +1,24 @@
+{
+  "schema_version": "2.0",
+  "run_id": "run-1784036861",
+  "incident_id": "INC-1784036861",
+  "score_hash": "sha256:unknown",
+  "render_hash": "sha256:unknown",
+  "failure_class": "ENVIRONMENT_FAILURE",
+  "failure_stage": "RENDER_EXECUTION",
+  "severity": "BLOCKING",
+  "failure_code": "runtime_error",
+  "observed": {
+    "message": "ImportError: No module named 'nonexistent_fake_package'"
+  },
+  "reproduction": {
+    "command_id": "music.verify.canonical_render",
+    "arguments": {
+      "candidate": "D:\\Teledra\\fake_candidate.py"
+    },
+    "expected_exit_codes": [
+      0
+    ],
+    "actual_exit_code": 1
+  }
+}

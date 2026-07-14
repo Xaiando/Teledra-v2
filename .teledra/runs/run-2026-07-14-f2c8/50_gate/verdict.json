@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0",
+  "run_id": "run-2026-07-14-f2c8",
+  "candidate_patch_hash": "dummy_patch_hash",
+  "contract_hash": "dummy_hash",
+  "status": "APPROVE",
+  "merge_authorized": false,
+  "reason_codes": [],
+  "checks": [
+    {
+      "id": "baseline-tests",
+      "status": "passed",
+      "exit_code": 0
+    },
+    {
+      "id": "patch-apply",
+      "status": "passed",
+      "exit_code": 0
+    }
+  ],
+  "risk": {
+    "tier": "low",
+    "manual_review_required": true
+  }
+}

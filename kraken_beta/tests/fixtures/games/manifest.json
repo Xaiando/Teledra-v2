@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "fixtures": [
+    {
+      "path": "captain_comic_v1_known_good.html",
+      "sha256": "17EA505CEA149F29E2982AE39B10343FC003EC34C99B91C88AFA4D211AD82A42",
+      "role": "positive",
+      "profile": "platformer",
+      "contract_version": 1,
+      "session": "finite",
+      "expected_codes": []
+    },
+    {
+      "path": "serpent_grid_reference.html",
+      "sha256": "808DAB122BD4B727C8CCF5BFA90DDCB9B84DE7170D486A9F386DAAA5CB15E4A2",
+      "role": "negative_reference",
+      "profile": "snake",
+      "contract_version": 2,
+      "session": "finite",
+      "note": "Current serpent_grid lacks v2 adapter; used to prove profile rejection."
+    },
+    {
+      "path": "synthetic_snake_v2.html",
+      "sha256": "45E86B8F353E7BA955774E338ED21214C46FC75EF00EC7664F72E1BED490111A",
+      "role": "positive",
+      "profile": "snake",
+      "contract_version": 2,
+      "session": "finite",
+      "expected_codes": []
+    },
+    {
+      "path": "vault_runner_truncated.html",
+      "sha256": "7B30472F89B56B1A5DFCC4FCA32B09DA470AA1D79FD3F8735E9FAC766F37B64F",
+      "role": "negative",
+      "profile": "platformer",
+      "contract_version": 2,
+      "session": "finite",
+      "expected_codes": ["STRUCTURE_TRUNCATED"]
+    },
+    {
+      "path": "vault_runner_positive.html",
+      "sha256": "40289EDAF4EED5229E4C337BDB7E84F5BC852C5E1B2E218C44C047063F6964EB",
+      "role": "positive",
+      "profile": "endless_runner",
+      "contract_version": 2,
+      "session": "endless",
+      "expected_codes": []
+    }
+  ]
+}
