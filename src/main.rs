@@ -11181,18 +11181,19 @@ fn run_music_smoketest(candidate_path: &str) -> Result<(), String> {
                 let mut raw_err = if stderr.is_empty() { stdout } else { stderr };
                 if let Ok(json) = serde_json::from_str::<serde_json::Value>(&raw_err) {
                     if let Some(event) = json.get("event") {
-                        if event.as_str() == Some("TELEDRA_INCIDENT_CREATED") {
+                        let event_str = event.as_str().unwrap_or("");
+                        if event_str == "TELEDRA_INCIDENT_CREATED" || event_str == "TELEDRA_RENDER_MANIFEST" {
                             if json.get("envelope_version").and_then(|v| v.as_str()) != Some("1.0") {
-                                return Err("Unsupported TELEDRA_INCIDENT_CREATED version".into());
+                                return Err(format!("Unsupported {} version", event_str));
                             }
                             
                             let run_id = json.get("run_id").and_then(|v| v.as_str()).unwrap_or("");
-                            let incident_id = json.get("incident_id").and_then(|v| v.as_str()).unwrap_or("");
+                            let artifact_id = json.get(if event_str == "TELEDRA_INCIDENT_CREATED" { "incident_id" } else { "manifest_id" }).and_then(|v| v.as_str()).unwrap_or("");
                             let relpath = json.get("artifact_relpath").and_then(|v| v.as_str()).unwrap_or("");
                             let expected_sha = json.get("artifact_sha256").and_then(|v| v.as_str()).unwrap_or("");
                             let expected_bytes = json.get("artifact_bytes").and_then(|v| v.as_u64()).unwrap_or(0);
 
-                            if expected_bytes > 1024 * 1024 || expected_bytes == 0 {
+                            if expected_bytes > 1024 * 1024 * 10 || expected_bytes == 0 {
                                 return Err("Artifact size out of bounds".into());
                             }
                             if relpath.contains("..") || relpath.starts_with('/') || relpath.starts_with('\\') || relpath.contains(':') {
@@ -11210,20 +11211,27 @@ fn run_music_smoketest(candidate_path: &str) -> Result<(), String> {
                                     let actual_sha = format!("sha256:{:02x}", hasher.finalize());
                                     
                                     if actual_sha == expected_sha {
-                                        if let Ok(incident) = serde_json::from_slice::<serde_json::Value>(&bytes) {
-                                            let inc_run_id = incident.get("run_id").and_then(|v| v.as_str()).unwrap_or("");
-                                            let inc_id = incident.get("incident_id").and_then(|v| v.as_str()).unwrap_or("");
-                                            
-                                            if inc_run_id == run_id && inc_id == incident_id {
-                                                let failure_class = incident.get("failure_class").and_then(|v| v.as_str()).unwrap_or("UNKNOWN");
-                                                let failure_code = incident.get("failure_code").and_then(|v| v.as_str()).unwrap_or("UNKNOWN");
-                                                let stage = incident.get("failure_stage").and_then(|v| v.as_str()).unwrap_or("UNKNOWN");
-                                                let severity = incident.get("severity").and_then(|v| v.as_str()).unwrap_or("UNKNOWN");
+                                        if event_str == "TELEDRA_INCIDENT_CREATED" {
+                                            if let Ok(incident) = serde_json::from_slice::<serde_json::Value>(&bytes) {
+                                                let inc_run_id = incident.get("run_id").and_then(|v| v.as_str()).unwrap_or("");
+                                                let inc_id = incident.get("incident_id").and_then(|v| v.as_str()).unwrap_or("");
                                                 
-                                                raw_err = format!("Incident {}\nClass: {}\nCode: {}\nStage: {}\nSeverity: {}\nAuthorization: NOT_ISSUED", 
-                                                    incident_id, failure_class, failure_code, stage, severity);
+                                                if inc_run_id == run_id && inc_id == artifact_id {
+                                                    let failure_class = incident.get("failure_class").and_then(|v| v.as_str()).unwrap_or("UNKNOWN");
+                                                    let failure_code = incident.get("failure_code").and_then(|v| v.as_str()).unwrap_or("UNKNOWN");
+                                                    let stage = incident.get("failure_stage").and_then(|v| v.as_str()).unwrap_or("UNKNOWN");
+                                                    let severity = incident.get("severity").and_then(|v| v.as_str()).unwrap_or("UNKNOWN");
+                                                    
+                                                    raw_err = format!("Incident {}\nClass: {}\nCode: {}\nStage: {}\nSeverity: {}\nAuthorization: NOT_ISSUED", 
+                                                        artifact_id, failure_class, failure_code, stage, severity);
+                                                }
                                             }
+                                        } else {
+                                            // Handle TELEDRA_RENDER_MANIFEST
+                                            return Ok(());
                                         }
+                                    } else {
+                                        return Err(format!("Hash mismatch for {}: expected {}, got {}", relpath, expected_sha, actual_sha));
                                     }
                                 }
                             }

@@ -9,4 +9,10 @@ REM second simultaneous instance. Requires `ollama pull qwen2.5:7b` to be done.
 cd /d D:\Teledra
 set TELEDRA_CONFIG=config.qwen.json
 title Teledra v2 (qwen2.5)
-"D:\Teledra\target\debug\teledra.exe"
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "D:\Teledra\tools\check_release_freshness.ps1" -ProjectRoot "D:\Teledra"
+if errorlevel 1 (
+    echo.
+    pause
+    exit /b 1
+)
+"D:\Teledra\target\release\teledra.exe"

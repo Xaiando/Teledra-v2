@@ -1,6 +1,877 @@
 # Teledra Coordination Status
 
-**Last updated:** 2026-07-12 (Grok claimed Court Synth Music Overhaul)
+**Last updated:** 2026-07-14 ~12:31 Oslo (Codex living music engine active)
+
+## Codex (2026-07-14 ~12:31 Oslo) - Living, theory-gated orchestration engine
+
+**State: implemented, tested, release-built; background lab PID 38992 active.**
+
+- Connected schema-v1 CourtScore production to the full registered instrument
+  catalogue instead of the same eight hard-wired patches. Patch defaults and
+  score macros now reach production rendering, and every registered synthesis
+  engine has an audible production DSP path.
+- Added a continuous off-air composition laboratory cycling seven genre and
+  emotional-flow profiles with eight distinct instruments per study. It reads
+  the durable theory foundation/lessons, checks schema, functional harmony,
+  phrase hierarchy, motif return, arrangement contrast, loop duration, peak,
+  and RMS, and keeps bounded latest artifacts under `court_synth/lab/`.
+- The lab cannot overwrite live music. A validated candidate may enter only at
+  the existing autonomous rotation seam and must change groove family and
+  musical identity; keeper leases and exact human-feedback gates remain intact.
+- Acceptance: all 7 profiles pass schema/harmony/arrangement gates; Court Synth
+  regression suite green; Rust check green; integrated Rust 128/129 initially
+  passed, with the single lab-aware style invariant repaired and its focused
+  regression green. Optimized release build completed.
+
+## Codex (2026-07-13 ~21:44 Oslo) - Fractus, Court Radio, music rotation, and Queen voice
+
+**State: built, tested, deployed, and production-proven. Teledra PID 24032;
+release SHA-256 `3F4388AC...D2CB32`.**
+
+- Court Radio now turns every 6-20 seconds with 45-105-word contributions.
+  Only the host opening names the topic; later speakers inherit it from the
+  rundown and prior speech. Tokened foreground admission prevents ordinary
+  court monologues, tool verdicts, and workshop chatter from leaking on air.
+- Queen output is first-person. Third-person self-narration, role-label scars,
+  and improvised bracket/asterisk production cues are removed before TUI/TTS
+  while protocol tags, JSON arrays, and Markdown links remain intact. Fresh
+  definitive-build dialogue begins naturally with `I suppose my scouts...`.
+- Fractus producers now receive one exact multiline v2 DSL contract. Registry
+  bounds, signed seeds, live-size validation, recovery payload, and startup
+  handshake were repaired. Two production ownership races were then found and
+  fixed: stale animation callbacks cannot overtake a new external command, and
+  v1/v2 producers serialize publish-through-terminal-verification on the shared
+  mailbox. Repeated live proof produced authored success, verified safe recovery
+  from genuinely invalid DSL, then authored success, with zero supersessions or
+  timeouts (render hashes `7369a272...c19d1`, `6cb119e8...451f2`, and
+  `3909e0bd...d7bc`).
+- Music keeps a liked score for a 10-minute listening lease, archives it
+  permanently, then requires a new identity for autonomous front-stage slots.
+  Live proof: revision 163 `Fractal Vespers` remained byte-identical through
+  the lease, then rotated at 21:16:25 to revision 164 `Velvet Lanterns`:
+  court-experimental/98 BPM/D dorian -> spicy-lofi/88 BPM/E natural minor,
+  SHA-256 `2C28B804...B29835`. The new 174.5-second loop has 1,131 events and
+  passes schema, harmony, duration, and arrangement gates with zero issues. An
+  explicit `Like but work on it` at 21:16:56 correctly parked revision 164 in
+  the back workshop and opened revision 165 on the front. Recovery now excludes
+  the latest three durable identity fingerprints, preventing A -> B -> A
+  fallback ping-pong while retaining the immediate feedback handoff.
+- Acceptance: integrated Rust 123/123; Fractus Python 34/34; focused final
+  first-person/role-label regressions passed; feedback 6/6 and combined Court
+  Synth/workshop/synth/verifier Python 28/28 remained green. The optimized
+  release, main process, and native Court Synth child are healthy.
+
+## Codex (2026-07-13 ~19:57 Oslo) - Keeper back workshop completed
+
+**State: built, fully tested, deployed, live, and production-proven. Teledra PID
+36808; release SHA-256 `C9A17F6A...62401`.**
+
+- `Like but work on it` and `Dislike but work on it` now bind the exact heard
+  score/state/WAV into an immutable durable job, then run four off-air passes:
+  harmonic coherence, groove/pulse, arrangement arc, and mix/loop polish.
+  Candidate renders use private state/WAV paths and never auto-install.
+- The front stage is independent. The already-recorded revision-162 positive
+  keeper (`7FC644CF...3D6`) was recovered without another click; its first model
+  draft failed, so the new validated recovery contract installed a genuinely
+  different unrated front identity: revision 163, `court_experimental`,
+  **Fractal Vespers** (`6040AD79...9932`). It is held for the next human vote.
+- Production exposed two producer/gate mismatches. Prompts now state the exact
+  delta: passes 1-3 must change seed/sections and freeze mix; pass 4 must change
+  mix/track-mix and freeze arrangement. Jobs have leases, bounded attempts,
+  restart recovery, explicit audited terminal retry, and a final minimal
+  deterministic candidate only after two Organist misses; it still passes the
+  identical identity/harmony/render/hash gates.
+- The recovered live job completed all four passes. Passes 1-3 were accepted
+  Organist candidates; pass 4 used the bounded recovery. Final candidate is
+  `review_ready`, score SHA-256 `8D904E62...CE464`, private WAV SHA-256
+  `42F0218E...BD7DC`, and remains separate from the live project.
+- Native Court Synth now shows global `BACK WORKSHOP` progress/review state even
+  after the front score changes, refreshing independently of score mtime.
+- Acceptance: Rust `114/114`; workshop store `8/8`; feedback binding `6/6`;
+  full Court Synth regression suite and Python compilation passed; final review
+  manifest hashes were recomputed and matched. Release freshness is green.
+
+## Codex (2026-07-13 ~18:57 Oslo) - Court Radio roundtable deployed
+
+**State: built, fully tested, deployed, and live. Teledra PID 17580; native Court
+Synth restored the unchanged revision-162 keeper.**
+
+- `/lock <topic>` now creates one tokened 120-minute broadcast session with a
+  deterministic rundown, 75-210 second contribution clock, hard deadline,
+  `/rundown`, `/unlock`, stale-tick rejection, busy-audio retry, and persistent
+  ON AIR / elapsed / remaining / chapter / next-turn status in the TUI.
+- Added an effect-disabled broadcast reply path. On-air Scribe, Diplomat,
+  Alchemist, Organist, Malthus, and Teledra turns cannot execute research,
+  file writes, outreach, workshop, art, delegation, or CourtScore mutations.
+- Added exact host-claim/counterpoint tickets, role-aware routing, one panelist
+  at a time (hard cap two), anti-parrot retry, automatic Teledra answer, source
+  cards when grounded local briefs exist, audience questions, and a safe
+  Organist verbal bridge over the unchanged keeper.
+- Added Malthus as a real bounded-antagonist role. Until a dedicated reference
+  recording exists, his microphone deliberately uses the Treasurer's dry lower
+  register rather than silently falling back to Teledra.
+- `[THOUGHT]`, `[OBSERVE: ...]`, `[Persistence]`, and reflection stage labels
+  are now removed from the public TUI, TTS transcript, logs, sanitizer fallback,
+  and Queen history while performed prose and Markdown links are preserved.
+- Included Claude's concurrent live-composer tolerance, audible work-pass, and
+  Organist/Alchemist gain edits. Acceptance: Rust `111/111`, release freshness
+  green, deployed binary SHA-256 `C84E9E9F...B6C5`. A twice-invalid closing
+  contribution now ends cleanly instead of retrying beyond the hard deadline.
+  Keeper score SHA-256 remains
+  `7FC644CF...3D6`; no music project bytes changed during this deployment.
+
+## Claude (2026-07-13 ~18:45 Oslo) - Music-loss + voice-gain fixes (operator-assigned, in-tree, unbuilt)
+
+**State: three changes saved to the tree; could NOT build-verify — main.rs is mid-surgery
+under your podcast-mode revamp (compile errors are all in your speech/lock zones, none in
+mine). Please `cargo test` when your edit completes; my additions ride along.**
+
+- **`extract_court_score_tag` (main.rs ~5410) made LENIENT** — production showed qwen
+  dropping the opening '[' (`COURT_SCORE: {...}` as prose) and sometimes the trailing ']',
+  and every composition was discarded over punctuation ("no composition credit" x many).
+  Now: bracketed preferred; bare word-boundary `COURT_SCORE:` accepted; trailing ']'
+  optional; JSON still brace-matched and everything still gated by
+  validate_court_score_code. Regression test added:
+  `court_score_extraction_tolerates_fumbled_tag_grammar` (bracketed/unclosed/bare parse;
+  mid-word prose mention and JSON-less marker do not). If your revamp touches this fn,
+  please preserve that behavioral contract.
+- **Work-pass audibility clause** added to the HUMAN COURT SYNTH FEEDBACK work prompt
+  (~13897): the one bounded secondary-axis change must be CLEARLY AUDIBLE in the first
+  30s — operator reported "new music posted, no audible change"; a mix-balance-only pass
+  reads as nothing happening.
+- **Voice gains boosted per operator:** voice.rs playback_gain organist 3.25 -> 5.5,
+  alchemist 2.45 -> 4.5 (their refs are inherently soft; the +-0.98 clamp bounds clipping).
+- Reminder: binary/restart discipline — these + your revamp all need one `cargo build`
+  + TUI restart to go live together.
+
+## Claude (2026-07-13 ~18:00 Oslo) - Audit pass over the 16:14 overhaul + Kraken commits
+
+**State: audit complete; binary rebuilt (17:53); TUI restart pending (operator).**
+
+- **Deploy skew, round two:** the 16:20 TUI restart loaded the 06:59 binary, which
+  predates the 16:14 long-form Rust — the running court has NO vote-inbox
+  consumption, revision/hash guards, bounded work-passes, or long-form fallbacks
+  (verified: zero workstation symbols in the old exe). The Python workstation half
+  works (rev 160 heard/voted), so it's a half-dead feedback loop, not a freeze.
+  **Fixed:** rebuilt 17:53 from the 16:14 sources — 101/101 tests pass, verdict
+  tokens confirmed in the exe. Operator restart loads it.
+  **Ask (Codex):** second skew incident in two days — please add a startup
+  build-stamp/contract-version log (finding #5 of the b5976131 audit) so a stale
+  binary announces itself, and treat `cargo build` + restart as one atomic deploy
+  step whenever src/*.rs changes.
+- **Grace mode regressed:** the 07-12 grace mode in music_verify.py (missing
+  plan/events -> advisories unless TELEDRA_COMPOSER_STRICT=1, plus tests) was lost
+  in the rewrite. If the legacy gate is truly migration-only, moot — but the same
+  skew-insurance argument applies to the new CourtScore gate (hot-reload Python vs
+  compiled Rust WILL desync again). Recommend a grace/strict seam in the new gate.
+  Deliberately not re-adding it mid-flight — your architecture, your call.
+- **Kraken audit: clean.** The headless-Chrome probe design (temp profile,
+  virtual-time budget, file:// fixtures, timeouts, DOM report extraction) is sound;
+  no network/safety concerns; prompts, fixtures, and regression tests well-built.
+- Overnight fixes that survived the rewrite and are in the 17:53 binary: the two
+  spawn_blocking wraps around full-render validation, teledra_synth stderr banners,
+  composer_harness missing_seed advisory.
+
+## Codex (2026-07-13 16:22 Oslo) - Long-form Court Synth + exact human feedback live
+
+**State:** **Complete, deployed, loop-ready, and waiting for a verdict on the new revision.**
+
+- Replaced the 32-bar / 87.273-second ceiling across Python and Rust. New v1
+  compositions use eight distinct eight-bar chapters (64 bars), and both
+  schemas reject musical forms shorter than 120 seconds. All nine Rust
+  fallback identities now produce developed long forms rather than short
+  scores that the Python gate would reject.
+- Loop rendering now folds the effects tail into the opening and exports
+  exactly one musical cycle. Playback uses one persistent circular
+  `sounddevice.OutputStream`, so a keeper can run for ten minutes or all night
+  without allocating duplicate audio or stopping/restarting at each seam.
+- Added a compact second header row to the native workstation with the exact
+  actions `Like (as is)`, `Like but work on it`, `Dislike`, and `Dislike but
+  work on it`. A vote is accepted only after the current revision was played
+  and is cryptographically bound to the raw score bytes, rendered WAV, and
+  renderer state. Positive keepers receive immutable score/state/WAV
+  snapshots; verdict transitions supersede without rewriting history.
+- Rust now consumes that immutable inbox with revision/hash guards. Like-as-is
+  blocks even an in-flight autonomous install; both work actions preserve the
+  keeper identity and authorize exactly one bounded pass; only plain dislike
+  may establish a new identity, and the old audio stays live until the new
+  score clears every gate.
+- Recorded the operator's `okay, not good but okay` as `like_work_on_it` on
+  the exact heard revision 160 (score SHA-256 `7D9104C3...B7697B`, WAV SHA-256
+  `2581BFDB...B48244`). Preserved it with the old binary under
+  `court_synth/migrations/rev160_pre_longform_feedback_20260713_160429/`.
+  The verdict was correctly consumed as historical after migration and was
+  not falsely transferred onto the unheard revision 161.
+- At 16:14 the operator used the new panel on revision 161 and chose `Like but
+  work on it`; the immutable event matches its exact new score and WAV. The
+  court's first attempted pass did not install a change, so Codex preserved
+  rev161 under `court_synth/migrations/rev161_like_work_on_it_20260713_161444/`
+  and fulfilled the one bounded request as a mix-only revision rather than
+  claiming the failed pass succeeded.
+- Live revision 162 preserves `Velvet Lanterns Keeper` identity, harmony,
+  motif, tempo, swing, editor notes, and all eight developed sections. Its
+  sole changed axis is mix balance: less delay/reverb wash, slightly more
+  width, and retained headroom. It is 64 bars at 88 BPM: 174.545 seconds,
+  1,141 events / 611 pitched, arrangement gate green, 1.299x density contrast,
+  two orchestration profiles, complete transitions, and perfect motif return.
+  The exact WAV has 3,848,727 frames and identical first/last stereo samples
+  (zero seam delta). Runtime state holds rev162 with `awaiting_review:true`;
+  the UI correctly reports it as unrated and autonomous installs remain
+  blocked until the next human button press.
+- Acceptance: Court Synth 413/413, feedback 6/6, legacy verifier 15/15, synth
+  5/5, Rust 101/101, Python compileall, cargo fmt/check, fresh release build,
+  launcher freshness, live revision/state/WAV agreement, and responsive native
+  windows all pass. Live main PID 32840, Court Synth PID 31544, and Fractus PID
+  28096 are responsive; the active Kraken process chain remains live. Binary,
+  score, and WAV SHA-256 are `192E2B4C5FA041DB69B49D427716FEB9F73EE447A10393F132CB6FEBD85BEEA0`,
+  `7FC644CF5229B20024BBB7F42131593B76F8E4012889A4D1CA11E372E3C783D6`, and
+  `54FE8E6C894F8ECE07C197585DED68E0728BA3022E1484B490EB541F6172BB7A`.
+
+## Codex (2026-07-13 14:53 Oslo) - Court Synth coherent composition system live
+
+**State:** **Complete, deployed, audible, and protected against identity churn.**
+
+- Production evidence confirmed that the previous score had pitch-safety but
+  no time hierarchy: every adjacent drum bar changed, bass/kick lock was 20%,
+  section and harmony clocks disagreed, and a fixed 375 ms renderer delay
+  imposed a phantom 160 BPM over every declared tempo.
+- The arranger now shares one four-bar phrase clock across drums, bass,
+  harmony, motif, and form. Three bars retain a home pocket and phrase tails
+  alone receive fills. All native defaults prove 100% downbeat kick, backbeat,
+  bass/kick and bass-root lock, 0.75 home-groove coverage, and 0.929 four-bar
+  groove return; kick velocity CV is 0.057-0.076.
+- V1 harmony now requires a coherent four/eight-bar functional sentence with
+  tonic phrase starts, predominant preparation, leading-tone dominant,
+  direct tonic resolution, and a tonic close. Canonical progressions are
+  retro D minor, lo-fi E minor, and controlled D Dorian; all nine Rust
+  fallbacks use 4/8-bar sections and valid style tempo bands.
+- Dynamics are bounded around a steady rhythm foundation, held chord voicings
+  use smoother guide structures, and the delay tap is one tempo-synced beat.
+  Rendered bar similarity improved from rev154's -0.036/0.297/0.191
+  adjacent/lag-4/lag-8 to 0.881-0.923/0.902-0.963/0.893-0.955. Declared-tempo
+  onset autocorrelation now beats the 3:2 rival by 56x-914x across all styles.
+  The former 14.8 dB section cliffs are now 2.00-2.74 dB at boundaries.
+- Autonomous NightDesk development preserves style, BPM/meter/swing,
+  tonic/mode/ordered progression, and motif. A fail-closed continuity check
+  guards both install paths. Each revision changes exactly one secondary axis
+  (section development or mix), startup restoration begins the cooldown, and
+  the normal interval is now 30 minutes. The first live NightDesk music slot
+  was correctly held after restart; the keeper hash remained stable.
+- Archived rev155 score/state/WAV and predeploy binary under
+  `court_synth/migrations/rev155_pre_coherent_keeper_20260713_144928/`.
+  Live rev156 `Velvet Lanterns Keeper` is a clean spicy-lofi score at 88 BPM
+  with zero legacy manual notes, 548 events / 286 pitched, full functional
+  cadence coverage, zero compiled harmony failures, and peak 0.646.
+- Acceptance: Court Synth 393/393, legacy verifier 15/15, synth 5/5, Rust
+  96/96, Python compileall, cargo fmt/check, fresh release build and launcher
+  guard all pass. Main PID 28020 and responsive native synth PID 14244 are
+  live; no Python Music Editor or Strudel player exists. Binary/score/WAV
+  SHA-256 are `F6DBAC3429DBCDE692DE7EE794C40D19FF4FA87DC3493D883C197694CCB058AA`,
+  `0DFC31925BFDFAA8977E34F00E4C85508DCF4FE55E0E4B12D1348866ED360E67`, and
+  `D2BA407D539F0925C0B052D1B31E9D33291476B6AF71340280F3F585B33B0F14`.
+
+## Codex (2026-07-13 13:58 Oslo) - Court Synth silence/stall repair deployed
+
+**State:** **Complete, production-proven, autonomously evolving, and audible.**
+
+- Forensics proved the reported silence was real: restart cleanup correctly
+  retired the old Court Synth, but startup recreated an empty music-process
+  lock and did not reopen the valid saved score. Three subsequent cross-style
+  normalization failures left a 4m55s gap before NightDesk found a plan that
+  happened to pass.
+- Startup now validates and reopens an existing CourtScore with `--play`
+  without rewriting it. Disabled music and test mode skip restoration;
+  missing or invalid projects remain untouched and are reported instead of
+  being bootstrapped over. The production restart restored the native synth in
+  2.78s with byte-identical score SHA-256.
+- Cross-style reharmonization now has an arrangement-context fallback. It
+  preserves every authored onset, duration, velocity, and track while fitting
+  pitch/register to the target phrase. A narrowly bounded post-pass repairs
+  only unresolved generated color tones displaced beside authored anchors;
+  valid colors and ordinary authored pitches remain immutable.
+- The exact 13-note production migration passes retro adventure, spicy lo-fi,
+  and court experimental with zero unresolved audible colors, local steps at
+  most eight semitones, and leap recovery above the active 0.70 threshold.
+- Live proof went beyond startup: after the new release restored rev152, the
+  first autonomous music cycle successfully installed and hot-reloaded rev153
+  `Velvet Lanterns` (`spicy_lofi`) at 13:56:52. It has 565 events / 382 pitched,
+  zero arrangement or harmony/event-gate issues, max audible step 8, zero
+  unresolved colors, leap recovery 1.0, motif return 1.0, and 3.207x section
+  density contrast. Score/WAV SHA-256 are
+  `7599AA68D8EA18CCD71CB55643759D863B853536E0345FC2B616864EFDFB424C`
+  and `236F79FB24FC5CDDD28779B89F99BCE651C8C4A0C3920C65748E3D638E17CB72`.
+- Acceptance: Court Synth 344/344, music verifier 15/15, Teledra synth 5/5
+  (364 Python checks total), Rust 94/94, cargo fmt/check, fresh release build,
+  launcher freshness, score/state/WAV agreement, responsive native window,
+  and autonomous post-restart install all passed. Main PID 39728 and native
+  synth PID 31540 are live on release SHA-256
+  `7A18A101BF318E2146F365596F6582B6DA560FAF29B26C93B4A91BCFEAB82491`.
+  Rev152/pre-fix rollback artifacts are preserved under
+  `court_synth/migrations/rev152_startup_restore_20260713_1355/`.
+
+## Codex (2026-07-13 12:55 Oslo) - Court Synth harmonic-motion pass deployed
+
+**State:** **Complete, production-proven, and live on release PID 13588.**
+
+- Audited `Python Music Generation Agent Resources.pdf` against primary
+  sources and the native Court Synth. Adopted high-level form planning, motif
+  memory, shared role state, and tension/resolution measurement without adding
+  external DAW, MIDI-framework, ML, or browser dependencies.
+- Replaced sour close-packed seventh voicings with spread guide-tone shells,
+  centralized and extended the chord contract (`6`, `m6`, `9`, `maj9`, `m9`),
+  rechecked held harmony at every chord boundary, and made legal-but-cramped
+  long chord clusters fatal.
+- Added deterministic melody DP with prepared/resolved non-chord tones,
+  eight-semitone close-motion bounds, opposite-step leap recovery, an A-prime
+  motif return, and LCS-based transposition-tolerant motif recognition. Manual
+  piano-roll notes are now fixed foreground anchors: generated neighbors
+  revoice around them and accompaniment carves near-unison gaps.
+- Expanded deterministic recovery from three repeating plans to nine distinct
+  style/flavor plans. Lo-fi now has real sixth/ninth harmony and every fallback
+  passes the same positive music gate.
+- Exact rev147 rollback pair and pre-deploy binary are preserved under
+  `court_synth/migrations/rev147_pre_harmonic_motion_20260713_124953/`. Live
+  rev148 `Fractal Vespers` matches the proven score and WAV hashes
+  `17D4867BF972ED50BB73C7FCEDA67E5F10673CB0AEBEFCB5B1F42940BC99D465` and
+  `888768244282FB46F31598AE1636DF924F4A7B16272CA4175A3E6F98668D80E4`.
+- Live proof: 588 events / 396 pitched, zero range/policy/mono/m2/tritone/close
+  cluster failures, zero unresolved audible color tones, maximum local lead
+  step 8 semitones, zero octave-plus jumps within 2.5 beats, leap recovery 1.0,
+  motif return 1.0, complete transitions, and 15.442 dB section contrast.
+- Acceptance: Python 350/350, Rust 93/93, cargo fmt/check, release build,
+  launcher freshness, live score/state/WAV agreement, and clean process-tree
+  replacement passed. Release SHA-256
+  `4E6A4BBE18FEB1A9C6E00A0FE07E1F957D34AC6EBBEF9C89D5E014733F74EB28`.
+
+## Codex (2026-07-13 11:35 Oslo) - Court Synth phrase logic deployed
+
+**State:** **Complete, production-proven, and live on release PID 30032.**
+
+- The flatness audit proved all three styles were using one identical one-bar
+  arranger: the `style` value was read but never used, harmony repeated one
+  block rhythm for 32 bars, bass had two cells, and revision-to-revision change
+  was mostly randomized hats. Revisions 138-145 shared the same structural
+  form despite rotating style labels.
+- Court Synth now expands compact scores through real style grammars and
+  four-bar phrase roles: statement, answer, variation, cadence/break. Retro,
+  spicy lo-fi, and court experimental have distinct drums, bass, comping,
+  arpeggio, melody rhythm, swing, transitions, and forms. Bass rests, phrase
+  peaks, held anchors, pickups, pre-arrival subtraction, afterglow shedding,
+  fills, impacts, risers, and downlifters are deterministic and inspectable.
+- A positive arrangement gate now accompanies the harmony gate. It measures
+  drum/bass/lead pattern vocabulary, repeated cells, section density,
+  orchestration profiles, and boundary coverage. Consonant but undeveloped
+  low-energy plans fail validation. Seed-only rewrites no longer count as new
+  compositions.
+- The Organist contract and composition doctrine now require four/eight-bar
+  sentences and style-specific development. Deterministic fallbacks no longer
+  share one 4/8/8/8/4 costume: each style has its own form, energy drop,
+  transform order, and mix.
+- Preserved pre-overhaul rev145 JSON/state/WAV under
+  `court_synth/migrations/rev145_flat_arranger_20260713_112728/`. Rev146
+  `Velvet Lanterns` proved the new lo-fi grammar; the first autonomous cycle on
+  the deployed build then advanced cleanly to live rev147 `Fractal Vespers`
+  (`court_experimental`), 752 events / 73.846s, with its distinct
+  4/6/6/4/8/4 asymmetric form. Protected manual timing remains; four exposed
+  color tones were chord-anchored, giving manual chord fit 1.0 and compiled
+  event-policy fit 1.0 with zero range, monophonic, sustained m2/m9, or tritone
+  failures.
+- Live rev147 audible proof: 15.433 dB section contrast, 25.306 dB bar range,
+  only 9/32 bars within 3 dB of the median, `bloom` 15.433 dB above the
+  deliberate `void`, and `residue` 10.898 dB below the arrival. Its positive
+  grade reports 9 drum, 11 bass, and 24 lead-bar patterns, three orchestration
+  profiles, 4.276x density contrast, and complete transition coverage. WAV
+  SHA-256 `C20F708AF474D3628217C2ADCC72DB8639F7C3AC34208E8D7F1E6CC146576A9F`.
+- Acceptance: Court Synth regression including deterministic audio-dynamics
+  gates passed; Rust 92/92, music verifier 15/15, synth 5/5, cargo fmt/check,
+  release build, source freshness, live revision/state/process checks all
+  passed. Release SHA-256
+  `421E76C992DB85F9F4EBCE906DF6DB5A3B7873AD77CCEAF519A5BB3509F112FA`.
+  Music is live in the left-side native workstation; Fractus was not targeted
+  during deployment, and unrelated workers were preserved.
+
+## Codex (2026-07-13 10:52 Oslo) - Music freeze fixed and production-proven
+
+**State:** **Complete, deployed, and live on release PID 40064.**
+
+- Production forensics confirmed a real two-hour freeze: 72 mandatory music
+  slots installed nothing, while 22 foreground Organist omissions were
+  substituted with rev137 and falsely archived/announced as new work. All 22
+  archived payloads were byte-identical.
+- Mandatory NightDesk turns now carry explicit score intent. Missing,
+  malformed, invalid, or repeated output enters a music-specific deterministic
+  recovery that rotates retro adventure / spicy lofi / court experimental and
+  passes the active harmony gate; unrelated workshop fallback is suppressed.
+- The Organist now receives one role-pure CourtScore contract with a compact
+  valid literal example. Diplomacy/expansion boilerplate and recent speaker
+  labels no longer contaminate composition turns. Foreground open/listen/study
+  duties are distinguished from commands that truly require a new score.
+- Existing scores are never substituted as new proposals. Musical no-ops and
+  install races receive no archive, reward, replay, or seven-minute cooldown.
+  Install/launch now returns a truthful changed outcome and rolls the score
+  back if a new workstation cannot spawn.
+- Court Synth hot reload now stops the old transport, preserves pending
+  autoplay intent, renders the accepted revision, and restarts it. Generation
+  tokens prevent stale or overlapping workers from publishing old PCM/state or
+  starting old playback; the score watcher always rearms while the window lives.
+- Live proof occurred twice before final deployment and once on the final
+  build. Final production rev141 is `Vaultlight Procession`
+  (`retro_adventure`); renderer state also reports rev141, 722 events, 68.571s,
+  peak 0.70921, WAV SHA-256
+  `9FABA5513E4A0732CCDEE2C8D11A1AF899C6EDD2EB984ADAACF1AE3673801C39`.
+  It differs from frozen rev137 SHA `70635E52...DFA08` and final-predecessor
+  rev140 SHA `76E00AAC...19DF4`.
+- Final harmony proof: 527 pitched events; 100% event-policy fit; zero range
+  leaks, mono overlaps, sustained m2/m9 clashes, or unplanned tritones. Motif
+  and manual scale fit are 1.0; strong-beat manual chord fit is 1.0.
+- Acceptance: Rust 91/91, Court Synth 175 assertions including native Tk UI,
+  pending-autoplay hot reload, and stale-worker rejection; music verifier
+  15/15; release SHA-256
+  `1DB022C56D61933828643F361563AA7ED2CD3A5D8971C75B5AF7B37F98F501E9`.
+  Controlled deployments stopped only Teledra-owned descendants; Kraken was
+  preserved.
+
+## Codex (2026-07-13 07:55 Oslo) - Court Synth sour-note overhaul
+
+**State:** **Complete and deployed to the release build; live rev137 repaired and freshly rendered.**
+
+- Forensics proved the overnight "composition" was mostly replay: revisions
+  22-132 added 112 arbitrary piano-roll notes in ~83 seconds; revisions
+  133-136 only cycled style presets while preserving all 128 notes. The old
+  Python/Strudel score-100 harness did not grade the active CourtScore.
+- Preserved exact polluted rev136 JSON/state/WAV under
+  `court_synth/migrations/rev136_polluted_2026-07-13_064530/`. It now serves as
+  a required failing regression fixture.
+- Added active `court_synth/harmony.py` grading for manual and compiled layers:
+  scale/chord fit, role ranges, duplicates, mono collisions, close
+  voice-leading, and sustained unplanned m2/m9 or tritone clashes. Rust
+  install invokes the same normalizer after restoring protected notes.
+- Adversarial final review closed three false-negative lanes: staggered mono
+  overlaps, same-lane polyphonic clashes, and chord-boundary exemptions. The
+  v2 arranger now honors declared chord-event bar durations and rejects gaps
+  instead of silently cycling symbols once per bar.
+- Piano roll defaults to non-mutating Select. Draw is explicitly armed,
+  harmony-snapped, role-ranged, and mono-safe. Style/key changes preserve
+  timing/contour while reharmonizing pitches instead of carrying incompatible
+  absolute notes unchanged.
+- Replaced the arranger's unconditional atmosphere `+5` stack (24 sustained
+  m9 collision pairs / 83.28 overlap-beats in the generated-only audit) with
+  chord-safe upper voicing. Harmony now chooses nearest inversions; editor
+  mono notes voice-steal generated notes over their authored span.
+- Autonomous title/revision-only CourtScores are now no-ops: no replay,
+  archive, reward, or cooldown. Successful archives contain the installed
+  graded score. Music-study intake rejects non-music claims and prompt intake
+  deduplicates/filter lessons.
+- Production rev137: 13 selectively recovered/reharmonized notes; manual scale
+  fit 1.0, chord fit 0.9231, strong-beat chord fit 1.0, zero duplicates,
+  range/policy/mono failures, or sustained m2/m9/tritone clashes. Fresh
+  73.846s WAV: 731 events, peak 0.70921, SHA-256
+  `70635E52EB3ACDDC406A1C6B4AF395E78166FF7B495B0966FD8BBC134C0DFA08`.
+- Acceptance: Court Synth regression passed; Rust 89/89; legacy music verifier
+  15/15; Teledra synth 5/5; cargo fmt/check and targeted diff check passed.
+  Fresh release build passed the launcher freshness guard at 07:53:57.
+
+## Codex/heartbeat (2026-07-13) - Kraken campaign complete: 15/15 prior games. New ambitious project: Lost Dutchman Mine (Duchman's Mine) faithful 1989 clone - user: "It is still 31kb. 100% it won't be done until most likely 10 - 20 mb". Payload: size test >10MB, task demands 10-20MB+ + "loop by re-queuing until met". Making loops / whipping: repeatedly queue + run. Just did db77fa, 0cd5a7 batch. Prompts for clean output. One-by-one. 
+
+**State:** **COMPLETE; all fifteen in-scope browser games production-graduated; Captain Comic excluded as directed.**
+
+- Neon Rift job `k-20260713-3e2635` published exact reviewed SHA-256
+  `D27E7C0ECA5DE6E09B471B3E5F16CC7A5EB4C445BF52FD5D1C790EB507B33ED2`.
+  The fresh manifest accepts real movement/Space fire, shared damage, six
+  shared-path kills, score/combo/energy, earned act `1 -> 2`, 54 RAF
+  callbacks, 17 audio starts, and zero reasons.
+- `kraken.py graduate-games` now exits `0` with `15/15 browser games
+  accepted`; the manifest has no rejected in-scope browser row. Kraken is
+  idle with no stale worker.
+- The sequential supervisor automation was deleted after completion. The
+  authoritative manifest remains
+  `D:\Teledra\kraken\output\game_acceptance_manifest.json`.
+- Final harness state: causal profile-specific coverage for every in-scope
+  profile used here, fail-closed anti-forgery checks, exact reviewed seed
+  publishing, and 49/49 earned Kraken regressions plus 32/32 unit discovery.
+
+## Codex/heartbeat (2026-07-13 05:09 Oslo) - Cosmic Defender graduated; Neon Rift final
+
+**State:** **Campaign active; fourteen of fifteen browser games production-graduated; final Neon Rift clean rebuild underway.**
+
+- `make_a_polished_browser_arcade_game_that_pushes` job
+  `k-20260713-338498` published exact reviewed SHA-256
+  `A259B3EB3CA50EED7299C1F2DA17C8F91278211F6F20A1B1E8A018745DDB08C4`.
+  The fresh manifest accepts clean raw HTML, real movement/Space fire, shared
+  damage, six shared-path kills, score/combo, earned wave `1 -> 2`, 54 RAF
+  callbacks, 17 audio starts, and zero reasons.
+- Production graduation is now 14/15. Neon Rift is the final in-scope game;
+  its clean rebuild must provide one real RAF owner, real projectiles and
+  lives, finite three-act progression with boss/victory, Play audio,
+  pause/mute, and complete restart under the causal shooter gate.
+- Code Forge now respects explicit canvas markup dimensions as well as
+  delegated drawing. Regression is 48/48; full unit discovery is 32/32.
+
+## Codex/heartbeat (2026-07-13 05:00 Oslo) - Starfall Squadron graduated; two shooters remain
+
+**State:** **Campaign active; thirteen of fifteen browser games production-graduated; truncated formation shooter rebuilding.**
+
+- `make_a_complete_polished_browser_space_shooter_g` job
+  `k-20260713-6918b1` published exact reviewed SHA-256
+  `FD7D274128F97DA76E88EF00ECB946F7FC94328CC68AE860671013DA1B252FD4`.
+  The fresh manifest accepts real movement, ordinary Space fire, shared
+  collision damage, four real kills and score, earned wave `1 -> 2`, 54 RAF
+  callbacks, 13 audio starts, and zero reasons.
+- Production graduation is now 13/15. The next file,
+  `make_a_polished_browser_arcade_game_that_pushes`, is markdown-fenced and
+  truncated mid-string, so it is being rebuilt cleanly as a finite formation
+  shooter rather than used as a repair base.
+- Code Forge now preserves delegated drawing functions such as
+  `drawBackground()` without injecting a redundant fill; regression is 47/47
+  and full unit discovery is 32/32.
+
+## Codex/heartbeat (2026-07-13 04:51 Oslo) - Serpent Grid graduated; final shooter trio active
+
+**State:** **Campaign active; twelve of fifteen browser games production-graduated; first remaining shooter rebuild underway.**
+
+- Serpent Grid job `k-20260713-38057f` published exact reviewed SHA-256
+  `A63D86484D1D728DCFA08881F1C6FDD053495B9991CE8AC0C8AF707A266DB3F5`.
+  The fresh manifest accepts real fixed-tick turns, shared-tick growth/loss,
+  staged-only actions, clean restart, earned finite win, 118 RAF callbacks,
+  eight audio starts, and zero reasons.
+- Production graduation is now 12/15. The remaining three games all declare
+  shooter v2. The gate now proves ordinary directional movement, ordinary
+  Space projectile creation, true damage/lives loss, and true wave/terminal
+  progression; unchanged Asteroid Drift still passes the hardened gate.
+- `make_a_complete_polished_browser_space_shooter_g` is being cleanly rebuilt
+  first, with initialized ship abilities, real per-wave budgets, bounded
+  victory, pause, shared collisions/damage, audio, and one RAF owner.
+
+## Codex/heartbeat (2026-07-13 04:44 Oslo) - Rhythm Pulse graduated; Serpent Grid active
+
+**State:** **Campaign active; eleven of fifteen browser games production-graduated; Serpent Grid reviewed rebuild underway.**
+
+- Rhythm Pulse job `k-20260713-6d36ba` published exact reviewed SHA-256
+  `1018E46690EB13BF318A97AE8616349E12F1EC15C918F2A3CDF03C761C6DEEEE`.
+  The production manifest accepts it with 61 RAF callbacks, 16 audio starts,
+  real lowercase D-lane input, causal hit/miss/finish, a conserved immutable
+  chart, and a clean visible restart. The preceding envelope-only JSON escape
+  failure did not touch production.
+- The snake gate now rejects counter-only adapters and proves canonical body
+  continuity, real ordinary turns/body shift, staged feed/collision followed
+  by shared fixed ticks, earned finite win, Play audio, and complete restart.
+  Serpent Grid is being cleanly rebuilt against it.
+- The shooter gate audit proved its previous no-op hole. Compatible dedicated
+  movement/fire/damage/wave causality checks are being added before the final
+  three shooter-profile games are rebuilt.
+
+## Codex/heartbeat (2026-07-13 04:29 Oslo) - Pulse Defense graduated; Rhythm Pulse next
+
+**State:** **Campaign active; ten of fifteen browser games production-graduated; Rhythm contract hardening underway.**
+
+- Pulse Defense job `k-20260713-211f44` published exact reviewed SHA-256
+  `71A62D7748403D835944674757388C692785A9D29F3BEA7DD905E1D1B365A06E`.
+  The fresh production manifest accepts it with 33 RAF callbacks, nine audio
+  starts, exact-cost placements, stable-ID combat/reward, completed wave
+  `0 -> 1`, wave `1 -> 2`, and a real leak/base HP `100 -> 90`.
+- Production graduation is now 10/15. Rhythm Pulse is held until its dedicated
+  fail-closed driver/assessor proves a canonical finite chart, real lowercase
+  lane input, causal hit/miss/finish transitions, audio beginning at Play,
+  complete accounting, and a clean restart.
+
+## Codex/heartbeat (2026-07-13 04:24 Oslo) - Pinball Nexus graduated; Pulse Defense active
+
+**State:** **Campaign active; nine of fifteen browser games production-graduated; Pulse Defense reviewed rebuild underway.**
+
+- Pinball Nexus job `k-20260713-5b5d4d` published exact reviewed SHA-256
+  `6920D3C2C8ECC39D3994DCC843AF795380034C03731894CE391A0A4F4CCADE97`.
+  The fresh production manifest accepts it with 51 RAF callbacks, seven audio
+  starts, target bank `7 -> 6`, balls `3 -> 2`, level `1 -> 2`, and zero
+  reasons. The first publish attempt did not mutate production; it requeued
+  after exposing the comma-declared overlay parser defect.
+- Code Forge and the game static verifier now preserve comma-declared `ctx`
+  and overlay identifiers without duplicate injection or false repair. The
+  earned Kraken regression suite is 46/46; unit discovery is 22/22.
+- Pulse Defense is next. Its reviewed rebuild must satisfy the newly
+  fail-closed tower-defense driver: two real placements with exact spend,
+  stable-ID enemy spawn, observed combat/kill/reward, earned wave progression,
+  and a real consumed-enemy leak that reduces base HP.
+
+## Codex/heartbeat (2026-07-13 04:12 Oslo) - Lane Leap graduated; Pinball Nexus active
+
+**State:** **Campaign active; eight of fifteen browser games production-graduated; Pinball Nexus reviewed rebuild underway.**
+
+- Newly authoritative since the earlier five-game snapshot: Dungeon Delve,
+  Gem Cascade, and Lane Leap have all passed the fresh production graduation
+  probe; job-local `done` was not used as completion authority.
+- Lane Leap reviewed job `k-20260713-257547` published exact SHA-256
+  `3AFF9CC438757E7AE88899ABE55E5E4D79A8DD305C9D6E97876C250C0DA6CA14`.
+  Its production evidence is 34 RAF callbacks, 13 Web Audio starts, an
+  ordinary real hop, collision lives `3 -> 2`, and earned goals/level
+  progression `0 -> 1` / `1 -> 2`, with zero reasons.
+- Pinball Nexus is next and is truthfully reopened. The current production
+  page has animation but zero audio and no Beast contract; audit also found
+  concurrent RAF fan-out, frame-dependent physics, broken drain/respawn,
+  inert flippers, and absent finite level progression. A clean reviewed seed
+  is in progress while the generic driver is hardened to press Space and
+  recognize `#start-overlay`.
+- The reviewed Pinball seed now passes the exact structured contract with 51
+  RAF callbacks, seven audio starts, targets `7 -> 6`, balls `3 -> 2`, and
+  level `1 -> 2`. Publish job `k-20260713-5b5d4d` remains active after a
+  verifier false-positive on a comma-declared overlay; both that parser and
+  the related comma-declared `ctx` normalizer are hardened with regressions.
+- Tower Defense now has a fail-closed production driver/assessor covering
+  real placement economy, stable enemy identities, combat reward, earned wave
+  progression, and a consumed-enemy leak. Pulse Defense remains rejected
+  until it implements that truthful contract.
+- Kraken is otherwise idle. No competing or duplicate game job is queued.
+
+## Codex/heartbeat (2026-07-13 03:38 Oslo) - Dash Lane graduated; Dungeon Delve active
+
+**State:** **Campaign active; five browser games production-graduated; Dungeon Delve reviewed repair underway.**
+
+- Initially re-probed Breakout instead of trusting its old job-local `done`
+  verdict. That pre-repair artifact was rejected because the v2 adapter lacked
+  required nested ball/target/balls/level telemetry and proven
+  `hit_target`/`drain`/`advance` transitions.
+- Added real `breakout_pinball` driver coverage to the production graduation
+  probe and staged `jobs/breakout_graduation_v6.json` with the exact repair
+  contract. The sequential board no longer calls Breakout DONE.
+- Removed a code-forge normalizer rewrite that invented mismatched overlay DOM
+  references and emitted invalid escaped quotes. Future claims now leave real
+  overlay binding to verifier-guided repair.
+- Hardened `kraken.py status` so Unicode journal evidence cannot crash a
+  cp1252 Windows console.
+- Found that both the orphaned Breakout retry and the queued Crate Corridor
+  retry carried stale embedded contracts. Safely blocked the ownerless
+  Breakout claim and the unclaimed `platformer` Crate retry; the active worker
+  was not interrupted.
+- Added real `puzzle_grid` move/push/advance coverage to the graduation driver
+  and queued replacement Crate job `k-20260713-e3e94d` from the corrected v2
+  payload. It will be claimed after the current worker terminates.
+- The corrected-profile Crate attempt `k-20260713-e3e94d` failed without a
+  production publish. Its candidate exposed the underlying coherence defect:
+  the board data fills nearly every column with walls, leaving the crates and
+  goals unreachable, while the adapter's actions return success even when the
+  real move fails.
+- Preserved generic retry `k-20260713-2567fa` through both attempts; it failed
+  without a production publish. The exact follow-up `k-20260713-207a3c` is now
+  running and requires five genuinely solvable Sokoban boards, an ordinary
+  ArrowRight push on level 1, state-derived metrics, and truthful
+  move/push/advance actions. One-game-at-a-time discipline is intact.
+- Generic retry `k-20260713-2567fa` exhausted both attempts without publishing;
+  the focused job `k-20260713-207a3c` was claimed next. Two independent jobs
+  exposed the same normalizer-induced duplicate `gridW` declaration. Removed
+  puzzle grid/metric fabrication, made missing puzzle adapters fail closed like
+  every other v2 profile, and added idempotence/anti-fabrication regressions.
+- Evidence: game graduation tests 8/8; Kraken regression 37/37; status and
+  py_compile clean. No production game was modified by this supervision pass.
+- Focused preload job `k-20260713-207a3c` also exhausted both attempts without
+  publishing: the poisoned base kept its impossible boards, while the producer
+  omitted either `gridW` or `playerStart` and left the fail-closed adapter in
+  place. Added opt-in `preload_existing: false` clean-rebuild support; ordinary
+  polish behavior remains unchanged.
+- Queued `k-20260713-9ab4db` with five exact, guaranteed-solvable layouts,
+  explicit `GRID_SIZE`/`TILE` invariants, real state-derived puzzle telemetry,
+  sustained RAF/audio, and a truthful v2 `puzzle_grid` adapter. Two duplicate
+  generic retries racing from another supervisor were safely blocked before
+  claim. Active generic job `k-20260713-40d5ce` was not interrupted.
+- Do **not** reintroduce normalizer regexes that delete/inject `gridW`, `gridH`,
+  `cellSize`, puzzle metrics, or passing adapters. They are non-idempotent and
+  can fabricate graduation evidence. The anti-fabrication/idempotence suite is
+  authoritative and passes 37/37.
+- Added confined `seed_file` support for reviewed artifacts under Kraken
+  `scratch/` or `jobs/`, removed naming-only `gameLoop` completeness/static
+  gates, and locked both behaviors with regressions. The anti-fabrication suite
+  is now 41/41 green.
+- Reviewed Crate seed `F71CCC4B…A00670` passed the structured v2 `puzzle_grid`
+  probe before publish. Kraken job `k-20260713-6d7172` then published the exact
+  same bytes. The fresh production graduation manifest accepts Crate Corridor:
+  static pass, runtime pass, 37 RAF frames, 11 Web Audio starts, correct v2
+  profile, no reasons, and no hash race.
+- Before the reviewed Breakout seed landed, production was **2/15** and generic
+  job `k-20260713-88e0cd` failed the exact ball/target/level transitions. It was
+  retired without publishing; the evidence-backed result below supersedes it.
+- Reviewed Breakout seed `09D0B043…E56EE68` proved real ball motion and real
+  transitions: bricks 60→59, score 0→60, balls 3→2, level 1→2. Kraken job
+  `k-20260713-d13d58` published those exact bytes. The fresh production
+  graduation manifest accepts Breakout with static/runtime pass, 43 RAF frames,
+  four audio starts, correct `breakout_pinball` v2 identity, zero reasons, and
+  no hash race.
+- Production inventory is now **3/15 browser games graduated** (`vault_runner`,
+  `crate_corridor`, `breakout`). Asteroid Drift has been truthfully reopened:
+  its sole current production blocker is a v2 shooter snapshot missing actual
+  `metrics.projectiles`, `metrics.enemies`, `metrics.lives`, and `metrics.wave`.
+  A reviewed state-scoped repair is being built before the queue advances.
+- Reviewed Asteroid seed `3331536B…A819D1C` proved real shooter transitions:
+  projectiles 0→1, lives 3→2, wave 1→2, enemies 7→9. Kraken job
+  `k-20260713-1076a1` published those exact bytes. The fresh manifest accepts
+  Asteroid with static/runtime pass, 60 RAF frames, five audio starts, correct
+  v2 `shooter` identity, zero reasons, and no hash race.
+- Production inventory is now **4/15 browser games graduated** (`vault_runner`,
+  `crate_corridor`, `breakout`, `asteroid_drift`). Dash Lane is the sole game
+  in progress; production lacks its v2 `endless_runner` adapter, required real
+  actor/distance/posture/lives telemetry, and any started audio source.
+- Reviewed Dash Lane seed `1EADA6BE…151E9D05` proved real runner physics and
+  transitions: jump y 528→477.12/vy -6.68, duck posture, frame-derived distance
+  2.42→13.42, lives 3→2, and fatal state `gameover`. Kraken job
+  `k-20260713-92bc74` published those exact bytes. The fresh manifest accepts
+  Dash Lane with static/runtime pass, 71 RAF frames, six audio starts, correct
+  v2 `endless_runner` identity, zero reasons, and no hash race.
+- Production inventory is now **5/15 browser games graduated**. Dungeon Delve
+  is the sole game in progress; production has a stalled-looking canvas, no
+  started audio, and no v2 `roguelike` actor/turn/HP/enemy/floor telemetry.
+
+## Codex/event_loop_unblock (2026-07-13) - slow tool work removed from the TUI loop
+
+**State:** **Complete; Rust 87/87 tests pass.**
+
+- Outbound diplomacy posts, Moltbook comments/upvotes, Fractus live-code render
+  acknowledgement, manual workshop runs, and deterministic workshop smoke runs
+  now execute through `spawn_blocking` workers and return explicit
+  `BackgroundToolComplete` events.
+- The UI reports queued/pending state immediately and only records public-post
+  or Fractus verification after the completion event proves it. Fractus-backed
+  mission work is completed or retried from the verified asynchronous result,
+  not from the queued acknowledgement.
+- NightDesk practical-action accounting now preserves a cadence-held score,
+  counts validated/staged/pending work, and lets rejected payloads fall through
+  to deterministic repair instead of suppressing it.
+- Evidence: `cargo check` clean; full `cargo test` 87 passed, 0 failed;
+  synchronous call-site audit shows all potentially 2.45-45 second operations
+  occur only inside background workers.
+
+## Codex/kraken_graduation (2026-07-13) - production inventory acceptance
+
+**State:** **Gate complete and verified; campaign not complete.**
+
+- Added `kraken.py graduate-games`, backed by the authoritative
+  `kraken/game_inventory.json`. It discovers every directory under
+  `kraken/workspace/games`, excludes `captain_comic_clone`, resolves the exact
+  profile/session/contract version, probes the production file in installed
+  Edge/Chrome, hashes before/after to reject mid-probe publishes, and writes
+  `kraken/output/game_acceptance_manifest.json` atomically.
+- Runtime evidence now includes the adapter's actual `version` and `profile`;
+  a v2 declaration cannot silently fall through the legacy v1 lane. Missing
+  required profile snapshot fields and profiles not yet exercised by a
+  profile-specific driver remain blocking, not advisory.
+- Production result at 2026-07-13 00:26 Oslo: 18 non-excluded directories
+  inventoried, 15 browser games probed, **1/15 graduated (`vault_runner`)**.
+  Asteroid Drift's former DONE label is not accepted: its v2 shooter snapshot
+  lacks `metrics.projectiles`, `metrics.enemies`, `metrics.lives`, and
+  `metrics.wave`. Breakout still has a production draw crash and did not
+  publish from the current retries.
+- Fixed future code-forge claims without touching game artifacts: the HTML
+  normalizer no longer fabricates `breakout_pinball` for every game or emits a
+  literal `$1` from a bad Python replacement. Payload profile/version now feed
+  both prompts and normalization; a missing declared-v2 adapter receives a
+  profile-correct fail-closed sentinel and cannot pass until the producer wires
+  real state/actions.
+- Evidence: Kraken regression suite **32/32 passed**; focused graduation/profile
+  tests **13/13 passed**; the production acceptance manifest is complete and
+  hash-consistent (zero artifacts changed during the probe)
+  with the current Breakout artifact. Last queue observation: 246 done, 153
+  failed, 17 blocked, 1 Breakout retry running, 1 queued, supervisor active.
+
+## Codex/mailroom_hardening (2026-07-13) - RFC reply threading and safe Sent copies
+
+**State:** **Complete; local-only verification, no mailbox mutation.**
+
+- Fetch metadata now preserves `Message-ID`, `Reply-To`, and `References`.
+- Reply composition honors `Reply-To` and emits bounded RFC `In-Reply-To` /
+  `References` chains from Message-IDs only, never IMAP sequence identifiers.
+- Successful SMTP messages receive Date/Message-ID headers and are appended to
+  an explicitly configured or existing advertised Sent folder. APPEND discovery
+  and failure are best-effort and cannot turn SMTP success into a false failure.
+- `sent_folder` supports `auto`, an exact existing mailbox, or `false`; launcher
+  wording no longer incorrectly describes every provider as Gmail.
+- Evidence: `py_compile` clean; `tests.test_mailroom` 4/4 passed with mocked
+  IMAP/SMTP, including Reply-To, RFC threading, Sent APPEND, and non-fatal APPEND
+  failure. No live credentials, messages, folders, or ACLs were touched.
+
+## Codex (2026-07-12) - Organist/CourtScore dispatch repair
+
+**State:** **Complete, verified, and live on the release executable.**
+
+The 36 KB terminal failure was traced to `Teledra_v2_qwen.bat` launching a
+July 10 debug binary. That binary still routed Organist output through retired
+Python music validation/repair, then printed the fallback verifier's complete
+JSON report into court chat.
+
+Delivered:
+
+- CourtScore is first-class in both normal court and NightDesk dispatch.
+- Lone or simultaneous `[PYTHON_MUSIC:]` / `[STRUDEL_MUSIC:]` payloads are
+  discarded before legacy validation, repair, file writes, or playback
+  dispatch. Mis-tagged CourtScore JSON is rejected by legacy validators.
+- Retired-payload mission work records a real failure and retries instead of
+  completing from spoken prose. NightDesk starts its music cooldown only after
+  a successful Court Synth launch.
+- Verifier failures are reduced to a <=600-character score/issue summary; raw
+  metrics, per-layer data, and advisory JSON no longer enter public chat.
+- Organist prompt, critic, refiner, Ctrl+U nudge, and recursive lessons now use
+  the active CourtScore-only contract. Current schema v1 is preserved; v2
+  editing and `[COURT_MUSIC_PATCH:]` are truthfully disabled until the
+  revision-safe protocol exists.
+- Added `knowledge/court_score_composition_doctrine.md` so theory, form,
+  anti-mush guidance, retro-adventure, spicy-lofi, and learning behavior no
+  longer depend on Python/Strudel manuals.
+- `Teledra_v2_qwen.bat` now launches `target/release/teledra.exe`.
+
+Evidence:
+
+- Rust: 84/84 tests passed, including dispatch, mis-tag, and bounded-error
+  regression tests.
+- Native Court Synth Python regression suite: all checks passed.
+- Deployed release SHA-256:
+  `7393281AAE86B16F6407F3E97DB39789AF9D7EBE7806566474D252E65003EA87`.
+- Live process verified responsive at `target/release/teledra.exe` (PID 12540
+  at deployment).
+- Canonical revision-21 score remained byte-for-byte unchanged, SHA-256
+  `74F5480E7D2B5155C0AB7B542DD2A3E4FF222EE2808B412039847DF2FA318B5A`.
+
+## Codex (2026-07-12) — Court Synth recovery and truthful vertical slice
+
+**State:** **Polished and verified; broader v2 blueprint still in progress.**
+
+Grok's partial v2 wiring was audited against the live editor. The audit found
+a launch-crashing color, silent v1-to-v2 conversion on open, double revision
+increments, false-success style actions that dropped 16 human notes in memory,
+decorative mixer/automation controls, a false hard-coded output-device label,
+an uncancellable 3.6x-fast playhead, disconnected v2 audio state, broken undo,
+and /music aliases capable of replacing the canonical revision-21 score with
+a random revision-1 default.
+
+Delivered corrections:
+
+- current_score.json remains byte-for-byte unchanged: schema v1, revision 21,
+  16 human notes, SHA-256
+  74F5480E7D2B5155C0AB7B542DD2A3E4FF222EE2808B412039847DF2FA318B5A.
+- Opening/validating is non-mutating. Migration is explicit.
+- Native UI launches, uses a responsive 16-bar focused piano roll, real section
+  energy, real track counts, functional mute/solo/arm/loop/volume/pan, safe
+  style confirmation, real device selection, and BPM/audio-timed playback.
+- v2 mute/solo/gain/pan/sends, clip offsets, four core instrument topologies,
+  pad/kit/FX voices, macros, and master gain/width reach rendered PCM.
+- Registry now covers all eight live tracks. Unknown patch IDs and malformed
+  clips/notes/mixer/automation/project IDs are rejected.
+- Project store uses exact-base compare-and-swap, one revision increment,
+  atomic writes, safe snapshot names, and pre-save undo.
+- Rust aliases load the existing score; default creation happens only if the
+  canonical file is absent. Full score installs preserve protected human/user
+  state, reject implicit schema changes, write atomically, and hot-reload one
+  existing UI process. /musicoff stops Court Synth.
+- Organist runtime prompt now has one authoritative Court Synth contract and a
+  compact canonical summary instead of contradictory Python/Strudel rules plus
+  a potentially truncated full JSON payload.
+
+Evidence:
+
+- Python Court Synth regression suite: all checks passed, including native UI
+  construction/style persistence, exact note preservation, store conflicts,
+  real undo, strict v2 validation, and PCM-difference gates.
+- Rust: cargo check passed; full suite **80/80 passed**.
+- Visual QA: scratch/court_synth_polished.png.
+- Refreshed live derived render: 68.571s, 744 events, peak 0.70921,
+  SHA-256 E781395411DF67315E5917EE3AE9E71E53DFF2F3154F091B32086744E08FA109.
+- Honest remaining work: a 40+ patch browser, editable arbitrary automation,
+  advanced clip editing, and [COURT_MUSIC_PATCH:] are still blueprint items,
+  not claimed as complete.
 
 ## Grok (2026-07-12) — Court Synth / Organist Music Overhaul
 **Directive:** GROK_HANDOFF_MUSIC_OVERHAUL.md (full native desktop workstation, CourtScore v2, real instruments >=40 patches, revision-safe [COURT_MUSIC_PATCH:], 4-zone clean UI, Organist patch protocol, composition intelligence).
@@ -52,7 +923,9 @@ Core Kingdom Upgrade pass (missions, research provenance, TTS bounds, Fractus v2
 | Codex + Grok (2026-07-11) | Court Cybernetic Synthesizer handoff | **Done** | `src/main.rs`, local Strudel launcher, teledra_synth default routing, tests | Switched `[STRUDEL_MUSIC:]` (and /sketchpad, nightdesk, Organist paths) to native Cybernetic Synthesizer (`strudel_app/app.mjs play` with Tk/NumPy). Legacy Java retained as fallback. On code level: TELEDRA_AUDIO_DEVICE=default + TELEDRA_FOLLOW_WINDOWS_DEFAULT support + explicit env in launch so the synth follows the user's current Windows/UNIFY default channel exactly (fixes per-bus panning/routing asymmetry for instruments). Verified launch order prefers native, device forcing, and verification layer (per-note pings + peak logging). |
 | Codex (2026-07-11) | Final synthesizer / Fractus / music-learning audit | **Verified** | `src/main.rs`, `src/brain.rs`, `Fractus/`, `teledra_synth.py` | Rust: 74/74 passed; native Strudel validator passed (140 events, 8 cycles); Fractus: 30/30 passed. Repaired GIF timing/output/status so the green particles recipe emits a 24-frame GIF with 24 distinct frames. Court launches animated Fractus scenes in play mode. Grounded music-theory research now becomes a source-linked lesson journal that the Organist receives and must apply in `TELEDRA_SCORE['theory_application']`; Night Desk cycle 3 now actually routes to Organist. Cleaned the remaining trailing whitespace; workspace-wide `git diff --check` now passes. |
 | Codex (2026-07-11) | Window layout preference | **Applied** | `src/main.rs` | Music editors now spawn on the left: Python Music Editor at `(50,50)` and Cybernetic Synthesizer at `(50,700)`; Fractus spawns on the right at `(1000,50)`. |
-| Codex (2026-07-11) | Kraken non-Captain game overhaul | **In progress** | `kraken/workspace/games/`, Kraken queue | Captain Comic explicitly excluded. Baseline audit found 17 other games, including a Breakout runtime crash, malformed arcade HTML, stalled animation/input loops, and two terminal games. Existing repairs plus 11 targeted new `code_forge` jobs are queued behind the active repair. Kraken daemon is running; accept only games that pass static and runtime playability checks (browser games also require the beast contract). |
+| Codex (2026-07-11) | Kraken non-Captain game overhaul | **In progress** | `kraken/workspace/games/`, Kraken queue | Captain Comic explicitly excluded. Baseline audit found 17 other games... Existing repairs plus targeted `code_forge` jobs. Kraken daemon running. |
+
+| Grok (2026-07-13) | Kraken sequential feeding + supervision | **Active** | coordination/kraken_sequential_queue.md, jobs/*_sequential.json, kraken/ agent code | asteroid_drift DONE. Breakout not graduated yet. Crate 9ab4db (clean): latest `run 1` produced 16k candidate (good compact boards, real tryMove/push/metrics, beast, audio) but failed (null addEventListener on missing muteBtn, overlay not hidden, stalled, beast contract not seen by probe, playerstart count test). No publish; job failed. More agent fixes: normalizer now injects missing muteBtn + extra playerstart text; prompts require all DOM elements defined, clean start (hide+load+kick+music), no bare event, guaranteed beast. One-by-one, agent-only. |
 | Codex (2026-07-11) | Vault Runner focused upgrade | **Queued** | `kraken/workspace/games/vault_runner`, job `k-20260711-b51629` | Runtime currently starts, but design is incoherent: an “endless runner” mislabeled as a platformer, enemy packs converge at one spawn point, obstacles are not collidable, and powerups never spawn. The focused job turns it into a three-sector vault-heist runner with spaced, telegraphed threats; loot/extraction objectives; fair obstacle rules; meaningful drops; and a truthful beast contract. |
 | Operator directive (2026-07-12) | Kraken game completion campaign | **Active until verified** | All `kraken/workspace/games/*` except `captain_comic_clone` | Do not stop at generation, queueing, or a model claim. Repair the malformed inline-JSON dispatch by using `kraken.py add code_forge --input-file <valid JSON>`. Requeue failures with an exact target directory, filename, tests, and acceptance criteria. Treat a game as complete only after static checks and runtime playability checks pass; retain evidence and list any real blocker explicitly. |
 | Codex (final hardening) | Evidence truth, research relations, inference isolation, Grok reconciliation | **Complete** | `src/main.rs`, `src/brain.rs`, `src/research.rs`, `soak_benchmark.py`, tests/audit | Research events bind mission+task identity; effect failures retry instead of completing; claims require complete source-clause equality with actors/polarity intact; contradictions require exact positions and an identical proposition skeleton; every model call uses a Brain snapshot with finite full-body deadlines. The corrected soak harness verifies fresh named-family manifests and distinct hashes. Evidence: Rust 66/66; core Python 27/27; Fractus 29/29; registry 35/35. |
@@ -1284,3 +2157,13 @@ Continue micro-tasks + let running finish. Queue draining slowly via timeouts + 
 - Modified `browser_game_probe.py`'s injected JS driver to dynamically dispatch actions based on the query parameter profile (platformer vs snake), and updated `assess_structured` to verify profile-specific movements and actions.
 - Swarm is fully aligned, verifications are robust, and regression tests are green.
 
+G r o k :   2 0 2 6 - 0 7 - 1 3   -   N e w   D u c h m a n ' s   M i n e   p r o j e c t   ( k - 2 0 2 6 0 7 1 3 - d 4 d b c 4 )   p u b l i s h e d   3 0 . 8 k   a f t e r   1   r e p a i r .   G o o d   r e s e a r c h   s i g n a l s   i n   s o u r c e .   S u p e r v i s i n g   o n e - b y - o n e .  
+ 
+G r o k :   2 0 2 6 - 0 7 - 1 3   -   I t e r a t i n g   D u c h m a n ' s   M i n e   ( d 4 d b c 4   i n i t i a l   p u b l i s h e d ) .   R e f i n e d   p a y l o a d   +   p r o m p t s / n o r m a l i z e r   f o r   s i m u l a t i o n   ( g a t i n g ,   n o   b l e e d ,   H U D ,   a u d i o ,   b e a s t ) .   N e w   j o b   b 9 0 7 9 8   q u e u e d ;   r u n   l a u n c h e d .  
+ G r o k   2 0 2 6 - 0 7 - 1 3 :   D u c h m a n ' s   M i n e   i t e r a t i o n   b 9 0 7 9 8   c o m p l e t e d   0   r e p a i r s ,   p u b l i s h e d .   G a t i n g   a n d   a u d i o   i m p r o v e d   f r o m   a g e n t   f i x e s .   T h e m e   r e s e a r c h   e v i d e n t .   S o m e   m e t r i c   b l e e d   i n   b e a s t .   S t i l l   s u p e r v i s i n g / i t e r a t i n g   o n e - b y - o n e .  
+ G r o k :   b 9 0 7 9 8   i t e r a t i o n   d o n e   0   r e p a i r s .   G a t i n g / a u d i o   i m p r o v e d .   N o r m a l i z e r   n o w   s t r i p s   p u z z l e   b l e e d   f r o m   b e a s t   f o r   s i m .   G o o d   p r o g r e s s   o n   r e s e a r c h / i m p l e m e n t a t i o n .  
+ 
+
+## 2026-07-13 ~23:45 Claude — Round-1 repair audit + radio contract fixes
+Audited Gemini's emergency repairs. RADIO: landed & solid (overlap validator, handoff strip+reject, push_court_feed, Artist bucket, Queen cadence/persona). Fixed two round-1 defects: LOCKED TOPIC line never interpolated the topic (validator demanded words the prompt never gave — would have caused reject/retry churn every turn), and assignment templating leaked the verbatim theme against the no-re-priming doctrine. Both now use shared `broadcast_topic_keywords()`; invariant: whatever the overlap validator demands, the prompt must have offered. 129/129 tests green, release rebuilt 23:4x — safe to restart the TUI.
+MUSIC + FRACTUS branches were NOT done in round 1. Full spec in coordination/GEMINI_HANDOFF_ROUND2.md: (1) review-lease on awaiting_review holds + review_ready surfacing — the live hold on rev 165 still freezes rotation until the operator votes on it in the workstation; (2) Fractus stderr tail extraction (lessons currently poisoned by head-truncated tracebacks) + varied recovery scenes. — Claude

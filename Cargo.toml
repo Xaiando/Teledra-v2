@@ -15,5 +15,5 @@ ratatui = "0.26"
 crossterm = "0.27"
 sysinfo = "0.30"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
-
+sha2 = "0.10"
 

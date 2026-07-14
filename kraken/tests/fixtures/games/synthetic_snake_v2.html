@@ -1,184 +1,284 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Synthetic Snake V2</title>
 <style>
-  body { background: #0c0816; color: #fff; font-family: monospace; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-  #gameContainer { position: relative; width: 800px; height: 600px; }
-  canvas { border: 2px solid #8a2be2; background: #05020a; display: block; }
-  #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(12, 8, 22, 0.9); display: flex; flex-direction: column; align-items: center; justify-content: center; }
-  button { padding: 12px 24px; font-size: 18px; background: #8a2be2; color: #fff; border: none; cursor: pointer; font-family: inherit; }
-  #hud { position: absolute; top: 10px; left: 10px; font-size: 16px; pointer-events: none; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #080b18; color: #effcff; font: 16px monospace; }
+  #game-shell { position: relative; width: 484px; border: 2px solid #6ef3c5; background: #10162a; box-shadow: 0 0 28px #21d6a744; }
+  #hud { display: flex; justify-content: space-between; padding: 10px 12px; color: #9fffe0; }
+  canvas { display: block; width: 480px; height: 360px; background: #080c1c; outline: none; image-rendering: pixelated; }
+  .overlay { position: absolute; inset: 42px 0 0; display: grid; place-content: center; gap: 14px; text-align: center; background: #080b18ee; }
+  .overlay[hidden] { display: none; }
+  button { border: 1px solid #6ef3c5; padding: 11px 20px; background: #16324a; color: #effcff; font: inherit; cursor: pointer; }
+  button:focus { outline: 2px solid #ff4f9a; outline-offset: 2px; }
 </style>
 </head>
 <body>
-<div id="gameContainer">
-  <canvas id="gameCanvas" width="800" height="600" tabindex="0"></canvas>
-  <div id="hud">
-    <span id="scoreBox">SCORE: 0</span>
-    <span id="livesBox">HP: ❤❤❤</span>
-  </div>
-  <div id="overlay">
-    <h2>SYNTHETIC SNAKE V2</h2>
-    <button id="playBtn">PLAY</button>
-  </div>
-</div>
-
+<main id="game-shell">
+  <div id="hud"><span id="score">SCORE 0</span><span id="status">READY</span></div>
+  <canvas id="gameCanvas" width="480" height="360" tabindex="0" aria-label="Snake board"></canvas>
+  <section id="start-overlay" class="overlay">
+    <h1>SYNTHETIC SNAKE V2</h1>
+    <p>Arrow keys steer. Eat three signal fruits to win.</p>
+    <button id="playBtn" type="button">PLAY</button>
+  </section>
+  <section id="result-overlay" class="overlay" hidden>
+    <h2 id="result-title">RUN OVER</h2>
+    <p id="result-score">SCORE 0</p>
+    <button id="restartBtn" type="button">RESTART</button>
+  </section>
+</main>
 <script>
-(function() {
-  "use strict";
+(() => {
+  'use strict';
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+  const playBtn = document.getElementById('playBtn');
+  const restartBtn = document.getElementById('restartBtn');
+  const startOverlay = document.getElementById('start-overlay');
+  const resultOverlay = document.getElementById('result-overlay');
+  const resultTitle = document.getElementById('result-title');
+  const resultScore = document.getElementById('result-score');
+  const scoreNode = document.getElementById('score');
+  const statusNode = document.getElementById('status');
 
-  const canvas = document.getElementById("gameCanvas");
-  const ctx = canvas.getContext("2d");
-  canvas.width = 800;
-  canvas.height = 600;
+  const TILE = 24;
+  const COLS = canvas.width / TILE;
+  const ROWS = canvas.height / TILE;
+  const STEP_MS = 160;
+  const TARGET_FOODS = 3;
+  const INITIAL_BODY = [{x: 7, y: 5}, {x: 6, y: 5}, {x: 5, y: 5}];
 
-  const overlay = document.getElementById("overlay");
-  const playBtn = document.getElementById("playBtn");
-  const scoreBox = document.getElementById("scoreBox");
-  const livesBox = document.getElementById("livesBox");
-
-  let gameState = "start";
+  let state = 'menu';
+  let body = INITIAL_BODY.map(cell => ({...cell}));
+  let direction = {x: 1, y: 0};
+  let queuedDirection = {x: 1, y: 0};
+  let food = {x: 2, y: 11};
   let score = 0;
-  let lives = 3;
-  let snake = [{x: 400, y: 300}, {x: 380, y: 300}, {x: 360, y: 300}];
-  let food = {x: 460, y: 300};
-  let direction = "right";
+  let steps = 0;
+  let foodsEaten = 0;
+  let deaths = 0;
+  let accumulator = 0;
+  let lastTime = 0;
+  let rafStarted = false;
   let audioCtx = null;
-  let musicSource = null;
+
+  function sameCell(a, b) { return a.x === b.x && a.y === b.y; }
+  function occupied(cell) { return body.some(segment => sameCell(segment, cell)); }
+  function updateHud() {
+    scoreNode.textContent = `SCORE ${score}`;
+    statusNode.textContent = state.toUpperCase();
+  }
+  function hideResults() { resultOverlay.hidden = true; }
+  function showResults(title) {
+    resultTitle.textContent = title;
+    resultScore.textContent = `SCORE ${score}`;
+    resultOverlay.hidden = false;
+  }
 
   function initAudio() {
     if (audioCtx) return;
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const osc = audioCtx.createOscillator();
+    const oscillator = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
-    osc.type = "triangle";
-    osc.frequency.value = 110;
-    gain.gain.value = 0.05;
-    osc.connect(gain);
+    oscillator.type = 'triangle';
+    oscillator.frequency.value = 96;
+    gain.gain.value = 0.025;
+    oscillator.connect(gain);
     gain.connect(audioCtx.destination);
-    osc.start(0);
-    musicSource = osc;
+    oscillator.start();
   }
-
-  function playBeep() {
+  function sound(frequency) {
     if (!audioCtx) return;
-    const osc = audioCtx.createOscillator();
+    const oscillator = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(440, audioCtx.currentTime);
-    gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
-    osc.connect(gain);
+    oscillator.type = 'square';
+    oscillator.frequency.value = frequency;
+    gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.08);
+    oscillator.connect(gain);
     gain.connect(audioCtx.destination);
-    osc.start();
-    osc.stop(audioCtx.currentTime + 0.1);
+    oscillator.start();
+    oscillator.stop(audioCtx.currentTime + 0.09);
   }
 
-  playBtn.addEventListener("click", function() {
-    overlay.style.display = "none";
-    gameState = "playing";
+  function resetRun() {
+    body = INITIAL_BODY.map(cell => ({...cell}));
+    direction = {x: 1, y: 0};
+    queuedDirection = {x: 1, y: 0};
+    food = {x: 2, y: 11};
+    score = 0;
+    steps = 0;
+    foodsEaten = 0;
+    deaths = 0;
+    accumulator = 0;
+    lastTime = performance.now();
+    state = 'playing';
+    startOverlay.hidden = true;
+    hideResults();
     canvas.focus();
-    initAudio();
-    requestAnimationFrame(gameLoop);
-  });
-
-  window.addEventListener("keydown", function(e) {
-    if (e.key === "ArrowUp" || e.key === "w" || e.key === "W") direction = "up";
-    else if (e.key === "ArrowDown" || e.key === "s" || e.key === "S") direction = "down";
-    else if (e.key === "ArrowLeft" || e.key === "a" || e.key === "A") direction = "left";
-    else if (e.key === "ArrowRight" || e.key === "d" || e.key === "D") direction = "right";
-  });
-
-  function updateHUD() {
-    scoreBox.textContent = "SCORE: " + score;
-    livesBox.textContent = "HP: " + "❤".repeat(Math.max(0, lives));
+    updateHud();
   }
 
-  function update(dt) {
-    if (gameState !== "playing") return;
-    let head = { ...snake[0] };
-    if (direction === "right") head.x += 20;
-    else if (direction === "left") head.x -= 20;
-    else if (direction === "up") head.y -= 20;
-    else if (direction === "down") head.y += 20;
-
-    snake.unshift(head);
-    if (Math.abs(head.x - food.x) < 5 && Math.abs(head.y - food.y) < 5) {
-      score += 10;
-      updateHUD();
-      playBeep();
-      food = { x: Math.floor(Math.random() * 38) * 20 + 20, y: Math.floor(Math.random() * 28) * 20 + 20 };
-    } else {
-      snake.pop();
+  function loseRun() {
+    if (state !== 'playing') return;
+    deaths += 1;
+    state = 'lost';
+    sound(90);
+    updateHud();
+    showResults('SIGNAL LOST');
+  }
+  function winRun() {
+    state = 'won';
+    sound(880);
+    updateHud();
+    showResults('GRID MASTERED');
+  }
+  function spawnFood() {
+    for (let index = 0; index < COLS * ROWS; index++) {
+      const candidate = {x: (index * 7 + foodsEaten * 3) % COLS, y: (index * 5 + 2) % ROWS};
+      if (!occupied(candidate)) { food = candidate; return; }
     }
+  }
+
+  function stepSnake() {
+    if (state !== 'playing') return;
+    direction = {...queuedDirection};
+    const next = {x: body[0].x + direction.x, y: body[0].y + direction.y};
+    const outside = next.x < 0 || next.x >= COLS || next.y < 0 || next.y >= ROWS;
+    const eating = sameCell(next, food);
+    const collisionBody = eating ? body : body.slice(0, -1);
+    const selfHit = collisionBody.some(segment => sameCell(segment, next));
+    if (outside || selfHit) { loseRun(); return; }
+
+    body.unshift(next);
+    steps += 1;
+    if (eating) {
+      foodsEaten += 1;
+      score += 10;
+      sound(620 + foodsEaten * 50);
+      if (foodsEaten >= TARGET_FOODS) {
+        spawnFood();
+        winRun();
+      } else {
+        spawnFood();
+      }
+    } else {
+      body.pop();
+    }
+    updateHud();
+  }
+
+  function queueTurn(x, y) {
+    if (state !== 'playing') return;
+    if (x === -direction.x && y === -direction.y) return;
+    queuedDirection = {x, y};
+  }
+  function handleKey(event) {
+    if (event.code === 'ArrowUp' || event.code === 'KeyW') queueTurn(0, -1);
+    else if (event.code === 'ArrowDown' || event.code === 'KeyS') queueTurn(0, 1);
+    else if (event.code === 'ArrowLeft' || event.code === 'KeyA') queueTurn(-1, 0);
+    else if (event.code === 'ArrowRight' || event.code === 'KeyD') queueTurn(1, 0);
+    else if (event.code === 'Space' && (state === 'playing' || state === 'paused')) {
+      state = state === 'playing' ? 'paused' : 'playing';
+      lastTime = performance.now();
+      updateHud();
+    } else if (event.code === 'KeyR') {
+      resetRun();
+    } else return;
+    event.preventDefault();
   }
 
   function draw() {
-    ctx.fillStyle = "#05020a";
+    ctx.fillStyle = '#080c1c';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // Draw purple border (color #4)
-    ctx.strokeStyle = "#8a2be2";
-    ctx.lineWidth = 10;
-    ctx.strokeRect(0, 0, canvas.width, canvas.height);
-
-    // Draw white text (color #5)
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "20px monospace";
-    ctx.fillText("SYNTHETIC SNAKE V2", 20, 40);
-
-    if (gameState !== "playing") return;
-
-    ctx.fillStyle = "#ff007f";
-    ctx.fillRect(food.x - 8, food.y - 8, 16, 16);
-
-    ctx.fillStyle = "#00e5ff";
-    for (let segment of snake) {
-      ctx.fillRect(segment.x - 9, segment.y - 9, 18, 18);
-    }
+    ctx.strokeStyle = '#182540';
+    ctx.lineWidth = 1;
+    for (let x = 0; x <= COLS; x++) { ctx.beginPath(); ctx.moveTo(x * TILE, 0); ctx.lineTo(x * TILE, canvas.height); ctx.stroke(); }
+    for (let y = 0; y <= ROWS; y++) { ctx.beginPath(); ctx.moveTo(0, y * TILE); ctx.lineTo(canvas.width, y * TILE); ctx.stroke(); }
+    ctx.fillStyle = '#ff4f9a';
+    ctx.beginPath();
+    ctx.arc(food.x * TILE + TILE / 2, food.y * TILE + TILE / 2, 8, 0, Math.PI * 2);
+    ctx.fill();
+    body.forEach((segment, index) => {
+      ctx.fillStyle = index === 0 ? '#f2ff83' : '#45e0ae';
+      ctx.fillRect(segment.x * TILE + 2, segment.y * TILE + 2, TILE - 4, TILE - 4);
+    });
   }
-
   function gameLoop(timestamp) {
-    requestAnimationFrame(gameLoop);
-    update(16);
+    if (!lastTime) lastTime = timestamp;
+    const delta = Math.min(80, timestamp - lastTime);
+    lastTime = timestamp;
+    if (state === 'playing') {
+      accumulator += delta;
+      if (accumulator >= STEP_MS) {
+        accumulator -= STEP_MS;
+        stepSnake();
+      }
+    }
     draw();
+    requestAnimationFrame(gameLoop);
   }
+  function ensureLoop() {
+    if (rafStarted) return;
+    rafStarted = true;
+    requestAnimationFrame(gameLoop);
+  }
+
+  playBtn.addEventListener('click', () => { initAudio(); resetRun(); ensureLoop(); });
+  restartBtn.addEventListener('click', resetRun);
+  document.addEventListener('keydown', handleKey);
+  canvas.addEventListener('pointerdown', () => canvas.focus());
 
   window.__KRAKEN_BEAST__ = {
     version: 2,
-    profile: "snake",
-    session: "finite",
+    profile: 'snake',
+    session: 'finite',
     snapshot() {
       return {
-        state: gameState,
-        frame: 120,
-        score: score,
-        lives: lives,
-        complete: gameState === "won",
-        actor: { x: snake[0].x, y: snake[0].y },
-        metrics: { direction: direction, length: snake.length, food: { x: food.x, y: food.y }, lives: lives }
+        state,
+        complete: state === 'won',
+        score,
+        board: {rows: ROWS, cols: COLS, body: body.map(cell => ({...cell}))},
+        actor: {...body[0]},
+        metrics: {
+          direction: {...direction},
+          length: body.length,
+          food: {...food},
+          steps,
+          foods_eaten: foodsEaten,
+          deaths,
+          target_foods: TARGET_FOODS
+        }
       };
     },
     action(name) {
-      if (name === "feed") {
-        score += 10;
-        snake.push({ ...snake[snake.length - 1] });
-        updateHUD();
+      if (state !== 'playing') return false;
+      if (name === 'feed') {
+        const next = {x: body[0].x + direction.x, y: body[0].y + direction.y};
+        if (next.x < 0 || next.x >= COLS || next.y < 0 || next.y >= ROWS || occupied(next)) return false;
+        food = next;
         draw();
-        return Promise.resolve(true);
+        return true;
       }
-      if (name === "collide") {
-        lives--;
-        updateHUD();
-        if (lives <= 0) gameState = "lost";
-        return Promise.resolve(true);
+      if (name === 'collide') {
+        const length = body.length;
+        body = Array.from({length}, (_, index) => ({x: COLS - 1 - index, y: 7}));
+        direction = {x: 1, y: 0};
+        queuedDirection = {x: 1, y: 0};
+        food = {x: 1, y: 1};
+        draw();
+        return true;
       }
-      throw new Error("unsupported beast action: " + name);
+      return false;
     }
   };
 
+  updateHud();
+  draw();
 })();
 </script>
 </body>

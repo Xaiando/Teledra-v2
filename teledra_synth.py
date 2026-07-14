@@ -2,11 +2,18 @@ import hashlib
 import ast
 import json
 import os
+import sys
 import time
 import wave
 
 import numpy as np
 import sounddevice as sd
+
+def _diag(message):
+    """Device/diagnostic banners go to stderr: stdout belongs to consumers
+    (music_verify emits JSON on stdout and imports this module)."""
+    print(message, file=sys.stderr)
+
 
 
 def _apply_audio_device_override():
@@ -83,7 +90,7 @@ def _apply_audio_device_override():
                 is_valid = isinstance(cur_out, int) and 0 <= cur_out < len(devices) and devices[cur_out].get('max_output_channels', 0) > 0
                 if is_valid:
                     chosen = cur_out
-                    print("[teledra_synth] forcing Windows default output device (following system routing)")
+                    _diag("[teledra_synth] forcing Windows default output device (following system routing)")
             except Exception as e:
                 print('[DEBUG follow] exception:', e)
         elif want_dev:
@@ -112,7 +119,7 @@ def _apply_audio_device_override():
                         break
                 if chosen is None:
                     chosen = rode_indices[0]
-                print(f"[teledra_synth] Overriding forced Realtek speakers to RØDE device #{chosen} {devices[chosen]['name']} because RØDE interface is present (avoids muted audio on wrong output).")
+                _diag(f"[teledra_synth] Overriding forced Realtek speakers to RØDE device #{chosen} {devices[chosen]['name']} because RØDE interface is present (avoids muted audio on wrong output).")
 
         if chosen is None and api_idx is not None:
             default_out = hostapis[api_idx].get("default_output_device", -1)
@@ -172,7 +179,7 @@ def _apply_audio_device_override():
             sd.default.device = (sd.default.device[0] if isinstance(sd.default.device, (list, tuple)) else -1, chosen)
             d = sd.query_devices(chosen)
             ha_name = hostapis[d["hostapi"]]["name"] if d["hostapi"] < len(hostapis) else "?"
-            print(f"[teledra_synth] audio output -> #{chosen} {d['name']} ({ha_name})")
+            _diag(f"[teledra_synth] audio output -> #{chosen} {d['name']} ({ha_name})")
             _CHOSEN_OUTPUT_DEVICE = chosen
             # Quick validation: try to open a tiny stream so we catch "invalid device" early
             def _validate_device(idx):
@@ -187,10 +194,10 @@ def _apply_audio_device_override():
 
             if not _validate_device(chosen):
                 if follow_windows_default:
-                    print(f"[teledra_synth] note: quick open test for Windows default #{chosen} failed, but following default as requested (no fallback).")
+                    _diag(f"[teledra_synth] note: quick open test for Windows default #{chosen} failed, but following default as requested (no fallback).")
                     # do not change chosen
                 else:
-                    print(f"[teledra_synth] note: quick open test for #{chosen} failed (Invalid device). Searching for working alternative...")
+                    _diag(f"[teledra_synth] note: quick open test for #{chosen} failed (Invalid device). Searching for working alternative...")
                     # Fallback: look for other good analog-like devices that do validate. Prefer headphone-like if original choice was RØDE-related.
                     fallback = None
                     is_rode_choice = ("rode" in str(devices[chosen]["name"]).lower() or "røde" in str(devices[chosen]["name"]).lower() or "unify" in str(devices[chosen]["name"]).lower() or "hodetelefoner" in str(devices[chosen]["name"]).lower())
@@ -225,12 +232,12 @@ def _apply_audio_device_override():
                         _CHOSEN_OUTPUT_DEVICE = chosen
                         d = devices[chosen]
                         ha_name = hostapis[d["hostapi"]]["name"] if d["hostapi"] < len(hostapis) else "?"
-                        print(f"[teledra_synth] audio output -> #{chosen} {d['name']} ({ha_name})  [fallback after validation]")
+                        _diag(f"[teledra_synth] audio output -> #{chosen} {d['name']} ({ha_name})  [fallback after validation]")
                     else:
-                        print("[teledra_synth] warning: could not find any validating output device.")
+                        _diag("[teledra_synth] warning: could not find any validating output device.")
                         # Do not silently fall back to PC speakers (Realtek) if the user has RØDE devices - it will be the wrong physical output for them
                         if any(("rode" in devices[i]["name"].lower() or "røde" in devices[i]["name"].lower() or "unify" in devices[i]["name"].lower() or "hodetelefoner" in devices[i]["name"].lower()) for i in range(len(devices))):
-                            print("[teledra_synth] info: RØDE/UNIFY devices present - not falling back to Realtek speakers (wrong output for most users with this interface).")
+                            _diag("[teledra_synth] info: RØDE/UNIFY devices present - not falling back to Realtek speakers (wrong output for most users with this interface).")
                             chosen = None  # force user to pick explicitly
         else:
             # Always surface the effective default so user can see why there might be no audio
@@ -240,11 +247,11 @@ def _apply_audio_device_override():
                     d = devices[cur]
                     ha_name = hostapis[d["hostapi"]]["name"] if d["hostapi"] < len(hostapis) else "?"
                     if _looks_virtual(d.get("name", "")):
-                        print(f"[teledra_synth] audio output (default, possibly virtual/silent): #{cur} {d['name']} ({ha_name})")
+                        _diag(f"[teledra_synth] audio output (default, possibly virtual/silent): #{cur} {d['name']} ({ha_name})")
             except Exception:
                 pass
     except Exception as exc:
-        print(f"[teledra_synth] audio device override ignored: {exc}")
+        _diag(f"[teledra_synth] audio device override ignored: {exc}")
 
 
 # Module-level chosen device so we can force sd.play to the one we selected
@@ -1018,17 +1025,17 @@ def run_visualizer(wave, sr, loop, geometry=None):
             else:
                 time.sleep(secs)
         status_var.set("Status: Startup beeps played - if you heard them, device works. Music should follow.")
-        print("[teledra_synth] startup BEEP sequence (3 tones) sent to chosen device")
+        _diag("[teledra_synth] startup BEEP sequence (3 tones) sent to chosen device")
     except Exception as e:
         status_var.set(f"Beep sequence error: {type(e).__name__}")
-        print(f"[teledra_synth] startup beep sequence failed: {e}")
+        _diag(f"[teledra_synth] startup beep sequence failed: {e}")
 
     try:
         _safe_play(wave, sr)
     except Exception as e:
         # Keep the GUI alive even if the main track fails to start; user can use BEEP TEST or VOL to diagnose
         status_var.set(f"Audio start failed: {type(e).__name__} - try BEEP TEST or different device")
-        print(f"[teledra_synth] main track play failed on selected device: {e}")
+        _diag(f"[teledra_synth] main track play failed on selected device: {e}")
 
     feedback_var = tk.StringVar(value="Feedback: not rated")
     feedback_lbl = tk.Label(controls, textvariable=feedback_var, font=("Consolas", 9), fg="#8a2be2", bg="#0c0418")

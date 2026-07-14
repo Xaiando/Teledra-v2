@@ -21,7 +21,7 @@
     },
     {
       "path": "synthetic_snake_v2.html",
-      "sha256": "DF508E02B48EF2769592961C9FEF9E300DA07A787314BE94F77431BD3A8F0D03",
+      "sha256": "45E86B8F353E7BA955774E338ED21214C46FC75EF00EC7664F72E1BED490111A",
       "role": "positive",
       "profile": "snake",
       "contract_version": 2,

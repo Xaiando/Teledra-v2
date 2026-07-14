@@ -921,11 +921,14 @@ impl VoiceEngine {
 
     fn playback_gain(&self) -> f32 {
         match self.voice_name.as_str() {
-            "organist" => 3.25,
+            // Operator 2026-07-13: Organist and Alchemist were still far too
+            // quiet at 3.25/2.45 (their reference voices are inherently soft);
+            // the sample clamp at +-0.98 bounds any clipping from the boost.
+            "organist" => 5.5,
             "artist" => 3.25,
             "scribe" => 2.55,
             "archivist" => 2.45,
-            "alchemist" => 2.45,
+            "alchemist" => 4.5,
             "orator" => 2.45,
             "diplomat" | "envoy" => 2.6,
             "treasurer" => 2.5,

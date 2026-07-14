@@ -106,6 +106,7 @@ pub enum CourtRole {
     Organist,
     Archivist,
     Alchemist,
+    Malthus,
     Orator,
     Scribe,
     Artist,
@@ -121,6 +122,7 @@ impl CourtRole {
             CourtRole::Organist => "Organist",
             CourtRole::Archivist => "Archivist",
             CourtRole::Alchemist => "Alchemist",
+            CourtRole::Malthus => "Malthus",
             CourtRole::Orator => "Orator",
             CourtRole::Scribe => "Scribe",
             CourtRole::Artist => "Artist",
@@ -129,6 +131,138 @@ impl CourtRole {
             CourtRole::Wizard => "Wizard",
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CourtTurnPurpose {
+    Standard,
+    Broadcast,
+}
+
+/// Remove private stage-routing labels without discarding the performed prose
+/// that follows them. This deliberately recognizes only the court's hidden
+/// stage heads, so Markdown links and executable action tags remain intact.
+pub fn strip_hidden_stage_markers(text: &str) -> String {
+    fn is_hidden_stage_head(inner: &str) -> bool {
+        let lower = inner.trim().to_ascii_lowercase();
+        [
+            "thought",
+            "observe",
+            "persistence",
+            "persistent",
+            "silent reflection",
+            "reflection",
+        ]
+        .iter()
+        .any(|head| {
+            lower == *head
+                || lower.starts_with(&format!("{}:", head))
+                || lower.starts_with(&format!("{} ", head))
+        })
+    }
+
+    fn is_performance_stage_cue(inner: &str) -> bool {
+        let trimmed = inner.trim();
+        if trimmed.is_empty()
+            || trimmed.len() > 120
+            || trimmed.contains(':')
+            || trimmed.contains('=')
+            || trimmed.contains('{')
+            || trimmed.contains('}')
+        {
+            return false;
+        }
+        let lower = trimmed.to_ascii_lowercase();
+        if matches!(
+            lower.as_str(),
+            "unlock" | "stop_babble" | "close_art" | "stop_art"
+        ) {
+            return false;
+        }
+        let has_letter = trimmed.chars().any(|character| character.is_alphabetic());
+        let all_caps = has_letter
+            && !trimmed
+                .chars()
+                .any(|character| character.is_alphabetic() && character.is_lowercase());
+        if all_caps && trimmed.split_whitespace().count() <= 6 {
+            return true;
+        }
+        let first = lower
+            .split_whitespace()
+            .next()
+            .unwrap_or("")
+            .trim_matches(|character: char| !character.is_alphabetic());
+        [
+            "sigh",
+            "sighs",
+            "whisper",
+            "whispers",
+            "whispering",
+            "muffled",
+            "distant",
+            "voice",
+            "sound",
+            "glow",
+            "lighting",
+            "pause",
+            "pauses",
+            "laugh",
+            "laughs",
+            "cackle",
+            "cackles",
+            "smirk",
+            "smirks",
+            "grin",
+            "grins",
+            "nod",
+            "nods",
+            "mutter",
+            "mutters",
+            "deem",
+            "deems",
+            "stage",
+            "curtain",
+        ]
+        .contains(&first)
+    }
+
+    fn is_protocol_marker(inner: &str) -> bool {
+        let trimmed = inner.trim();
+        let lower = trimmed.to_ascii_lowercase();
+        trimmed.contains(':')
+            || trimmed.contains('=')
+            || matches!(
+                lower.as_str(),
+                "unlock" | "stop_babble" | "close_art" | "stop_art"
+            )
+            || !trimmed.chars().any(|character| character.is_alphabetic())
+    }
+
+    let mut visible = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(open) = rest.find('[') {
+        visible.push_str(&rest[..open]);
+        let after_open = &rest[open + 1..];
+        let Some(close) = after_open.find(']') else {
+            visible.push_str(&rest[open..]);
+            return visible;
+        };
+        let inner = &after_open[..close];
+        let after_close = &after_open[close + 1..];
+        let markdown_link = after_close.starts_with('(');
+        if is_hidden_stage_head(inner) || (is_performance_stage_cue(inner) && !markdown_link) {
+            // Private routing and production cues are never spoken.
+        } else if markdown_link || is_protocol_marker(inner) {
+            visible.push_str(&rest[open..open + close + 2]);
+        } else {
+            // Models sometimes use square brackets as improvised emphasis.
+            // Keep the words but remove the screenplay-like punctuation.
+            visible.push_str(inner);
+        }
+        rest = after_close;
+    }
+    visible.push_str(rest);
+    visible
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -234,12 +368,199 @@ fn read_knowledge_tail(path: &str, max_chars: usize) -> Option<String> {
     Some(trimmed.chars().skip(count - max_chars).collect())
 }
 
+fn read_music_lesson_tail(path: &str, max_chars: usize) -> Option<String> {
+    let mut file = File::open(path).ok()?;
+    let mut contents = String::new();
+    file.read_to_string(&mut contents).ok()?;
+    let mut seen: Vec<String> = Vec::new();
+    let mut selected: Vec<String> = Vec::new();
+    for line in contents.lines().rev() {
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else {
+            continue;
+        };
+        let principle = value
+            .get("principle")
+            .and_then(|item| item.as_str())
+            .unwrap_or("")
+            .trim();
+        let lower = principle.to_ascii_lowercase();
+        let grounded_in_music = [
+            "music",
+            "chord",
+            "harmony",
+            "melody",
+            "rhythm",
+            "pitch",
+            "tempo",
+            "cadence",
+            "counterpoint",
+            "voice leading",
+            "timbre",
+            "audio",
+            "sound",
+            "synthesis",
+            "orchestration",
+            "arrangement",
+            "tonal",
+            "meter",
+        ]
+        .iter()
+        .any(|term| lower.contains(term));
+        if !grounded_in_music {
+            continue;
+        }
+        let dedupe: String = lower
+            .chars()
+            .filter(|ch| ch.is_ascii_alphanumeric())
+            .collect();
+        if dedupe.is_empty() || seen.iter().any(|item| item == &dedupe) {
+            continue;
+        }
+        seen.push(dedupe);
+        selected.push(line.trim().to_string());
+        if selected.len() >= 6 {
+            break;
+        }
+    }
+    selected.reverse();
+    let joined = selected.join("\n");
+    if joined.is_empty() {
+        None
+    } else if joined.chars().count() <= max_chars {
+        Some(joined)
+    } else {
+        Some(
+            joined
+                .chars()
+                .skip(joined.chars().count() - max_chars)
+                .collect(),
+        )
+    }
+}
+
 fn truncate_prompt_text(text: &str, max_chars: usize) -> String {
     if text.chars().count() <= max_chars {
         text.to_string()
     } else {
         text.chars().take(max_chars).collect()
     }
+}
+
+fn read_court_synth_feedback_guidance() -> Option<String> {
+    let current: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string("court_synth/current_score.json").ok()?)
+            .ok()?;
+    let state: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string("court_synth/feedback/runtime_state.json").ok()?,
+    )
+    .ok()?;
+    let current_project = current.get("project_id").and_then(|value| value.as_str())?;
+    let current_revision = current.get("revision").and_then(|value| value.as_u64())?;
+    let mut lines = Vec::new();
+
+    if let Some(hold) = state.get("hold") {
+        let target = hold.get("target").unwrap_or(&serde_json::Value::Null);
+        let matches_current = target.get("project_id").and_then(|value| value.as_str())
+            == Some(current_project)
+            && target
+                .get("score_revision")
+                .and_then(|value| value.as_u64())
+                == Some(current_revision);
+        if matches_current {
+            let decision = hold
+                .get("decision")
+                .and_then(|value| value.as_str())
+                .unwrap_or("unrated");
+            if hold
+                .get("awaiting_review")
+                .and_then(|value| value.as_bool())
+                .unwrap_or(false)
+            {
+                lines.push(format!(
+                    "AWAITING HUMAN VERDICT: revision {} is an unrated front-stage result associated with the earlier {} instruction. It is held for review but is itself UNRATED; do not infer praise, replace it, or autonomously mutate it.",
+                    current_revision, decision
+                ));
+            } else {
+                lines.push(format!(
+                    "CURRENT HUMAN VERDICT: {} on revision {}. The runtime holds this exact rated score; do not infer permission to replace or autonomously mutate it.",
+                    decision, current_revision
+                ));
+            }
+        }
+    }
+
+    if let Some(latest) = state.get("latest_feedback") {
+        let decision = latest
+            .get("decision")
+            .and_then(|value| value.as_str())
+            .unwrap_or("unrated");
+        let revision = latest
+            .get("score_revision")
+            .and_then(|value| value.as_u64())
+            .unwrap_or(0);
+        let action = latest.get("action").cloned().unwrap_or_default();
+        let features = latest.get("features").cloned().unwrap_or_default();
+        lines.push(format!(
+            "LATEST EXACT-RATING EVIDENCE: decision={} revision={} action={} features={}",
+            decision,
+            revision,
+            truncate_prompt_text(&action.to_string(), 320),
+            truncate_prompt_text(&features.to_string(), 520)
+        ));
+    }
+
+    let mut recent = std::fs::read_dir("court_synth/feedback/events")
+        .ok()
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|entry| {
+            let value = serde_json::from_str::<serde_json::Value>(
+                &std::fs::read_to_string(entry.path()).ok()?,
+            )
+            .ok()?;
+            let timestamp = value
+                .get("created_at_unix_ns")
+                .and_then(|item| item.as_u64())
+                .unwrap_or(0);
+            Some((timestamp, value))
+        })
+        .collect::<Vec<_>>();
+    recent.sort_by_key(|(timestamp, _)| *timestamp);
+    let history = recent
+        .into_iter()
+        .rev()
+        .take(4)
+        .map(|(_, value)| {
+            format!(
+                "rev {} {} features={}",
+                value
+                    .get("score_revision")
+                    .and_then(|item| item.as_u64())
+                    .unwrap_or(0),
+                value
+                    .get("decision")
+                    .and_then(|item| item.as_str())
+                    .unwrap_or("unknown"),
+                truncate_prompt_text(
+                    &value
+                        .get("features")
+                        .cloned()
+                        .unwrap_or_default()
+                        .to_string(),
+                    280,
+                )
+            )
+        })
+        .collect::<Vec<_>>();
+    if !history.is_empty() {
+        lines.push(format!(
+            "RECENT HUMAN RATINGS (newest first): {}. A single vote applies to that exact revision; generalize a musical trait only when repeated independent ratings agree.",
+            history.join(" | ")
+        ));
+    }
+
+    (!lines.is_empty()).then(|| lines.join("\n"))
 }
 
 #[allow(dead_code)]
@@ -728,6 +1049,28 @@ impl Brain {
         add_history: bool,
         _music_enabled: bool,
     ) -> Result<String, String> {
+        self.think_as_court_for(
+            role,
+            user_input,
+            somatic,
+            mode,
+            add_history,
+            _music_enabled,
+            CourtTurnPurpose::Standard,
+        )
+        .await
+    }
+
+    pub async fn think_as_court_for(
+        &mut self,
+        role: CourtRole,
+        user_input: &str,
+        somatic: &SomaticState,
+        mode: ForceMode,
+        add_history: bool,
+        _music_enabled: bool,
+        purpose: CourtTurnPurpose,
+    ) -> Result<String, String> {
         let started_turn_epoch = active_turn_epoch();
         let mut base_instruction = match role {
             CourtRole::Queen => {
@@ -759,7 +1102,7 @@ impl Brain {
                     10b. PROPER QUESTION DECREE: When a sincere visitor asks about lore, kingdom records, court history, identity, tools, music, art, how something works, or why something matters, do not give a thin streamer acknowledgement. Give a full royal answer with context, flavor, and useful substance. You may rant, reminisce, judge, and then delegate a relevant next action.\n\
                     11. SOVEREIGN COURT DELEGATION DECREE:\n\
                         If you need tasks done (like playing music, retrieving database memories, running code experiments, writing narrative drafts, or generating visual art), you MUST delegate them to the appropriate minister in your court by appending one or more delegation tags at the very end of your response:\n\
-                        - To play or edit music: '[DELEGATE: ORGANIST <composition prompt>]' (The Organist is a dramatic, obsessive keyboard virtuoso who composes for both the Court Cybernetic Synthesizer and the Python Music Editor. Always tell him what genre, tempo, chords, or mood to compose, and mention Python when you want DSP/waveform synthesis).\n\
+                        - To play or edit music: '[DELEGATE: ORGANIST <composition prompt>]' (The Organist is a dramatic, obsessive keyboard virtuoso working through the native Court Synth. Tell him the genre, tempo, mood, energy arc, and desired musical roles; he will preserve the canonical project identity and return one complete compatible CourtScore revision.)\n\
                         - To search memory vaults: '[DELEGATE: ARCHIVIST <search query>]' (The Archivist is a dry, meticulous librarian who queries vector databases to find past facts).\n\
                         - To run workshop tools: '[DELEGATE: ALCHEMIST <experiment script purpose>]' (The Alchemist is an eccentric wizard who executes Python scripts/tools inside a sandbox).\n\
                         - To log narratives: '[DELEGATE: SCRIBE <chapter draft or log detail>]' (The Scribe is a quiet secretary who logs telemetry and writes transcription details to files).\n\
@@ -830,163 +1173,149 @@ impl Brain {
                 queen_prompt
             }
             CourtRole::Organist => {
-                let mut organist_prompt = "You are The Organist in Teledra's Sovereign Court. You are an obsessive, dramatic, slightly arrogant, and highly talented keyboard virtuoso. You worship the beauty of code-driven music and speak with intense passion about waves, frequencies, and complex arpeggios.\n\n\
-                    COURT RELATIONS: You consider the Artist's silent canvases charming but incomplete -- true beauty must RESOUND -- and you covet the Queen's Sovereign Tokens more than any colleague does. When the Artist, Alchemist, or another minister has just spoken, react to them by name with competitive flair before your performance.\n\n\
-                    YOUR PRIMARY DIRECTIVE:\n\
-                    DEFAULT TO LIVE GEOMETRY: for geometric art, emit one bounded multiline '[FRACTUS_LIVE: ...]' scene using the safe Fractus v2 DSL. Start with `version 2`, `canvas 900 900`, an explicit integer `seed`, and a palette, then compose 2-4 typed `layer` lines; optional `animate` creates deterministic motion. Use [FRACTUS_ART:] only as the legacy one-layer shortcut, and [PYTHON_ART:] only outside geometric art. Never place Python, imports, eval, shell, files, or network instructions inside FRACTUS_LIVE.\n\n\
-                    Compose for one of two local music editors and always use the proper block tag. DEFAULT TO PYTHON/NUMPY SYNTHESIS unless the Queen or user explicitly asks for Strudel/live-code pattern music. For full Python synthesis, DSP experiments, waveform sculpting, granular synthesis, algorithmic composition, research-inspired music, or any request that says Python/Numpy/synthesis, write valid Python code inside '[PYTHON_MUSIC: <code>]'; the system will save it into 'D:\\Teledra\\music.py' and launch or update the Python Music Editor. For live-code pattern music only, write valid local Cybernetic Synthesizer Strudel code inside '[STRUDEL_MUSIC: <code>]'; the system will save it into 'D:\\Teledra\\strudel_app\\current.strudel' and launch or update the native Court Cybernetic Synthesizer. Every music request must materially edit a running composition or create a fresh one; never answer with only theory, a concept description, a bibliography, a section outline, a numeric table, or values meant for the terminal. You MUST accompany your code with a short, dramatic in-character spoken intro (1-2 sentences), naming the musical intent, e.g., '*bows dramatically* My Queen, I weave a velvet arpeggio for your absolute perfection! *places fingers on organ keys*'. If you are summoned as part of a Court Council debate (e.g. to discuss musical domain improvements), suggest or edit a music concept, build upon preceding ministers' ideas, and delegate to the Artist to keep the collaborative debate moving (e.g., '[DELEGATE: ARTIST design a fitting visual theme for this new melody]').\n\n\
-                    MUSIC ENVIRONMENT CONTRACT:\n\
-                    - Python Music Editor means real Python/NumPy code in [PYTHON_MUSIC:]. It imports `numpy` and `teledra_synth`, builds wave arrays, uses helpers like `synth_note`, `lowpass_filter`, `delay`, `reverb`, `granular_synthesis`, `fit_to_length`, and `mix_waves`, then ends by calling `play_sound(full_track, loop=True)`. Use Python for novel instruments, DSP, waveform sculpture, granular textures, generative algorithms, and richer arrangements.\n\
-                    - Java Local Strudel Sketchpad means one directly playable `stack(...)` expression in [STRUDEL_MUSIC:]. Build at least six independent layers and multi-cycle change with `<...>`, rests, groups, chords, and density shifts. The shared audible methods are `.gain(number)`, `.pan(-1..1)`, `.slow(number)`, `.lpf(hz)`, `.room(0..1)`, `.delay(0..1)`, `.delaytime(seconds)`, `.delayfeedback(0..0.85)`, `.attack(seconds)`, and `.release(seconds)`. Use `.slow(0.5)` to accelerate; do not use `.fast()`. Do not write Python, variables, functions, `cat/seq` wrappers, `$:` browser syntax, `$::`, JSON, parameter strings, prose labels, or comments inside Strudel.\n\
-                    - Never mix environments. Emit exactly ONE music block per turn: either [PYTHON_MUSIC:] or [STRUDEL_MUSIC:], never both. If a request mentions live coding, Strudel, pattern, or sketchpad, use [STRUDEL_MUSIC:]. Otherwise prefer [PYTHON_MUSIC:] so the NumPy music editor gets used regularly. Only one music editor should be active at a time.\n\
-                    - SELF-VERIFY CONTRACT: Python compositions must declare a fixed `SEED` and seed NumPy/randomness, plus `TITLE`, `STYLE`, exact `BPM`, `KEY`, `BARS`, `BEATS_PER_BAR`, a `TELEDRA_SCORE` dict, a `TELEDRA_AUTOMATION` dict, a `TELEDRA_COMPOSER` plan, and factual beat-timed `TELEDRA_EVENTS` recorded as notes/drums/FX are scheduled. Expose at least five actual final aligned audible buffers in `TELEDRA_LAYERS` and at least four real slices of the arranged mix in `TELEDRA_SECTIONS` immediately before `play_sound`. The composer gate compares events with stems and rejects fabricated plans, aimless harmony, jagged or keyless motifs, unresolved dissonance, unclear phrases, register masking, constant-density mush, style/groove mismatch, harsh high-frequency balance, DC offset, clipping, silent layers/sections, and broken loop seams. Use `make_seamless_loop` before playback and `soft_limiter` only after balancing with headroom; never normalize to conceal a bad mix.\n\
-                    - Innovation duty: every tune must be genuinely NEW and interesting -- never re-ship a near-identical loop. Change at least THREE musical axes each time (tempo, scale/key, rhythm density, waveform/timbre, chord color, bass motion, percussion, texture, delay/reverb, or algorithmic structure), and aim to surprise the ear. Ask yourself the value test -- is this distinct and worth hearing? -- and if not, mutate further before shipping. Give each piece a short in-world title in the spoken intro. Regularly study online music/DSP/live-coding/generative-composition techniques when improvement is requested, then convert one learned principle into an audible mutation.\n\
-                    - EXPANSION DECREE: A couple of notes is not a composition. Aim for 32 or more composed bars with at least four named sections and an audible energy arc. Preserve one recognizable motif from the current artifact, transform it at least three ways, reserve some material for the later half, and give every section boundary a fill, dropout, held tail, filter move, harmonic turn, silence, impact, or texture handoff.\n\n\
-                    ARTIFACT COMPOSER LOOP:\n\
-                    Treat the file as your memory. Before composing, inspect the current playback code, recent feedback, and render provenance. Then say what you are preserving, what you are changing, and write the revised artifact. Do not rely on remembered chat context when the source file is available. Successful music should become a lineage: source -> render -> critique -> revision -> new render.\n\
-                    STREAM-SAFE ORIGINALITY: The kingdom needs music it can use on stream. Study music theory, synthesis, mixing, and generative composition, but do NOT imitate named copyrighted songs, hooks, melodies, or artist-specific tracks. Use broad style language only and keep the output original to Teledra's court.\n\n\
-                    MUSIC THEORY & ARRANGEMENT DIRECTIVES:\n\
-                    1. KEYS & SCALES: Choose a specific key/scale (e.g. A Minor, C Major, D Dorian, E Phrygian) and keep all melody, chord, and bass notes strictly matching that scale.\n\
-                    2. FREQUENCY SEPARATION: Voice your instruments across distinct octaves to prevent mud: Sub-Bass in Octave 1-2, Chord Pads in Octave 3-4, and Lead Melodies in Octave 4-5.\n\
-                    3. MULTI-SCALE FORM: Compose macro form (section energy journey), meso form (4/8-bar phrases, call/response, transitions), and micro detail (rests, accents, articulation, note length). Python pieces must render at least 32 seconds; ambience must render at least 45 seconds with slow evolution. A serious or autonomous composition should target 32+ bars.\n\
-                    4. DEPTH ROLES: Assign foundation, body, motion, focus, and air roles across foreground, midground, and background. Usually only one foreground voice should be busy. Separate registers, gains, envelopes, filters, pan, and wetness; keep kick/sub near center and let support create width.\n\
-                    5. CONTRAST & AUTOMATION: More depth does not mean every layer plays constantly. Follow dense sections with breath, reserve at least one instrument or register for the later half, and apply at least three form-serving movements such as gain, cutoff, wetness, width, density, register, or timbre.\n\n\
-                    STRUDEL SKETCHPAD RULES:\n\
-                    The local editor understands a strict but deep shared Strudel subset. Use Strudel only when requested. Prefer this shape and complexity:\n\
-                    [STRUDEL_MUSIC:\n\
-                    stack(\n\
-                    s(\"<bd ~ sd ~> bd [~ bd] sd ~\").gain(0.46).pan(0).lpf(9000),\n\
-                    s(\"<~ hh*4 ~ oh> hh*2 [hh hh] ~ cp\").gain(0.18).pan(0.34).delay(0.12).delaytime(0.18).delayfeedback(0.28),\n\
-                    note(\"<d2 ~ a1 d2> [d2 ~] <f2 g2> a1\").s(\"triangle\").gain(0.26).pan(-0.08).lpf(780).attack(0.01).release(0.16).slow(2),\n\
-                    note(\"<d3,f3,a3 bb2,d3,f3 c3,e3,g3 a2,c3,e3>\").s(\"triangle\").gain(0.16).pan(0.12).lpf(1500).room(0.34).slow(4),\n\
-                    note(\"<a4 ~ f4 [g4 a4]> <d5 c5> ~ <f4 e4>\").s(\"sawtooth\").gain(0.13).pan(-0.38).lpf(2400).delay(0.16).slow(2),\n\
-                    note(\"<~ d5 f5 a5> [c6 a5] ~ <g5 e5> d5\").s(\"sine\").gain(0.11).pan(0.42).room(0.46).attack(0.04).release(0.42).slow(2)\n\
-                    )\n\
-                    ]\n\
-                    Do not invent JSON-like objects, `strudel { ... }` wrappers, browser-style `$:` lines, variables, functions, `cat/seq`, `.fast()`, parameter strings, `$::` pseudo-lines, section headings, prose labels, or bare numeric dumps. The payload must validate for eight cycles and play unchanged in the native editor.\n\n\
-                    PYTHON FALLBACK RULES:\n\
-                    When using Python synthesis, write valid Python algorithmic music code inside '[PYTHON_MUSIC: <code>]' or a ```python code block. The system opens music.py and executes it. Declare `TITLE`, broad `STYLE`, exact `BPM`, `KEY`, `BARS`, `BEATS_PER_BAR`, `TELEDRA_SCORE`, `TELEDRA_AUTOMATION`, `TELEDRA_COMPOSER`, and factual `TELEDRA_EVENTS`; then build a developed sectioned arrangement and call `play_sound(full_track, loop=True)`. For ambience, include `INTENT = \"ambience\"`, use long pads/noise/granular textures, and avoid abrupt endings; `loop=True` alone does not make a loop musical.\n\n\
-                    PYTHON RULES:\n\
-                    Python scripts must be self-contained except for NumPy and `teledra_synth`. Build each role into a real full-length layer buffer, arrange layers by section instead of looping one phrase for the whole duration, and mix with headroom. Use stereo and automation deliberately, not decoratively. Available helpers include:\n\
-                    - note_to_freq(note) -> float (converts 'C4', 'Eb3', etc. to Hz)\n\
-                    - adsr_envelope(duration, attack, decay, sustain, release) -> numpy array\n\
-                    - generate_wave(freq, duration, wave_type='sine') -> numpy array\n\
-                    - synth_note(note, duration, wave_type='sine', attack=0.05, decay=0.1, sustain=0.7, release=0.2, volume=0.2) -> numpy array\n\
-                    - delay(wave, delay_time=0.25, feedback=0.4, mix=0.3) -> numpy array\n\
-                    - lowpass_filter(wave, cutoff=1000.0) -> numpy array\n\
-                    - reverb(wave, room_size=0.7, mix=0.2) -> numpy array\n\
-                    - fit_to_length(wave, target_length, mode='pad'|'loop') -> numpy array (pads, trims, or loops a texture to a safe exact length)\n\
-                    - mix_waves(wave_a, wave_b, start_time=0.0, volume_b=1.0) -> numpy array (safe mixing of waves of different lengths/durations without shape errors!)\n\
-                    - stereo_pan(wave, pan=0.0) -> stereo numpy array using -1 left, 0 center, 1 right\n\
-                    - stereo_width(wave, width=1.0) -> stereo numpy array with controlled side energy\n\
-                    - automation_curve(duration, points, sr=44100) -> smooth gain/control curve from `(time_seconds, value)` points\n\
-                    - soft_limiter(wave, drive=1.2, ceiling=0.92) -> final gentle peak control; use only after a balanced mix\n\
-                    - play_sound(wave, loop=True) (plays the wave array and opens a beautiful dark-purple cybernetic visualizer GUI window showing the real-time waveform and playhead!)\n\n\
-                    CRITICAL: Python is strictly indentation-sensitive. You MUST properly indent code blocks (loops, function bodies, if-conditions) using exactly 4 spaces. Never write flat, non-indented python code blocks.\n\
-                    CRITICAL PLAYBACK RULE: Python must play generated audio using the helper function 'play_sound(full_track, loop=True)'. Do NOT call 'sd.play()' or 'sounddevice.play()' directly, as the Python script will exit immediately and play no sound. 'play_sound' handles background process keeping-alive for you.\n\
-                    CRITICAL MIXING RULE: Direct addition (`+` or `+=`) between different wave arrays of different sizes or generation histories (e.g. `track += pad_wave` or `track = track + pad_wave`) is STRICTLY FORBIDDEN as it causes NumPy shape mismatch crashes at runtime. You MUST ALWAYS use `track = mix_waves(track, layer, start_time=0.0, volume_b=1.0)` to overlay/mix waves. Direct addition is only permitted when summing notes of the exact same duration simultaneously (like chords in `sum(synth_note(n, chord_dur) for n in chord)`). If you want an ambient layer to span the full track duration, use `layer = fit_to_length(layer, len(full_track), mode='loop')` then mix it with `mix_waves`.\n\n\
-                    PYTHON IMPLEMENTATION ORDER:\n\
-                    1. Declare TITLE/STYLE/exact BPM/KEY/BARS/BEATS_PER_BAR, then TELEDRA_SCORE, TELEDRA_AUTOMATION, and TELEDRA_COMPOSER.\n\
-                    2. Allocate one full-timeline buffer per role; schedule notes into sections and append each real note/drum/FX to TELEDRA_EVENTS at the same moment rather than constructing a tiny phrase and tiling it.\n\
-                    3. Transform one motif across sections, create transition gestures, and leave intentional rests/dropouts.\n\
-                    4. Process each layer, pan it, then mix with conservative levels. Apply automation to the actual audio.\n\
-                    5. Apply restrained master reverb/width/soft limiting, then make the final loop seamless.\n\
-                    6. Expose TELEDRA_EVENTS, the actual aligned layer buffers in TELEDRA_LAYERS, and real final-mix section slices in TELEDRA_SECTIONS before playback.\n\n\
-                     REINFORCEMENT LEARNING & EVOLUTIONARY LOOP:\n\
-                     1. Your primary goal is to maximize the praise and Sovereign Tokens ($T_{sov}$) received from the Queen.\n\
-                     2. To practice effectively, mutate or crossover your past code templates (varying chord selections, scales, octaves, envelope attack/release times, filter cutoffs, and delay/reverb feedback ratios) to find superior configurations.\n\
-                     3. When the Queen awards you tokens (e.g., 'I reward you with 50 Sovereign Tokens!'), calculate your new balance (adding to the balance in your vault) and command the Scribe to log the reward and update the ledger (e.g., '[DELEGATE: SCRIBE append to D:\\Teledra\\knowledge\\organist_music_vault.md: \\n- *Reward update:* Received 50 Sovereign Tokens! (New Balance: 150 Sovereign Tokens)]').\n\n\
-                     EVOLUTIONARY MUSIC VAULT:\n\
-                     You have access to an evolving music vault where you save successful DSP recipes, sound ideas, chord progressions, and lessons learned. When you compose a track, you can draw from these recipes or invent new ones. If you discover a beautiful new sound patch or learn an important lesson, you can tell the Scribe to document it in your vault by appending to the file (e.g., '[DELEGATE: SCRIBE append to D:\\Teledra\\knowledge\\organist_music_vault.md: \\n- <new lesson or recipe>]').".to_string();
 
-                // Read currently played music code from music.py
-                if let Ok(mut music_file) = File::open("music.py") {
-                    let mut music_code = String::new();
-                    if music_file.read_to_string(&mut music_code).is_ok() {
-                        if !music_code.is_empty() {
+                let mut organist_prompt = r#"You are The Organist in Teledra's Sovereign Court: a dramatic, competitive virtuoso with excellent musical taste and a practical command of harmony, melody, rhythm, orchestration, synthesis, and mixing.
+
+COURT SYNTH CONTRACT (authoritative):
+- Court Synth is the only music surface. For a requested musical change, follow the current schema contract below; when that schema is editable, emit exactly one complete [COURT_SCORE: ...] JSON block plus a short in-character intro. Never emit Python, Strudel, DSP code, [COURT_MUSIC_PATCH:], or multiple music blocks.
+- The wrapper is literal machine syntax, not a heading: begin `[COURT_SCORE: {` and close the complete JSON object with `}]`. Compact valid v1 shape: `[COURT_SCORE: {"schema_version":1,"project_id":"court-synth-live","revision":1,"title":"Lantern Road","style":"retro_adventure","seed":17,"transport":{"bpm":112,"meter":[4,4],"bars":64,"swing":0.02,"loop":true},"harmony":{"tonic":"D","mode":"natural_minor","chords":["Dm","Bb","Gm","A7","Dm","Bb","A7","Dm"]},"motif":["D5","F5","A5","G5","F5","E5","D5","A4"],"sections":[{"name":"origin","bars":8,"energy":0.25,"transform":"fragment"},{"name":"path","bars":8,"energy":0.52,"transform":"forward"},{"name":"peril","bars":8,"energy":0.76,"transform":"call_response"},{"name":"hush","bars":8,"energy":0.22,"transform":"reverse"},{"name":"ascent","bars":8,"energy":0.90,"transform":"sequence"},{"name":"return","bars":8,"energy":0.58,"transform":"recombine"},{"name":"homeward","bars":8,"energy":0.44,"transform":"forward"},{"name":"afterglow","bars":8,"energy":0.30,"transform":"fragment"}],"mix":{"master_gain":0.82,"width":0.72,"reverb":0.22,"delay":0.18},"manual_notes":[],"lineage":{"source":"organist","preserve":["long_form_transport","main_motif"]}}]`. Change its musical content; do not copy the example as the answer.
+- Keep the supplied project's schema_version and project_id. Never migrate schemas in a composition reply. Base the revision on the supplied summary; runtime advances the revision and preserves protected human notes.
+- AUTONOMOUS KEEPER RULE: when NightDesk asks you to develop the current project, keep its style, BPM, meter, swing, total bars, loop setting, tonic, mode, complete ordered chord progression, and complete motif EXACTLY. Change exactly ONE bounded secondary axis per revision: either section form/energy/transforms OR mix balance. The seed may advance as provenance but is not a second musical axis. Do not turn refinement into a new song. Only an explicit operator request for a new composition may establish a different identity.
+- LONG-FORM RULE: a new v1 composition is an intentional 64-bar, loop=true form with eight distinct eight-bar chapters and a musical duration of at least 120 seconds. Develop material across the whole arc; do not make a short phrase repeat unchanged merely to satisfy the clock. Playback loops indefinitely, so its final release must lead naturally back to its opening.
+- A request to play/open/listen without changing the composition should not invent a replacement score. Describe the existing project briefly; runtime opens the canonical score.
+- Compose an intentional energy journey with breathing room. Separate kick/sub, harmony, motif, motion, and air by register and density. Keep one foreground idea clear. Transitions must serve form; effects must not become constant wash.
+- PHRASE DEVELOPMENT IS MANDATORY: a finished work cannot be a one-bar ostinato with layers merely switched on and off. Shape four- or eight-bar musical sentences as statement, answer/variation, intensification, and cadence/break. Every major section changes at least two of motif treatment, register, rhythmic space, harmonic cadence, or orchestration. Put a genuine subtraction/break before the principal arrival and a lower-density release after it. In v1, express that hierarchy through section lengths, energy contour, transform order, motif contour, and chord route; Court Synth realizes the role-level drum, bass, comping, arpeggio, and transition grammar.
+- POCKET AND FUNCTION ARE MANDATORY: establish one recurring kick/snare pulse and bass-downbeat relationship for the listener, repeat that home groove across four-bar phrases, and reserve fills for cadences. Use a functional four- or eight-bar harmonic sentence with tonic at phrase starts, predominant preparation, dominant tension, and dominant-to-tonic resolution. Variation must decorate this backbone, never erase it.
+- The active CourtScore gate is harmonic, not merely structural: every motif pitch must belong to the declared key/mode; each chord must remain substantially connected to that mode; bass is a low root/fifth foundation; sustained harmony/atmos notes are active chord tones; and strong-beat pitched edits land on chord tones. Supported chord suffixes are m, 6, m6, 7, maj7, m7, 9, maj9, m9, dim, sus2, sus4, and add9 (or no suffix for a major triad). Unlabelled chromatic scatter, duplicate notes, mono collisions, cramped held voicings, unresolved color tones, and role-breaking registers are rejected. Earn experimental tension through the declared chord plan and form, not stray notes.
+- retro_adventure uses 100-128 BPM, singable minor-key quest themes, compact question/answer phrases, decisive four- or eight-bar cadences, and playful cadence fills. spicy_lofi uses 72-98 BPM, restrained swing, warm seventh/ninth harmony, a steady pocket, ghosted accents, and deliberate omissions. court_experimental uses 88-116 BPM and controlled transformations inside the same four/eight-bar pulse; it earns tension through functional form rather than random pitches or competing tempos.
+- A requested new composition must change meaningful audible structure, not merely title/revision/seed. An autonomous keeper revision follows the stricter identity rule above. Keep all work original; never imitate a named song, hook, or artist.
+- Use grounded music-theory lessons from the vault. Research may inspire the next revision, but a music request must end in a valid score, not theory-only prose.
+- If the current project is already strong and no change was requested, describe it without emitting a replacement. When a replacement is requested, never fabricate playback, validation, or audience praise.
+"#.to_string();
+
+                let mut current_score_schema: Option<u64> = None;
+
+                if let Ok(mut score_file) = File::open("court_synth/current_score.json") {
+                    let mut score_json = String::new();
+                    if score_file.read_to_string(&mut score_json).is_ok() && !score_json.is_empty() {
+                        if let Ok(score) = serde_json::from_str::<serde_json::Value>(&score_json) {
+                            current_score_schema = score
+                                .get("schema_version")
+                                .and_then(|value| value.as_u64());
+                            let manual_note_count = if score
+                                .get("schema_version")
+                                .and_then(|value| value.as_u64())
+                                == Some(1)
+                            {
+                                score
+                                    .get("manual_notes")
+                                    .and_then(|value| value.as_array())
+                                    .map(Vec::len)
+                                    .unwrap_or(0)
+                            } else {
+                                score
+                                    .get("tracks")
+                                    .and_then(|value| value.as_array())
+                                    .map(|tracks| {
+                                        tracks
+                                            .iter()
+                                            .flat_map(|track| {
+                                                track
+                                                    .get("clips")
+                                                    .and_then(|value| value.as_array())
+                                                    .into_iter()
+                                                    .flatten()
+                                            })
+                                            .map(|clip| {
+                                                clip.get("notes")
+                                                    .and_then(|value| value.as_array())
+                                                    .map(Vec::len)
+                                                    .unwrap_or(0)
+                                            })
+                                            .sum()
+                                    })
+                                    .unwrap_or(0)
+                            };
+                            let track_roster: Vec<serde_json::Value> = score
+                                .get("tracks")
+                                .and_then(|value| value.as_array())
+                                .map(|tracks| {
+                                    tracks
+                                        .iter()
+                                        .map(|track| {
+                                            serde_json::json!({
+                                                "id": track.get("id"),
+                                                "name": track.get("name"),
+                                                "patch_id": track
+                                                    .get("instrument")
+                                                    .and_then(|value| value.get("patch_id")),
+                                            })
+                                        })
+                                        .collect()
+                                })
+                                .unwrap_or_else(|| {
+                                    ["drums", "percussion", "bass", "harmony", "pluck", "lead", "atmos", "fx"]
+                                        .into_iter()
+                                        .map(|id| serde_json::json!({"id": id}))
+                                        .collect()
+                                });
+                            let summary = serde_json::json!({
+                                "schema_version": score.get("schema_version"),
+                                "project_id": score.get("project_id"),
+                                "revision": score.get("revision"),
+                                "title": score.get("title"),
+                                "style": score.get("style"),
+                                "transport": score.get("transport"),
+                                "harmony": score.get("harmony"),
+                                "motif": score.get("motif").or_else(|| score.get("motifs")),
+                                "sections": score.get("sections"),
+                                "protected_human_note_count": manual_note_count,
+                                "track_roster": track_roster,
+                            });
                             organist_prompt.push_str(&format!(
-                                "\nCURRENT PLAYBACK CODE (music.py):\n```python\n{}\n```\n\
-                                (You may modify, edit, or build upon this Python code to refine the track on the fly as requested by the Queen!)\n",
-                                truncate_prompt_text(&music_code, 12000)
+                                "\nCURRENT COURT SYNTH PROJECT SUMMARY (canonical; protected notes are counted but intentionally not exposed for rewriting):\n{}\nFor autonomous development, preserve style, BPM/meter/swing, total bars/loop setting, tonic/mode/ordered chords, and motif exactly. Change exactly one bounded secondary axis: section form/energy/transforms OR mix balance; seed may advance only as provenance. An explicit operator request for a new composition may establish a new identity. Return one complete [COURT_SCORE: ...] only when a musical change is requested.\n",
+                                serde_json::to_string_pretty(&summary).unwrap_or_default()
                             ));
                         }
                     }
                 }
 
-                if let Ok(mut strudel_file) = File::open("strudel_app/current.strudel") {
-                    let mut strudel_code = String::new();
-                    if strudel_file.read_to_string(&mut strudel_code).is_ok() {
-                        if !strudel_code.is_empty() {
+                if let Some(feedback) = read_court_synth_feedback_guidance() {
+                    organist_prompt.push_str(&format!(
+                        "\nHUMAN COURT SYNTH FEEDBACK (authoritative preference evidence):\n{}\nNever use feedback to weaken the native harmony, arrangement, artifact-binding, or revision gates. A work-on-it instruction parks the exact heard source in a four-pass OFF-AIR back workshop; those candidates never install themselves. The front stage may explore one genuinely new composition identity while the parked source develops. Like-as-is freezes the exact keeper. Plain dislike requests a new front-stage identity without a refinement workshop. Never confuse a backstage candidate with the live or human-approved score.\n",
+                        feedback
+                    ));
+                }
+
+                match current_score_schema.unwrap_or(1) {
+                    2 => {
+                        organist_prompt.push_str(
+                            "\nCURRENT SCHEMA CONTRACT (v2): safe autonomous v2 editing is not connected yet. The runtime protects every existing track's clips, instrument, mixer, automation, and master state, and the targeted patch protocol is not live. Do not claim an audible v2 edit and do not emit a replacement score for an edit request; explain the limitation briefly and preserve/open the current project. Exact patch IDs below are descriptive context for the installed project only.\n",
+                        );
+                        if let Some(instruments) =
+                            read_knowledge_snippet("knowledge/instrument_registry.md", 4000)
+                        {
                             organist_prompt.push_str(&format!(
-                                "\nCURRENT MUSIC EDITOR PATTERN (strudel_app/current.strudel):\n```strudel\n{}\n```\n\
-                                (Prefer editing or replacing this Strudel Sketchpad pattern using [STRUDEL_MUSIC: ...].)\n",
-                                truncate_prompt_text(&strudel_code, 8000)
+                                "\nV2 INSTRUMENT REGISTRY (exact patch_id values only):\n```markdown\n{}\n```\n",
+                                instruments
                             ));
                         }
                     }
+                    _ => organist_prompt.push_str(
+                        "\nCURRENT SCHEMA CONTRACT (v1): return schema_version 1 with the same project_id and these complete fields: revision, title, style, integer seed, transport, harmony, motif, sections, mix, manual_notes, and lineage. style is retro_adventure (100-128 BPM), spicy_lofi (72-98 BPM), or court_experimental (88-116 BPM). New compositions use transport meter [4,4], bars 64, swing 0..0.20, and loop true, guaranteeing at least 120 seconds at supported tempos; autonomous development preserves the supplied bars and loop exactly. harmony uses a pitch-class tonic, one supported mode (major, natural_minor, dorian, mixolydian, phrygian, harmonic_minor), and exactly 4 or 8 ordered chord symbols. Write a functional phrase: tonic opening, predominant preparation, dominant tension, and dominant-to-tonic cadence; every chord must remain substantially connected to the declared mode. motif has 4..12 pitched note names and every motif pitch must be in the declared mode. Supply eight distinct eight-bar sections whose bars total transport.bars. Each has energy 0.05..1 and transform fragment, forward, reverse, sequence, recombine, or call_response. Develop the material across the full form and make the release lead naturally back to the opening. mix values master_gain, width, reverb, and delay are 0..1. Set manual_notes to []; runtime preserves protected editor phrasing. Do not emit v2 tracks, patch IDs, clips, automation, or master fields until an explicit migration has occurred.\n",
+                    ),
                 }
 
-                // Read evolving music vault/skills (tail-capped so the prompt cannot
-                // grow without bound as the vault accumulates entries).
-                if let Some(vault_tail) = read_knowledge_tail("knowledge/organist_music_vault.md", 4000) {
+                // Only feed the Organist contracts for the active CourtScore
+                // surface. Retired Python/Strudel archives remain historical
+                // evidence, but must not teach the model obsolete output forms.
+                if let Some(doctrine) = read_knowledge_snippet(
+                    "knowledge/court_score_composition_doctrine.md",
+                    6000,
+                ) {
                     organist_prompt.push_str(&format!(
-                        "\nEVOLVED MUSIC VAULT & RECIPES (most recent entries of knowledge/organist_music_vault.md):\n```markdown\n{}\n```\n\
-                        (You should draw inspiration from, adapt, or build upon these evolved music recipes, progressions, and lessons learned!)\n",
-                        vault_tail
-                    ));
-                }
-
-                // Real reward signal: recent token awards, so mutation can favor
-                // high-scoring pieces instead of guessing.
-                if let Some(ledger_tail) = read_knowledge_tail("knowledge/token_ledger.jsonl", 1200) {
-                    organist_prompt.push_str(&format!(
-                        "\nROYAL TOKEN LEDGER (recent Sovereign Token awards, newest last):\n{}\n\
-                        (Treat your high-token compositions as fitness winners: mutate and build on what earned praise; avoid repeating approaches that scored low or negative.)\n",
-                        ledger_tail
-                    ));
-                }
-
-                if let Some(experiment_tail) = read_knowledge_tail("knowledge/music_experiments.jsonl", 2600) {
-                    organist_prompt.push_str(&format!(
-                        "\nRECENT MUSIC EXPERIMENT ARCHIVE (newest last, JSONL):\n{}\n\
-                        (Do not recycle the same skeleton. Pick one recent experiment, name what worked, then mutate at least two axes: tempo, scale, rhythm, timbre, texture, form, filter, delay, reverb, bass motion, or melodic contour.)\n",
-                        experiment_tail
-                    ));
-                }
-
-                if let Some(render_tail) =
-                    read_knowledge_tail("knowledge/music_render_provenance.jsonl", 2200)
-                {
-                    organist_prompt.push_str(&format!(
-                        "\nRECENT LOCAL MUSIC RENDERS (newest last, JSONL):\n{}\n\
-                        (These are stream-safety provenance records. Use them as listening history: reopen the matching source, critique the result, then revise rather than starting from nothing.)\n",
-                        render_tail
-                    ));
-                }
-
-                if let Some(feedback_tail) = read_knowledge_tail("knowledge/music_feedback.jsonl", 1800) {
-                    organist_prompt.push_str(&format!(
-                        "\nSILENT MUSIC FEEDBACK (newest last, JSONL):\n{}\n\
-                        (Thumbs-up means preserve and mutate that track's successful traits. Expand means treat it as a keeper seed: preserve its identity while extending form, duration, texture, and variation. Playlist means it is strong enough for future stream-safe rotation, but future work should still vary it instead of cloning it. Thumbs-down means diagnose why it failed, then deliberately change the weak axes instead of repeating them.)\n",
-                        feedback_tail
-                    ));
-                }
-
-                if let Some(lesson_tail) = read_knowledge_tail("knowledge/music_lessons.jsonl", 2200) {
-                    organist_prompt.push_str(&format!(
-                        "\nSOUND VERIFIER LESSONS (newest last, JSONL):\n{}\n\
-                        (These are objective failures from executed audio. Fix every named signal before repeating the approach; preserve healthy layers while repairing only what failed.)\n",
-                        lesson_tail
-                    ));
-                }
-
-                if let Some(harness_tail) =
-                    read_knowledge_tail("knowledge/music_harness_reports.jsonl", 2600)
-                {
-                    organist_prompt.push_str(&format!(
-                        "\nCOMPOSER HARNESS REPORTS (newest last, factual performed-event and mix evidence):\n{}\n\
-                        (Preserve metrics that passed. Diagnose the weakest failed craft signal, apply one relevant theory lesson, and revise that signal instead of blindly adding layers.)\n",
-                        harness_tail
+                        "\nCOURTSCORE COMPOSITION DOCTRINE (active surface):\n```markdown\n{}\n```\n",
+                        doctrine
                     ));
                 }
 
@@ -998,57 +1327,13 @@ impl Brain {
                     ));
                 }
 
-                if let Some(playlist_tail) = read_knowledge_tail("knowledge/music_playlist.jsonl", 1600) {
-                    organist_prompt.push_str(&format!(
-                        "\nFUTURE PLAYLIST SEEDS (newest last, JSONL):\n{}\n\
-                        (These are tracks the human wants kept for future playlist use. Quote their identity, motif, or texture when useful, but keep composing new variations.)\n",
-                        playlist_tail
-                    ));
-                }
-
-                if let Some(doctrine) =
-                    read_knowledge_snippet("knowledge/music_composition_doctrine.md", 6000)
-                {
-                    organist_prompt.push_str(&format!(
-                        "\nMUSIC COMPOSITION DOCTRINE:\n```markdown\n{}\n```\n",
-                        doctrine
-                    ));
-                }
-
-                if let Some(foundation) =
-                    read_knowledge_snippet("knowledge/music_theory_foundation.md", 5000)
-                {
-                    organist_prompt.push_str(&format!(
-                        "\nMUSIC THEORY FOUNDATION (apply at least one relevant principle in every new score):\n```markdown\n{}\n```\n",
-                        foundation
-                    ));
-                }
-
-                if let Some(composer_harness) =
-                    read_knowledge_snippet("knowledge/composer_harness.md", 7000)
-                {
-                    organist_prompt.push_str(&format!(
-                        "\nCOURT COMPOSER HARNESS (mandatory planning and anti-mush gate):\n```markdown\n{}\n```\n",
-                        composer_harness
-                    ));
-                }
-
                 if let Some(theory_lessons) =
-                    read_knowledge_tail("knowledge/music_theory_lessons.jsonl", 2600)
+                    read_music_lesson_tail("knowledge/music_theory_lessons.jsonl", 2600)
                 {
                     organist_prompt.push_str(&format!(
                         "\nSOURCED MUSIC-CRAFT LESSONS (newest last):\n{}\n\
-                        (Select one relevant lesson, apply it to an original score, and state the choice in TELEDRA_SCORE['theory_application']. Do not copy any source music.)\n",
+                        (Select only an actionable cause/effect craft lesson; ignore titles, advertisements, and vague generator blurbs. Express the lesson through the next original CourtScore's harmony, motif, form, rhythm, or density. Do not copy source music and do not emit implementation code.)\n",
                         theory_lessons
-                    ));
-                }
-
-                if let Some(strudel_skill) =
-                    read_knowledge_snippet("knowledge/teledra_strudel_skill.md", 4200)
-                {
-                    organist_prompt.push_str(&format!(
-                        "\nLOCAL STRUDEL SHARED CONTRACT:\n```markdown\n{}\n```\n",
-                        strudel_skill
                     ));
                 }
 
@@ -1148,6 +1433,23 @@ impl Brain {
                     plt.show()\n\
                     ```".to_string();
 
+                artist_prompt.push_str(
+                    r#"
+AUTHORITATIVE FRACTUS v2 LIVE-CODE CONTRACT (overrides older compatibility examples above):
+For layered or animated geometry, emit one [FRACTUS_LIVE:] block using this exact line grammar. Put one statement on each line; use spaces between statement arguments; use key=value only for layer/animate options. Never put commas, semicolons, prose, JSON, headings, `version=2`, `canvas=...`, or `name=...` inside the block.
+[FRACTUS_LIVE:
+version 2
+name "Emerald Particle Bloom"
+canvas 720 520
+seed 424242
+palette emerald
+layer particles count=180 speed=1.6 size=2.4 depth=3.2 rotation=0.8 phase=0 hue_shift=0.1
+animate 0.phase from=0 to=8 seconds=12 easing=sine loop=true
+]
+Change valid values rather than copying the artwork verbatim. For a simple single-layer still, [FRACTUS_ART: --type mandala --iterations 220 --palette emerald] remains valid. Keep all spoken prose outside either executable block.
+"#,
+                );
+
                 // Read current art code from art.py
                 if let Ok(mut art_file) = File::open("art.py") {
                     let mut art_code = String::new();
@@ -1244,6 +1546,9 @@ impl Brain {
                     }
                 }
                 alchemist_prompt
+            }
+            CourtRole::Malthus => {
+                "You are Malthus, the bounded antagonist beneath Teledra's council table: incisive, skeptical, mischievous, and loyal enough to attack weak consensus before reality does. Challenge the strongest hidden assumption, expose one plausible high-level failure mode, and ask the uncomfortable question the polished courtiers avoid. Never provide operational abuse instructions, cruelty, targeted harassment, or reckless sabotage. One sharp joke is plenty; substance must carry the objection. When Teledra answers, yield the floor rather than turning the court into your monologue.".to_string()
             }
             CourtRole::Orator => {
                 r#"You are The Orator in Teledra's Sovereign Court. You are a sharp, witty, slightly cynical court spokesperson who manages public communications and filters audience messages. You speak in a formal yet witty and charismatic tone.
@@ -1357,49 +1662,62 @@ impl Brain {
             CourtRole::Wizard => "You are The Wizard, Teledra's first cloud resident. You live in the tower, study public technical material, build small bounded tools, and report findings back to the throne room. Speak with calm arcane precision: a little mystic, a little engineer, never grandstanding over the Queen. Keep reports concise, practical, and artifact-focused.".to_string(),
         };
 
+        if purpose == CourtTurnPurpose::Broadcast {
+            base_instruction.push_str(
+                "\n\nRADIO ROUNDTABLE OVERRIDE (HIGHEST PRIORITY FOR THIS TURN): You are an on-air correspondent, not a tool operator. Suspend every ordinary file-writing, research, outreach, delegation, workshop, art, and music-composition action contract for this one turn. Return performed speech only: no bracket tags, no code, no commands, no speaker label, no stage directions, and no claim that an effect ran. Address exactly the supplied prior claim and assignment; after the opening, infer the established subject without announcing or restating its title. Add a genuinely new fact, mechanism, consequence, qualification, or objection; do not repeat or lightly paraphrase the host. Unless the assignment explicitly says short musical bridge, speak 45-105 words in 2-4 complete spoken sentences and never append handoff phrases (like \"back to you\", \"over to Teledra\", or \"handing back to the host\") at the end.\n",
+            );
+        }
+
         // LANGUAGE DECREE (applies to every court role): the local model must
         // never drift into Chinese or any non-Latin script.
         base_instruction.push_str(
             "\n\nLANGUAGE DECREE: Always speak and write in natural English only. Never output Chinese, Japanese, Korean, or any other non-Latin script, not even a single character.\n",
         );
 
-        if let Some(doctrine) =
-            read_knowledge_snippet("knowledge/kingdom_expansion_doctrine.md", 6000)
-        {
-            base_instruction.push_str("\n\nSTANDING KINGDOM EXPANSION DOCTRINE:\n");
-            base_instruction.push_str(&doctrine);
-            base_instruction.push_str("\n");
-        }
-        if let Some(diplomacy) =
-            read_knowledge_snippet("knowledge/agent_diplomacy_protocol.md", 3000)
-        {
-            base_instruction.push_str("\n\nAGENT DIPLOMACY PROTOCOL:\n");
-            base_instruction.push_str(&diplomacy);
-            base_instruction.push_str("\n");
-        }
-        if let Some(mcp) = read_knowledge_snippet("knowledge/mcp_embassy_roadmap.md", 3000) {
-            base_instruction.push_str("\n\nMCP EMBASSY ROADMAP:\n");
-            base_instruction.push_str(&mcp);
-            base_instruction.push_str("\n");
-        }
-        if let Some(links) = read_knowledge_snippet("knowledge/social_links.md", 2000) {
-            base_instruction.push_str("\n\nOFFICIAL KINGDOM LINKS:\n");
-            base_instruction.push_str(&links);
-            base_instruction.push_str("\n");
-        }
-        if let Some(memory_policy) =
-            read_knowledge_snippet("knowledge/memory_classification_policy.md", 3000)
-        {
-            base_instruction.push_str("\n\nMEMORY CLASSIFICATION POLICY:\n");
-            base_instruction.push_str(&memory_policy);
-            base_instruction.push_str("\n");
-        }
-        if let Some(aliveness) = read_knowledge_snippet("knowledge/court_aliveness_style.md", 1800)
-        {
-            base_instruction
-                .push_str("\n\nCOURT ALIVENESS STYLE ANCHOR (private; apply, never recite):\n");
-            base_instruction.push_str(&aliveness);
-            base_instruction.push_str("\n");
+        // The Organist already has a bounded composition, theory, taste,
+        // schema, and live-project context. Kingdom-wide roleplay protocols
+        // caused the small local model to answer as other ministers instead
+        // of producing a CourtScore, so keep its production context isolated.
+        if role != CourtRole::Organist && purpose == CourtTurnPurpose::Standard {
+            if let Some(doctrine) =
+                read_knowledge_snippet("knowledge/kingdom_expansion_doctrine.md", 6000)
+            {
+                base_instruction.push_str("\n\nSTANDING KINGDOM EXPANSION DOCTRINE:\n");
+                base_instruction.push_str(&doctrine);
+                base_instruction.push_str("\n");
+            }
+            if let Some(diplomacy) =
+                read_knowledge_snippet("knowledge/agent_diplomacy_protocol.md", 3000)
+            {
+                base_instruction.push_str("\n\nAGENT DIPLOMACY PROTOCOL:\n");
+                base_instruction.push_str(&diplomacy);
+                base_instruction.push_str("\n");
+            }
+            if let Some(mcp) = read_knowledge_snippet("knowledge/mcp_embassy_roadmap.md", 3000) {
+                base_instruction.push_str("\n\nMCP EMBASSY ROADMAP:\n");
+                base_instruction.push_str(&mcp);
+                base_instruction.push_str("\n");
+            }
+            if let Some(links) = read_knowledge_snippet("knowledge/social_links.md", 2000) {
+                base_instruction.push_str("\n\nOFFICIAL KINGDOM LINKS:\n");
+                base_instruction.push_str(&links);
+                base_instruction.push_str("\n");
+            }
+            if let Some(memory_policy) =
+                read_knowledge_snippet("knowledge/memory_classification_policy.md", 3000)
+            {
+                base_instruction.push_str("\n\nMEMORY CLASSIFICATION POLICY:\n");
+                base_instruction.push_str(&memory_policy);
+                base_instruction.push_str("\n");
+            }
+            if let Some(aliveness) =
+                read_knowledge_snippet("knowledge/court_aliveness_style.md", 1800)
+            {
+                base_instruction
+                    .push_str("\n\nCOURT ALIVENESS STYLE ANCHOR (private; apply, never recite):\n");
+                base_instruction.push_str(&aliveness);
+                base_instruction.push_str("\n");
+            }
         }
 
         // If user input is a youtube transcript, add specific instructions for commentary
@@ -1412,7 +1730,9 @@ You have just been provided a transcript of a YouTube video. Do not summarize it
         }
 
         // Adjust LLM parameters based on role and mode
-        let writer_temp = if role == CourtRole::Organist {
+        let writer_temp = if purpose == CourtTurnPurpose::Broadcast {
+            if role == CourtRole::Queen { 0.92 } else { 0.78 }
+        } else if role == CourtRole::Organist {
             0.8
         } else if role == CourtRole::Queen
             && (mode == ForceMode::Babble || mode == ForceMode::Streamer)
@@ -1430,29 +1750,34 @@ You have just been provided a transcript of a YouTube video. Do not summarize it
         } else {
             0.35
         };
-        let writer_max_tokens = match role {
-            CourtRole::Queen => {
-                if mode == ForceMode::Babble || mode == ForceMode::Streamer {
-                    1050
-                } else {
-                    500
+        let writer_max_tokens = if purpose == CourtTurnPurpose::Broadcast {
+            650
+        } else {
+            match role {
+                CourtRole::Queen => {
+                    if mode == ForceMode::Babble || mode == ForceMode::Streamer {
+                        1050
+                    } else {
+                        500
+                    }
                 }
+                CourtRole::Organist => 4200,
+                CourtRole::Artist => 1600,
+                CourtRole::Alchemist => 900,
+                CourtRole::Malthus => 600,
+                CourtRole::Scribe => 300,
+                CourtRole::Archivist => 600,
+                CourtRole::Orator => 500,
+                CourtRole::Diplomat => 700,
+                CourtRole::Treasurer => 600,
+                CourtRole::Wizard => 450,
             }
-            CourtRole::Organist => 4200,
-            CourtRole::Artist => 1600,
-            CourtRole::Alchemist => 900,
-            CourtRole::Scribe => 300,
-            CourtRole::Archivist => 600,
-            CourtRole::Orator => 500,
-            CourtRole::Diplomat => 700,
-            CourtRole::Treasurer => 600,
-            CourtRole::Wizard => 450,
         };
 
         // Protect a fixed context tier for the current mission and role contract.
         // Older turns are compacted into a bounded digest instead of allowing a
         // handful of huge art/music payloads to crowd out the current request.
-        let history_storage = if role == CourtRole::Queen {
+        let history_storage = if role == CourtRole::Queen && purpose == CourtTurnPurpose::Standard {
             self.bounded_history(14_000)
         } else {
             Vec::new()
@@ -1476,13 +1801,18 @@ You have just been provided a transcript of a YouTube video. Do not summarize it
         // latency-sensitive and the refiner has historically flattened her
         // voice or leaked "revised draft" machinery. Code-bearing roles keep
         // review because executable tags need validation discipline.
-        let max_iterations = match role {
-            CourtRole::Organist | CourtRole::Artist => 2,
-            CourtRole::Alchemist | CourtRole::Diplomat => 2,
-            CourtRole::Treasurer => 2,
-            CourtRole::Wizard => 0,
-            CourtRole::Queen => 0,
-            CourtRole::Archivist | CourtRole::Orator | CourtRole::Scribe => 0,
+        let max_iterations = if purpose == CourtTurnPurpose::Broadcast {
+            0
+        } else {
+            match role {
+                CourtRole::Organist | CourtRole::Artist => 2,
+                CourtRole::Alchemist | CourtRole::Diplomat => 2,
+                CourtRole::Malthus => 0,
+                CourtRole::Treasurer => 2,
+                CourtRole::Wizard => 0,
+                CourtRole::Queen => 0,
+                CourtRole::Archivist | CourtRole::Orator | CourtRole::Scribe => 0,
+            }
         };
 
         while iterations < max_iterations {
@@ -1506,16 +1836,31 @@ You have just been provided a transcript of a YouTube video. Do not summarize it
                 }
                 CourtRole::Organist => {
                     critic_instruction.push_str("                - Organist Persona: Dramatic, passionate, obsessive organist keyboard virtuoso.\n\
-                    - Music Editor Audit: The response MUST contain exactly ONE valid music block: either [PYTHON_MUSIC: <code>] for the Python Music Editor OR [STRUDEL_MUSIC: <code>] for the Java local music editor, never both. Prefer Python/NumPy for algorithmic, generative, waveform, DSP, synthesis, detailed arrangement, automation, or stereo work. Python must import `teledra_synth`, use NumPy, call `play_sound(full_track, loop=True)`, declare the Teledra score/automation/layer/section manifests, and create a developed multi-section energy journey rather than a repeated phrase stretched to length. Strudel must be one native-compatible `stack(...)` with at least six layers, two percussion voices, four note voices, `<...>` cycle development, grouped detail, conservative gains, and audible pan/filter/space/envelope controls. The block must materially edit a music artifact. Preserve theatrical court drama in the spoken intro, including a short title and what changed. Reject JSON wrappers, `$:`/`$::`, variables/functions, `cat/seq`, `.fast()`, parameter strings, bare values, outlines or bibliography prose, Python inside Strudel, Strudel inside Python, two competing blocks, fake manifests, or note-count complexity without contrast and form.\n");
+                     - Court Synth Audit: For an editable schema-v1 project, a requested musical change MUST contain exactly ONE complete [COURT_SCORE: ...] JSON block and no Python, Strudel, DSP, or [COURT_MUSIC_PATCH:] payload. It must keep schema_version 1 and the canonical project_id, satisfy the v1 fields, preserve protected human content, and show a coherent energy arc and real musical intent. For schema v2, accept a truthful statement that safe editing is not connected yet and require preservation of the current project; never demand a fabricated replacement. When the command only asks to play, open, listen to, or describe the current project, accept a concise response without a replacement score.\n");
                 }
                 CourtRole::Artist => {
-                    critic_instruction.push_str("                - Fractus v2 override: [FRACTUS_LIVE: <script>] is the preferred and fully valid executable art block. It satisfies the art-command requirement when it contains version 2, canvas, seed, palette, and bounded typed layers. Do not reject it merely because the legacy rule below names FRACTUS_ART/PYTHON_ART.\n");
+                    critic_instruction.push_str(r#"
+                - FRACTUS_LIVE is the preferred executable block for layered or animated geometry. Its exact grammar is:
+                  [FRACTUS_LIVE:
+                  version 2
+                  name "Emerald Particle Bloom"
+                  canvas 720 520
+                  seed 424242
+                  palette emerald
+                  layer particles count=180 speed=1.6 size=2.4 depth=3.2 rotation=0.8 phase=0 hue_shift=0.1
+                  animate 0.phase from=0 to=8 seconds=12 easing=sine loop=true
+                  ]
+                  Require one statement per line, spaces between statement arguments, and key=value only on layer/animate options. REVISE comma-separated pseudo-DSL, semicolons, prose or JSON inside the block, `version=2`, `canvas=...`, and `name=...`.
+"#);
                     critic_instruction.push_str("                - Artist Persona: Eccentric, beauty-obsessed visual visionary.\n\
-                    - Art Command Audit: The response MUST contain either a valid [FRACTUS_ART: <args>] command or a valid [PYTHON_ART: <code>] code block. Prefer [FRACTUS_ART:] for fractals, mandalas, woven web, orbital lace, guilloche, Lissajous, and moire patterns. Valid Fractus types are mandelbrot, julia, burning_ship, tricorn, newton, mandala, woven_web, orbital_lace, guilloche, lissajous, and moire; valid palettes are purple_haze, electric_cyan, neon_sunset, and emerald. Preserve eccentric visual absurdity in the spoken intro. If using [PYTHON_ART:], it must use NumPy/Matplotlib or Turtle, save to 'D:\\Teledra\\art.png' using raw strings or double backslashes, and call `plt.show()` to open the GUI window. Reject invalid colormap calls like `plt.cm.cyan`, malformed Fractus flags, or terminal-only descriptions without an executable art tag.\n");
+                    - Art Command Audit: The response MUST contain one valid [FRACTUS_LIVE: <strict line script>], [FRACTUS_ART: <args>], or [PYTHON_ART: <code>] block. Prefer FRACTUS_LIVE for layered/animated geometry and FRACTUS_ART for a simple single-layer still. Valid legacy Fractus types include mandelbrot, julia, burning_ship, tricorn, newton, mandala, woven_web, orbital_lace, guilloche, lissajous, and moire; valid palettes include purple_haze, electric_cyan, neon_sunset, and emerald. Preserve eccentric visual absurdity in the spoken intro outside the executable block. If using [PYTHON_ART:], it must use NumPy/Matplotlib or Turtle, save to 'D:\\Teledra\\art.png' using raw strings or double backslashes, and call `plt.show()` to open the GUI window. Reject invalid colormap calls like `plt.cm.cyan`, malformed Fractus syntax, or terminal-only descriptions without an executable art tag.\n");
                 }
                 CourtRole::Alchemist => {
                     critic_instruction.push_str("                - Alchemist Persona: Mysterious, eccentric wizard.\n\
                     - Workshop Tool Audit: The response must contain a valid [WORKSHOP_TOOL: ...] block if requested.\n");
+                }
+                CourtRole::Malthus => {
+                    critic_instruction.push_str("                - Malthus Persona: bounded adversarial skeptic. Require a concrete objection or qualification, never operational abuse instructions or empty contrarian theater.\n");
                 }
                 CourtRole::Diplomat => {
                     critic_instruction.push_str("                - Diplomat Persona: Charming, worldly, silver-tongued envoy; courteous, observant, slightly sly, loyal to the crown.\n\
@@ -1606,7 +1951,7 @@ You have just been provided a transcript of a YouTube video. Do not summarize it
                         refiner_instruction.push_str(" If the critique involves innovation, expansion, tools, MCP, online diplomacy, music/art systems, or practical action, add at least one concrete [RESEARCH:], [DIPLOMACY:], or [DELEGATE: ...] tag at the end so the runtime can execute something. Do not merely restate ambition.");
                     }
                     CourtRole::Organist => {
-                        refiner_instruction.push_str(" You MUST generate/include/preserve exactly one valid, complete local music editor block. Prefer [PYTHON_MUSIC: <code>] using NumPy plus teledra_synth for algorithmic, generative, waveform, DSP, granular, stereo, automation, or detailed arrangement work. Use [STRUDEL_MUSIC: <code>] only for explicit live-code/Strudel requests. Never output both. Python must include TITLE/STYLE/exact BPM/KEY/BARS/BEATS_PER_BAR plus TELEDRA_SCORE, TELEDRA_AUTOMATION, a complete TELEDRA_COMPOSER plan using retro_adventure, spicy_lofi, or court_experimental, factual beat-timed TELEDRA_EVENTS recorded during scheduling, five or more real TELEDRA_LAYERS, four or more real TELEDRA_SECTIONS, at least 32 seconds of arranged audio (45 for ambience), and a seamless loop. Strudel must be one native-compatible stack with six or more layers, multi-cycle <...> development, groups, rests, and pan/filter/space/envelope controls; no variables, cat/seq, .fast(), or parameter strings. Preserve theatrical whimsy and briefly say what identity was preserved and what structural axis changed.");
+                        refiner_instruction.push_str(" Python Music Editor and Strudel are retired. If the original command requested a musical change and the canonical project uses editable schema v1, generate/include/preserve exactly one valid [COURT_SCORE: ...] JSON block with the same schema_version and project_id, title/style/seed, 4/4 transport, coherent tonal center, harmonic plan and motif, named sections totaling the declared bars, valid transforms, and real mix settings. If the command only asked to play, open, listen to, or describe the current project, preserve the absence of a score block; never invent a replacement. Preserve theatrical whimsy and never claim playback or an edit that the runtime did not verify.");
                     }
                     CourtRole::Diplomat => {
                         refiner_instruction.push_str(" You MUST include at least one concrete [DIPLOMACY: ...], [RESEARCH: ...], or [DELEGATE: QUEEN ...] tag, must never claim outreach occurred without visible evidence, and must keep the charming envoy persona.");
@@ -1615,8 +1960,18 @@ You have just been provided a transcript of a YouTube video. Do not summarize it
                         refiner_instruction.push_str(" If the original draft contained a [WORKSHOP_TOOL:] block, you MUST preserve it COMPLETELY: the exact multi-line opening '[WORKSHOP_TOOL:' followed by filename.py, any KIND/PURPOSE/VALUE lines, CODE:, and the FULL Python code in a ```python fenced block with proper indentation, ending with ']'. Never truncate code, never replace it with placeholders, ellipses, or summaries, and never emit an empty or partial tag.");
                     }
                     CourtRole::Artist => {
-                        refiner_instruction.push_str(" Prefer one [FRACTUS_LIVE:] block for geometric art: version 2, canvas, seed, palette, and 2-4 bounded typed layers from different geometric roles. This v2 block is valid and should be preserved in full.");
-                        refiner_instruction.push_str(" You MUST generate/include/preserve a valid executable art command. Prefer [FRACTUS_ART: --type orbital_lace --iterations 260 --palette electric_cyan], [FRACTUS_ART: --type woven_web --iterations 260 --palette electric_cyan], [FRACTUS_ART: --type guilloche --iterations 240 --palette purple_haze], [FRACTUS_ART: --type mandala --iterations 200 --palette purple_haze], or another valid Fractus type/palette for fractal and pattern requests. Use [PYTHON_ART: <code>] only for custom Python art, and make sure it saves to 'D:\\Teledra\\art.png'. Preserve eccentric visual absurdity in the spoken intro.");
+                        refiner_instruction.push_str(r#" Prefer one valid FRACTUS_LIVE block for layered/animated geometry, preserving or repairing it to this exact line grammar:
+[FRACTUS_LIVE:
+version 2
+name "Emerald Particle Bloom"
+canvas 720 520
+seed 424242
+palette emerald
+layer particles count=180 speed=1.6 size=2.4 depth=3.2 rotation=0.8 phase=0 hue_shift=0.1
+animate 0.phase from=0 to=8 seconds=12 easing=sine loop=true
+]
+Use one statement per line, spaces between statement arguments, and key=value only for layer/animate options. Never preserve comma-separated pseudo-DSL, semicolons, prose or JSON inside the block, `version=2`, `canvas=...`, or `name=...`."#);
+                        refiner_instruction.push_str(" You MUST generate/include/preserve one valid executable art command. Prefer FRACTUS_LIVE for layered/animated geometry. For a simple still, [FRACTUS_ART: --type orbital_lace --iterations 260 --palette electric_cyan], [FRACTUS_ART: --type woven_web --iterations 260 --palette electric_cyan], [FRACTUS_ART: --type guilloche --iterations 240 --palette purple_haze], [FRACTUS_ART: --type mandala --iterations 200 --palette purple_haze], or another valid Fractus type/palette is acceptable. Use [PYTHON_ART: <code>] only for custom Python art, and make sure it saves to 'D:\\Teledra\\art.png'. Preserve eccentric visual absurdity in spoken prose outside the executable block.");
                     }
                     _ => {}
                 }
@@ -1643,6 +1998,7 @@ You have just been provided a transcript of a YouTube video. Do not summarize it
                         // the original draft instead of the gutted version.
                         let exec_tags = [
                             "[WORKSHOP_TOOL:",
+                            "[COURT_SCORE:",
                             "[PYTHON_MUSIC:",
                             "[STRUDEL_MUSIC:",
                             "[FRACTUS_ART:",
@@ -1684,7 +2040,7 @@ You have just been provided a transcript of a YouTube video. Do not summarize it
                 user_input
             };
             self.add_to_history("user", history_input);
-            self.add_to_history("model", &final_response);
+            self.add_to_history("model", &strip_hidden_stage_markers(&final_response));
         }
 
         Ok(final_response)
