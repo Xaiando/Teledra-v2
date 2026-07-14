@@ -1,0 +1,69 @@
+{
+  "registry_version": "1.0",
+  "agents": {
+    "cartographer_bootstrap": {
+      "logical_id": "cartographer_bootstrap",
+      "role": "cartographer",
+      "model": "gemini-1.5-pro",
+      "model_version": "gemini-1.5-pro",
+      "prompt_version": "v1.0",
+      "allowed_read_scopes": ["*"],
+      "allowed_write_scopes": [".teledra/runs/*/00_intake/*", ".teledra/runs/*/10_contract/*"],
+      "tool_permissions": ["read_file", "write_file", "grep_search", "list_dir"],
+      "replacement_history": [],
+      "can_authorize": false,
+      "can_lock": false,
+      "can_gate": false,
+      "can_merge": false,
+      "can_push": false
+    },
+    "builder_alpha": {
+      "logical_id": "builder_alpha",
+      "role": "builder",
+      "model": "qwen2.5:7b",
+      "model_version": "qwen2.5:7b-instruct",
+      "prompt_version": "v1.0",
+      "allowed_read_scopes": ["*"],
+      "allowed_write_scopes": [".teledra/runs/*/20_build/*", "workspace/*"],
+      "tool_permissions": ["read_file", "write_file"],
+      "replacement_history": [],
+      "can_authorize": false,
+      "can_lock": false,
+      "can_gate": false,
+      "can_merge": false,
+      "can_push": false
+    },
+    "breaker_gamma": {
+      "logical_id": "breaker_gamma",
+      "role": "breaker",
+      "model": "qwen2.5:7b",
+      "model_version": "qwen2.5:7b-instruct",
+      "prompt_version": "v1.0",
+      "allowed_read_scopes": ["*"],
+      "allowed_write_scopes": [".teledra/runs/*/30_break/*"],
+      "tool_permissions": ["read_file", "write_file"],
+      "replacement_history": [],
+      "can_authorize": false,
+      "can_lock": false,
+      "can_gate": false,
+      "can_merge": false,
+      "can_push": false
+    },
+    "repairer_beta": {
+      "logical_id": "repairer_beta",
+      "role": "repairer",
+      "model": "qwen2.5:7b",
+      "model_version": "qwen2.5:7b-instruct",
+      "prompt_version": "v1.0",
+      "allowed_read_scopes": ["*"],
+      "allowed_write_scopes": [".teledra/runs/*/40_repair/*", "workspace/*"],
+      "tool_permissions": ["read_file", "write_file"],
+      "replacement_history": [],
+      "can_authorize": false,
+      "can_lock": false,
+      "can_gate": false,
+      "can_merge": false,
+      "can_push": false
+    }
+  }
+}

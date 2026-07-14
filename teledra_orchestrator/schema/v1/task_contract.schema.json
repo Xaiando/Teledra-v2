@@ -1,0 +1,142 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Task Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "epic_id",
+    "work_units",
+    "forbidden_paths",
+    "non_goals"
+  ],
+  "properties": {
+    "contract_version": {
+      "type": "string"
+    },
+    "epic_id": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9_-]+$"
+    },
+    "forbidden_paths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "non_goals": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "work_units": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "work_unit_id",
+          "description",
+          "allowed_paths",
+          "change_budget",
+          "acceptance_commands"
+        ],
+        "properties": {
+          "work_unit_id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          },
+          "description": {
+            "type": "string"
+          },
+          "allowed_paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "change_budget": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "max_files_changed",
+              "max_added_lines",
+              "max_total_diff_lines",
+              "max_binary_files",
+              "max_new_dependencies"
+            ],
+            "properties": {
+              "max_files_changed": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_added_lines": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_total_diff_lines": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_binary_files": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_new_dependencies": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          },
+          "acceptance_commands": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "executable",
+                "arguments",
+                "working_directory",
+                "timeout_seconds",
+                "expected_exit_codes",
+                "network"
+              ],
+              "properties": {
+                "executable": {
+                  "type": "string"
+                },
+                "arguments": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "working_directory": {
+                  "type": "string"
+                },
+                "timeout_seconds": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "expected_exit_codes": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                },
+                "network": {
+                  "type": "string",
+                  "enum": [
+                    "deny",
+                    "allow"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

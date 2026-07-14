@@ -2,6 +2,10 @@ import os
 import json
 import uuid
 import datetime
+import hashlib
+
+def canonical_dumps(data):
+    return json.dumps(data, separators=(',', ':'), sort_keys=True, ensure_ascii=True)
 
 class TeledraOrchestrator:
     def __init__(self, run_dir, transition_table_path):
@@ -29,6 +33,9 @@ class TeledraOrchestrator:
     def validate_authorization_receipt(self, receipt_path, draft_hash, expected_type):
         with open(receipt_path, 'r') as f:
             receipt = json.load(f)
+            
+        if receipt.get("author_id") == receipt.get("approver_id"):
+            raise ValueError("Author and approver cannot be the same")
             
         if receipt["artifact_type"] != expected_type:
             raise ValueError(f"Receipt type mismatch: {receipt['artifact_type']} != {expected_type}")

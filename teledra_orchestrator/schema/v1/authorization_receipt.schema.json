@@ -1,0 +1,62 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Authorization Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "authorization_version",
+    "artifact_type",
+    "artifact_id",
+    "artifact_sha256",
+    "schema_sha256",
+    "decision",
+    "approver_id",
+    "author_id",
+    "authorized_at",
+    "comments"
+  ],
+  "properties": {
+    "authorization_version": {
+      "type": "string"
+    },
+    "artifact_type": {
+      "type": "string",
+      "enum": [
+        "task_contract",
+        "program_manifest",
+        "agent_registry",
+        "increment"
+      ]
+    },
+    "artifact_id": {
+      "type": "string"
+    },
+    "artifact_sha256": {
+      "type": "string",
+      "pattern": "^[a-fA-F0-9]{64}$"
+    },
+    "schema_sha256": {
+      "type": "string",
+      "pattern": "^[a-fA-F0-9]{64}$"
+    },
+    "decision": {
+      "type": "string",
+      "enum": [
+        "AUTHORIZE_LOCK"
+      ]
+    },
+    "approver_id": {
+      "type": "string"
+    },
+    "author_id": {
+      "type": "string"
+    },
+    "authorized_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "comments": {
+      "type": "string"
+    }
+  }
+}

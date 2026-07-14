@@ -1,0 +1,94 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Agent Registry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "registry_version",
+    "agents"
+  ],
+  "properties": {
+    "registry_version": {
+      "type": "string"
+    },
+    "agents": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "logical_id",
+          "role",
+          "model",
+          "model_version",
+          "prompt_version",
+          "allowed_read_scopes",
+          "allowed_write_scopes",
+          "tool_permissions",
+          "replacement_history",
+          "can_authorize",
+          "can_lock",
+          "can_gate",
+          "can_merge",
+          "can_push"
+        ],
+        "properties": {
+          "logical_id": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "model_version": {
+            "type": "string"
+          },
+          "prompt_version": {
+            "type": "string"
+          },
+          "allowed_read_scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "allowed_write_scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tool_permissions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "replacement_history": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "can_authorize": {
+            "type": "boolean"
+          },
+          "can_lock": {
+            "type": "boolean"
+          },
+          "can_gate": {
+            "type": "boolean"
+          },
+          "can_merge": {
+            "type": "boolean"
+          },
+          "can_push": {
+            "type": "boolean"
+          }
+        }
+      }
+    }
+  }
+}

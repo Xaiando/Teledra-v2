@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Transition Table",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "table_version",
+    "program_lifecycle",
+    "work_unit_lifecycle"
+  ],
+  "properties": {
+    "table_version": {
+      "type": "string"
+    },
+    "program_lifecycle": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "pattern": "^[A-Z_]+$"
+        }
+      }
+    },
+    "work_unit_lifecycle": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "pattern": "^[A-Z_]+$"
+        }
+      }
+    }
+  }
+}

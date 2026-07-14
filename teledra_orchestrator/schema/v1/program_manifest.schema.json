@@ -1,0 +1,85 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Program Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "manifest_version",
+    "project_name",
+    "epics",
+    "dependency_dag",
+    "global_invariants",
+    "deferred_features",
+    "definition_of_completion"
+  ],
+  "properties": {
+    "manifest_version": {
+      "type": "string"
+    },
+    "project_name": {
+      "type": "string"
+    },
+    "epics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "epic_id",
+          "description"
+        ],
+        "properties": {
+          "epic_id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          },
+          "description": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "dependency_dag": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "epic_id",
+          "depends_on"
+        ],
+        "properties": {
+          "epic_id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          },
+          "depends_on": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_-]+$"
+            }
+          }
+        }
+      }
+    },
+    "global_invariants": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "deferred_features": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "definition_of_completion": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}
