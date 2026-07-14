@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://teledra.dev/schemas/incident_report.schema.json",
+  "title": "IncidentReport",
+  "description": "A structured incident report that serves as a boundary between the Music System and Software Maintenance System.",
+  "type": "object",
+  "unevaluatedProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "incident_id",
+    "failure_class",
+    "failure_stage",
+    "severity",
+    "reproduction"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "description": "Version of the IncidentReport schema.",
+      "const": "2.0"
+    },
+    "run_id": {
+      "type": "string",
+      "description": "Unique identifier for the verification run."
+    },
+    "incident_id": {
+      "type": "string",
+      "description": "Unique identifier for this incident."
+    },
+    "score_hash": {
+      "type": "string",
+      "description": "SHA-256 hash of the CourtScore being processed."
+    },
+    "render_hash": {
+      "type": "string",
+      "description": "SHA-256 hash of the rendered master mix audio (if applicable)."
+    },
+    "failure_class": {
+      "type": "string",
+      "description": "The classified architectural domain of the defect.",
+      "enum": [
+        "SCORE_SCHEMA_DEFECT",
+        "COMPOSITION_CONSTRAINT_DEFECT",
+        "AESTHETIC_REFINEMENT_REQUEST",
+        "COMPILER_DEFECT",
+        "RENDER_ENGINE_DEFECT",
+        "AUDIO_QUALITY_DEFECT",
+        "PLAYBACK_DEVICE_FAILURE",
+        "ENVIRONMENT_FAILURE",
+        "VERIFIER_AMBIGUITY",
+        "SANDBOX_POLICY_DENIAL",
+        "DEPENDENCY_MISSING",
+        "UNKNOWN_ROOT_CAUSE"
+      ]
+    },
+    "failure_stage": {
+      "type": "string",
+      "description": "The lifecycle stage where the failure occurred.",
+      "enum": [
+        "SCORE_LOAD",
+        "COMPOSITION_ANALYSIS",
+        "COMPILATION",
+        "RENDER_BOOTSTRAP",
+        "RENDER_EXECUTION",
+        "AUDIO_ANALYSIS",
+        "PLAYBACK",
+        "VERIFIER_BOOTSTRAP"
+      ]
+    },
+    "severity": {
+      "type": "string",
+      "description": "The severity of the failure.",
+      "enum": ["BLOCKING", "WARNING"]
+    },
+    "failure_code": {
+      "type": "string",
+      "description": "A granular, machine-readable error code indicating the specific issue."
+    },
+    "observed": {
+      "type": "object",
+      "description": "Contextual details concerning what failed (e.g., track names, section IDs, stack traces).",
+      "additionalProperties": true
+    },
+    "reproduction": {
+      "type": "object",
+      "description": "Instructions and expectations for reproducing the defect.",
+      "required": ["command_id", "expected_exit_code", "actual_exit_code"],
+      "properties": {
+        "command_id": {
+          "type": "string",
+          "description": "The canonical command alias to run (e.g., 'verify-canonical-render')."
+        },
+        "arguments": {
+          "type": "object",
+          "description": "Arguments for the command.",
+          "additionalProperties": { "type": "string" }
+        },
+        "expected_exit_codes": {
+          "type": "array",
+          "items": { "type": "integer" }
+        },
+        "actual_exit_code": {
+          "type": "integer"
+        }
+      }
+    }
+  }
+}

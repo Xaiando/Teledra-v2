@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://teledra.local/schemas/repair_authorization.schema.json",
+  "title": "Teledra Repair Authorization",
+  "description": "Orchestrator authorization granting specific path permissions to a worker to repair an incident.",
+  "type": "object",
+  "unevaluatedProperties": false,
+  "required": [
+    "schema_version",
+    "authorization_id",
+    "run_id",
+    "incident_id",
+    "incident_sha256",
+    "repository",
+    "issuer",
+    "authorization",
+    "status"
+  ],
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "authorization_id": { "type": "string" },
+    "run_id": { "type": "string" },
+    "incident_id": { "type": "string" },
+    "incident_sha256": { "type": "string", "pattern": "^sha256:[a-fA-F0-9]{64}$" },
+    "repository": {
+      "type": "object",
+      "unevaluatedProperties": false,
+      "required": ["base_commit", "workspace_id"],
+      "properties": {
+        "base_commit": { "type": "string" },
+        "workspace_id": { "type": "string" }
+      }
+    },
+    "issuer": {
+      "type": "object",
+      "unevaluatedProperties": false,
+      "required": ["component", "policy_version"],
+      "properties": {
+        "component": { "type": "string" },
+        "policy_version": { "type": "string" }
+      }
+    },
+    "authorization": {
+      "type": "object",
+      "unevaluatedProperties": false,
+      "required": ["repair_target", "allowed_paths", "forbidden_paths"],
+      "properties": {
+        "repair_target": { "type": "string" },
+        "allowed_paths": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "forbidden_paths": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "max_files_changed": { "type": "integer" },
+        "max_changed_lines": { "type": "integer" },
+        "max_attempts": { "type": "integer" },
+        "dependency_changes_allowed": { "type": "boolean" }
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": ["AUTHORIZED", "REVOKED", "EXHAUSTED"]
+    }
+  }
+}

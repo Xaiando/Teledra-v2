@@ -122,8 +122,10 @@ def verify_file(
         namespace = runpy.run_path(candidate, run_name="__main__")
     except SystemExit:
         pass
+    except ImportError as exc:
+        issues.append(_issue(ISSUE_RUNTIME, f"ImportError: {exc}", traceback=traceback.format_exc(limit=8), exc_type="ImportError"))
     except Exception as exc:
-        issues.append(_issue(ISSUE_RUNTIME, f"{type(exc).__name__}: {exc}", traceback=traceback.format_exc(limit=8)))
+        issues.append(_issue(ISSUE_RUNTIME, f"{type(exc).__name__}: {exc}", traceback=traceback.format_exc(limit=8), exc_type=type(exc).__name__))
     finally:
         teledra_synth.play_sound = original_play
         teledra_synth.note_to_freq = original_note_to_freq
@@ -382,6 +384,7 @@ def main() -> int:
     )
     if args.lessons:
         append_lesson(report, args.candidate, args.lessons)
+    
     print(json.dumps(report, ensure_ascii=True, sort_keys=True))
     return 0 if report["ok"] else 1
 

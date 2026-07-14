@@ -18,70 +18,174 @@ import os
 import sys
 import hashlib
 import time
+import json
+import subprocess
+from pathlib import Path
 
 ROOT = os.path.abspath(os.path.dirname(__file__))
 PARENT = os.path.abspath(os.path.join(ROOT, ".."))
-if PARENT not in sys.path:
-    sys.path.insert(0, PARENT)
 
 def main() -> int:
-    if len(sys.argv) != 2:
+    if len(sys.argv) < 2:
         print("usage: python music_smoketest.py <candidate.py>", file=sys.stderr)
-        return 2
+        return 22
 
     candidate = sys.argv[1]
     if not os.path.isfile(candidate):
         print(f"missing music candidate: {candidate}", file=sys.stderr)
-        return 2
+        return 22
 
     try:
         with open(candidate, "r", encoding="utf-8", errors="replace") as handle:
             candidate_source = handle.read().lower()
     except OSError:
         candidate_source = ""
+        
     ambient_markers = ("ambient", "ambience", "soundscape", "drone", "atmosphere")
     min_duration = 45.0 if any(marker in candidate_source for marker in ambient_markers) else 32.0
-    try:
-        from music_verify import append_lesson, verify_file
-    except Exception as exc:  # pragma: no cover - environment dependent
-        print(f"music verifier import failed: {exc}", file=sys.stderr)
-        return 3
 
-    report = verify_file(candidate, min_duration=min_duration, composer_grade=True)
-    append_lesson(
-        report,
-        candidate,
-        os.path.join(PARENT, "knowledge", "music_lessons.jsonl"),
-    )
-    import json
+    run_id = os.environ.get("TELEDRA_RUN_ID", f"run-{int(time.time())}")
+    run_dir = Path(PARENT) / ".teledra" / "runs" / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
 
-    # Keep compact, factual feedback for the Organist's next research/repair
-    # cycle.  Source hashes distinguish a real revision from a renamed file.
+    # Launch the verifier in a subprocess to protect against early crashes
     try:
-        with open(candidate, "rb") as source_handle:
-            source_bytes = source_handle.read()
-        compact_report = {
-            "timestamp": int(time.time()),
-            "source_sha256": hashlib.sha256(source_bytes).hexdigest(),
-            "ok": bool(report.get("ok")),
-            "quality_score": report.get("quality_score"),
-            "composer_metrics": report.get("composer_metrics", {}),
-            "advisories": report.get("composer_advisories", [])[:5],
-            "issues": report.get("issues", [])[:8],
+        result = subprocess.run(
+            [sys.executable, os.path.join(PARENT, "music_verify.py"), candidate, "--min-duration", str(min_duration), "--composer-grade"],
+            capture_output=True,
+            text=True,
+            cwd=PARENT
+        )
+    except Exception as exc:
+        print(f"Failed to spawn verifier: {exc}", file=sys.stderr)
+        return 21
+
+    # Attempt to parse the standard JSON report from stdout
+    report = None
+    for line in reversed(result.stdout.splitlines()):
+        try:
+            report = json.loads(line)
+            if "ok" in report:
+                break
+        except ValueError:
+            pass
+            
+    # Classification Engine
+    failure_class = None
+    failure_stage = "VERIFIER_BOOTSTRAP"
+    code = "unknown_error"
+    message = "Unknown error"
+    
+    if result.returncode != 0 and report is None:
+        # The verifier crashed before returning a report
+        stderr_lower = result.stderr.lower()
+        if "modulenotfounderror" in stderr_lower or "importerror" in stderr_lower:
+            # Differentiate external vs internal missing module
+            if "teledra_synth" in result.stderr or "composer_harness" in result.stderr or "music_verify" in result.stderr:
+                failure_class = "RENDER_ENGINE_DEFECT"
+            else:
+                failure_class = "ENVIRONMENT_FAILURE"
+        else:
+            failure_class = "RENDER_ENGINE_DEFECT"
+        code = "runtime_error"
+        message = result.stderr.strip()[-500:] # Last 500 chars of trace
+    elif report is not None and not report.get("ok"):
+        failure_stage = "AUDIO_ANALYSIS"
+        issues = report.get("issues", [])
+        if issues:
+            first = issues[0]
+            code = first.get("code", "unknown_issue")
+            message = first.get("message", "Verifier reported an issue.")
+            
+            if code in ("missing_score", "missing_sections", "thin_arrangement", "flat_form"):
+                failure_class = "SCORE_SCHEMA_DEFECT"
+                failure_stage = "COMPOSITION_ANALYSIS"
+            elif code in ("dc_offset", "overcompressed_mix", "harsh_mix", "underpowered_mix", "clipping", "silent_mix", "loop_seam"):
+                failure_class = "AUDIO_QUALITY_DEFECT"
+            elif code == "runtime_error":
+                failure_stage = "RENDER_EXECUTION"
+                exc_type = first.get("exc_type", "")
+                if exc_type in ("ImportError", "ModuleNotFoundError"):
+                    failure_class = "ENVIRONMENT_FAILURE"
+                else:
+                    failure_class = "RENDER_ENGINE_DEFECT"
+            elif code in ("invalid_audio_shape", "nonfinite_samples"):
+                failure_class = "RENDER_ENGINE_DEFECT"
+                failure_stage = "RENDER_EXECUTION"
+            else:
+                failure_class = "COMPOSITION_CONSTRAINT_DEFECT"
+                failure_stage = "COMPOSITION_ANALYSIS"
+
+    # Emit CompositionAnalysisReport if we have a valid report
+    if report is not None:
+        findings = []
+        for adv in report.get("composer_advisories", []):
+            findings.append({
+                "code": adv.get("code", "WARNING"),
+                "severity": "WARNING",
+                "message": adv.get("message", ""),
+                "measurement": {"metric": "heuristic", "actual": 0}
+            })
+        
+        comp_report = {
+            "schema_version": "1.0",
+            "run_id": run_id,
+            "score_hash": "sha256:unknown",
+            "status": "REVIEW" if findings else "OK",
+            "findings": findings
         }
-        report_path = os.path.join(PARENT, "knowledge", "music_harness_reports.jsonl")
-        with open(report_path, "a", encoding="utf-8", newline="\n") as handle:
-            handle.write(json.dumps(compact_report, ensure_ascii=True, sort_keys=True) + "\n")
-    except OSError:
-        pass
-
-    rendered = json.dumps(report, ensure_ascii=True, sort_keys=True)
-    if report["ok"]:
-        print(rendered)
+        comp_path = run_dir / "composition_analysis_report.json"
+        comp_path.write_text(json.dumps(comp_report, indent=2))
+            
+    if failure_class:
+        # Create the Incident Report
+        incident_id = f"INC-{int(time.time())}"
+        incident = {
+            "schema_version": "2.0",
+            "run_id": run_id,
+            "incident_id": incident_id,
+            "score_hash": "sha256:unknown",
+            "render_hash": "sha256:unknown",
+            "failure_class": failure_class,
+            "failure_stage": failure_stage,
+            "severity": "BLOCKING",
+            "failure_code": code,
+            "observed": {"message": message},
+            "reproduction": {
+                "command_id": "music.verify.canonical_render",
+                "arguments": {
+                    "candidate": candidate
+                },
+                "expected_exit_codes": [0],
+                "actual_exit_code": result.returncode
+            }
+        }
+        
+        rel_path = f"incidents/{incident_id}.json"
+        incident_path = run_dir / rel_path
+        incident_path.parent.mkdir(parents=True, exist_ok=True)
+        incident_bytes = json.dumps(incident, indent=2).encode("utf-8")
+        incident_path.write_bytes(incident_bytes)
+        
+        sha256 = hashlib.sha256(incident_bytes).hexdigest()
+        
+        envelope = {
+            "event": "TELEDRA_INCIDENT_CREATED",
+            "envelope_version": "1.0",
+            "run_id": run_id,
+            "incident_id": incident_id,
+            "artifact_relpath": rel_path,
+            "artifact_sha256": f"sha256:{sha256}",
+            "artifact_bytes": len(incident_bytes)
+        }
+        
+        print(json.dumps(envelope), file=sys.stdout)
+        return 20
+        
+    if report and report.get("ok"):
         return 0
-    print(rendered, file=sys.stderr)
-    return 4
-
+        
+    return 22
 
 if __name__ == "__main__":
     raise SystemExit(main())

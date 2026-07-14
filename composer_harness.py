@@ -181,6 +181,18 @@ def evaluate_composer_plan(
         profile = STYLE_PROFILES["court_experimental"]
     metrics["style_profile"] = profile_name
 
+    # Determinism advisory: validation renders a candidate copy while playback
+    # re-renders music.py, so unseeded randomness means the gate certifies audio
+    # that is never performed. Advisory (not fatal) until all producers comply.
+    seed_value = _finite_number(plan.get("seed"))
+    if seed_value is None:
+        advisories.append(_issue(
+            "missing_seed",
+            "Declare a numeric 'seed' in TELEDRA_COMPOSER and apply it (e.g. np.random.seed) so the validated render is the performed render.",
+        ))
+    else:
+        metrics["seed"] = seed_value
+
     try:
         bpm_value = float(bpm)
     except (TypeError, ValueError):
