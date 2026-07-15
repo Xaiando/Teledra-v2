@@ -1906,10 +1906,19 @@ fn is_teledra_runtime_child(name: &str, cmdline: &str) -> bool {
     if !(name.contains("python") || name.contains("node")) {
         return false;
     }
+    let workspace_root = std::env::var("TELEDRA_ROOT").unwrap_or_else(|_| {
+        std::env::current_dir()
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_else(|_| ".".to_string())
+    }).to_ascii_lowercase().replace('/', "\\");
+
     let cmdline = cmdline.to_ascii_lowercase().replace('/', "\\");
-    if !cmdline.contains("d:\\teledra") {
+    if !cmdline.contains(&workspace_root) {
         return false;
     }
+    
+    // Explicitly target only resident/playback services that this orchestrator owns,
+    // not developer tools or Kraken.
     [
         "restream_listener.py",
         "somatic_cortex_stream.py",
@@ -12726,15 +12735,30 @@ fn run_phase_a_self_test() -> Result<serde_json::Value, String> {
     result
 }
 
+fn validate_environment() {
+    let required_paths = [
+        "generate_voice.py",
+        "somatic_cortex_stream.py",
+        ".venv/Scripts/python.exe",
+        "voice_archive",
+    ];
+    for path in &required_paths {
+        if !std::path::Path::new(path).exists() {
+            panic!(
+                "\n[FATAL] Missing required asset or script: {}\n\
+                 The repository checkout is incomplete. Please ensure you have cloned the \
+                 assets, generated the python virtual environment (.venv), and placed them in the \
+                 project root as defined by ASSETS_MANIFEST.md.\n",
+                path
+            );
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Always run from the project root so all relative paths resolve correctly,
-    // regardless of whether the binary is launched from Explorer, a shortcut, or a terminal.
-    let root = "D:\\Teledra";
-    if std::env::set_current_dir(root).is_ok() {
-        println!("[startup] CWD set to {}", root);
-    } else {
-        // Fallback attempt using exe location (handles running target/release/teledra.exe directly)
+    // Establish project root correctly
+    let workspace_root = std::env::var("TELEDRA_ROOT").unwrap_or_else(|_| {
         if let Ok(exe) = std::env::current_exe() {
             if let Some(dir) = exe.parent().and_then(|p| {
                 if p.ends_with("release") || p.ends_with("debug") {
@@ -12743,13 +12767,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     Some(p)
                 }
             }) {
-                let _ = std::env::set_current_dir(dir);
+                return dir.to_string_lossy().into_owned();
             }
         }
-        println!(
-            "[startup] CWD may not be project root; using absolute paths for key files like shared_stories."
-        );
+        std::env::current_dir()
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_else(|_| ".".to_string())
+    });
+
+    if std::env::set_current_dir(&workspace_root).is_ok() {
+        println!("[startup] CWD set to {}", workspace_root);
+    } else {
+        println!("[startup] Warning: Could not set CWD to project root.");
     }
+    unsafe {
+        std::env::set_var("TELEDRA_ROOT", &workspace_root);
+    }
+
+    validate_environment();
+
     println!("[startup] Build identity: {}", BUILD_IDENTITY);
 
     if std::env::args().any(|arg| arg == "--phase-a-self-test") {

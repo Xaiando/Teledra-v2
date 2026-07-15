@@ -43,8 +43,13 @@ impl SomaticBridge {
 
     pub fn start(&mut self) -> Result<(), String> {
         // Path to virtual environment python
-        let python_exe = "D:\\Teledra\\.venv\\Scripts\\python.exe";
-        let script_path = "D:\\Teledra\\somatic_cortex_stream.py";
+        let workspace_root = std::env::var("TELEDRA_ROOT").unwrap_or_else(|_| {
+            std::env::current_dir()
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_else(|_| ".".to_string())
+        });
+        let python_exe = format!("{}\\.venv\\Scripts\\python.exe", workspace_root);
+        let script_path = format!("{}\\somatic_cortex_stream.py", workspace_root);
 
         let mut cmd = Command::new(python_exe);
         cmd.arg(script_path)
