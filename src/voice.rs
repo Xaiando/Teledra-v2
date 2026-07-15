@@ -625,7 +625,12 @@ impl VoiceEngine {
         // For resident launches we send the request over stdin instead of CLI args.
         if use_resident {
             if let Some(mut stdin) = child.stdin.take() {
-                let request = format!("{}\t{}\n", self.voice_name, text);
+                // The Python resident loop uses `sys.stdin.readline()`, which splits on `\n`.
+                // If `text` contains internal newlines, the TTS worker will read only the
+                // first line, treating subsequent lines as malformed commands (crashing the
+                // worker without propagating the error to Rust). We must replace `\n` here.
+                let single_line_text = text.replace('\n', " ");
+                let request = format!("{}\t{}\n", self.voice_name, single_line_text);
                 let _ = stdin.write_all(request.as_bytes());
                 let _ = stdin.flush();
             }

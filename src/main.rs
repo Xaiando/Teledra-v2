@@ -4079,7 +4079,6 @@ fn next_human_music_workshop_ticket() -> Result<Option<HumanMusicWorkshopTicket>
         || pass_index > planned_passes
         || planned_passes == 0
         || planned_passes > 8
-        || attempt == 0
         || attempt > 2
     {
         return Err("Back-workshop ticket pass/attempt bounds are invalid.".to_string());
@@ -4121,7 +4120,7 @@ fn next_human_music_workshop_ticket() -> Result<Option<HumanMusicWorkshopTicket>
 
 fn human_music_workshop_prompt(ticket: &HumanMusicWorkshopTicket) -> String {
     let delta_contract = if ticket.pass_index < ticket.planned_passes {
-        "MANDATORY MACHINE-VERIFIED DELTA: change `seed` and/or `sections` from the parent so the rendered arrangement audibly changes; preserve `mix` and `track_mix` byte-for-byte. For harmonic_coherence, use the new seed/section phrasing to improve generated voice leading against the locked chords. For groove_and_pulse, use seed/section phrasing to strengthen the pocket. For arrangement_arc, develop section energy, names, and transforms."
+        "MANDATORY MACHINE-VERIFIED DELTA: you MUST generate a new random `seed` AND you MUST change `sections` from the parent so the rendered arrangement audibly changes; preserve `mix` and `track_mix` byte-for-byte. For harmonic_coherence, use the new seed/section phrasing to improve generated voice leading against the locked chords. For groove_and_pulse, use seed/section phrasing to strengthen the pocket. For arrangement_arc, develop section energy, names, and transforms."
     } else {
         "MANDATORY MACHINE-VERIFIED DELTA: change `mix` and/or `track_mix` from the parent; preserve `seed` and `sections` byte-for-byte. This final pass is mix/loop polish only."
     };
