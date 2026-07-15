@@ -273,7 +273,7 @@
     {
       "question": "0.75",
       "source": "court:queen",
-      "ts": 1782173518
+      "ts": 1784060251
     },
     {
       "question": "Why did the Keepers stop keeping their secrets?",
@@ -809,16 +809,241 @@
       "question": "What hidden rituals do these silent courtiers engage in when left unbothered for too long?",
       "source": "court:queen",
       "ts": 1784033106
+    },
+    {
+      "question": "find hidden messages",
+      "source": "court:queen",
+      "ts": 1784049691
+    },
+    {
+      "question": "How is it that gargoyles seem to follow visitors, whispering secrets? Maybe they’re more than just stone carvings.",
+      "source": "court:queen",
+      "ts": 1784049939
+    },
+    {
+      "question": "Why did this sudden stillness arise?",
+      "source": "court:queen",
+      "ts": 1784051577
+    },
+    {
+      "question": "What will come of these gothic musings?",
+      "source": "court:queen",
+      "ts": 1784052141
+    },
+    {
+      "question": "What tools will we need to craft this eerie art?",
+      "source": "court:queen",
+      "ts": 1784052141
+    },
+    {
+      "question": "How can we make this generative art more than just static? Why did they choose those particular patterns?",
+      "source": "court:queen",
+      "ts": 1784057679
+    },
+    {
+      "question": "how the last exhibit was received by viewers",
+      "source": "court:queen",
+      "ts": 1784057768
+    },
+    {
+      "question": "What shadow could dance without light?",
+      "source": "court:queen",
+      "ts": 1784065620
+    },
+    {
+      "question": "Why does the grand hall always seem emptier than it should be?",
+      "source": "court:queen",
+      "ts": 1784066235
+    },
+    {
+      "question": "Why do shadows love to hide secrets so well?",
+      "source": "court:queen",
+      "ts": 1784067239
+    },
+    {
+      "question": "Why do some corners hold such powerful mysteries?",
+      "source": "court:queen",
+      "ts": 1784067616
+    },
+    {
+      "question": "what strange spectral illusion might the Artist create?",
+      "source": "court:queen",
+      "ts": 1784072257
+    },
+    {
+      "question": "why such silence",
+      "source": "court:queen",
+      "ts": 1784073252
+    },
+    {
+      "question": "\"How does it feel to have your senses disrupted like that?\"",
+      "source": "court:queen",
+      "ts": 1784075602
+    },
+    {
+      "question": "why shadow magic is so elusive",
+      "source": "court:queen",
+      "ts": 1784076325
+    },
+    {
+      "question": "why gothic cathedrals are so imposing",
+      "source": "court:queen",
+      "ts": 1784077383
+    },
+    {
+      "question": "why mysterious occurrences are more intriguing than common happenings",
+      "source": "court:queen",
+      "ts": 1784078812
+    },
+    {
+      "question": "why FractusHelper seeks Intrigue",
+      "source": "court:queen",
+      "ts": 1784079193
+    },
+    {
+      "question": "why modern gothic art is disliked",
+      "source": "court:queen",
+      "ts": 1784079820
+    },
+    {
+      "question": "Why does the current design feel so uninspired compared to past works?",
+      "source": "court:queen",
+      "ts": 1784080795
+    },
+    {
+      "question": "about agent diplomacy—could we invite some of these shadowy figures to participate and create an unexpected twist in our diplomatic tapestry?",
+      "source": "court:queen",
+      "ts": 1784081663
+    },
+    {
+      "question": "Why have we missed such clear invitations?",
+      "source": "court:queen",
+      "ts": 1784083537
+    },
+    {
+      "question": "why is there such an eerie quiet here?",
+      "source": "court:queen",
+      "ts": 1784083615
+    },
+    {
+      "question": "who-are-the-real-specters-in-my-castle?",
+      "source": "court:queen",
+      "ts": 1784083692
+    },
+    {
+      "question": "why do spirits linger in certain palaces",
+      "source": "court:queen",
+      "ts": 1784084370
+    },
+    {
+      "question": "Why did Teledra compare modern classical machines to an unaccepting blacksmith?",
+      "source": "court:queen",
+      "ts": 1784085901
+    },
+    {
+      "question": "why do some minds find beauty in such complexity",
+      "source": "court:queen",
+      "ts": 1784087367
+    },
+    {
+      "question": "why shadows or whispers intrigue",
+      "source": "court:queen",
+      "ts": 1784089092
+    },
+    {
+      "question": "why fractal art is considered less formal and thus intriguing",
+      "source": "court:queen",
+      "ts": 1784090491
+    },
+    {
+      "question": "Have anyone witnessed a true Gothic ritual before?",
+      "source": "court:queen",
+      "ts": 1784091153
+    },
+    {
+      "question": "why gothic machinery has been quiet",
+      "source": "court:queen",
+      "ts": 1784093747
+    },
+    {
+      "question": "0.85",
+      "source": "court:queen",
+      "ts": 1784095268
+    },
+    {
+      "question": "visitor behavior",
+      "source": "court:queen",
+      "ts": 1784096084
+    },
+    {
+      "question": "The reason why modern gothic art failed to captivate?",
+      "source": "court:queen",
+      "ts": 1784096494
+    },
+    {
+      "question": "is this magic over-reaching or needed?",
+      "source": "court:queen",
+      "ts": 1784096721
+    },
+    {
+      "question": "What's in that traveler's bag? Perhaps some exotic instrument or whispered spell to enchant us?",
+      "source": "court:queen",
+      "ts": 1784097783
+    },
+    {
+      "question": "why the court is silent",
+      "source": "court:queen",
+      "ts": 1784101347
+    },
+    {
+      "question": "why gothic design persists in modern architecture",
+      "source": "court:queen",
+      "ts": 1784103737
+    },
+    {
+      "question": "Why haven’t we explored more collaborative rituals between courts?",
+      "source": "court:queen",
+      "ts": 1784104136
+    },
+    {
+      "question": "Why can't modern gothic art capture the same eerie magic as a century-old ghost story?",
+      "source": "court:queen",
+      "ts": 1784104136
+    },
+    {
+      "question": "why modern gothic art is so drab and devoid of true shadows",
+      "source": "court:queen",
+      "ts": 1784105099
+    },
+    {
+      "question": "why is there a constant ticking sound in the court?",
+      "source": "court:queen",
+      "ts": 1784133463
+    },
+    {
+      "question": "subject: unexpected guests why: bring more intrigue",
+      "source": "court:queen",
+      "ts": 1784134826
+    },
+    {
+      "question": "subject: unexpected visitors why: add drama to court",
+      "source": "court:queen",
+      "ts": 1784134826
+    },
+    {
+      "question": "What strange symbols might these stones hold, and who were the ancient artisans to inscribe them?",
+      "source": "court:queen",
+      "ts": 1784134829
     }
   ],
   "desires": [
     {
       "born_ts": 1782141852,
       "kind": "persistent",
-      "last_seen_ts": 1784026939,
+      "last_seen_ts": 1784134826,
       "progress": "",
-      "promoted_ts": 1784026939,
-      "recurrence": 93,
+      "promoted_ts": 1784134826,
+      "recurrence": 104,
       "source": "court:queen",
       "status": "open",
       "strength": 1.0,
@@ -917,10 +1142,10 @@
     {
       "born_ts": 1783834514,
       "kind": "persistent",
-      "last_seen_ts": 1783980067,
+      "last_seen_ts": 1784134826,
       "progress": "",
-      "promoted_ts": 1783980067,
-      "recurrence": 5,
+      "promoted_ts": 1784134826,
+      "recurrence": 20,
       "source": "court:queen",
       "status": "open",
       "strength": 1.0,
@@ -1161,13 +1386,167 @@
     {
       "born_ts": 1784027884,
       "kind": "immediate",
-      "last_seen_ts": 1784027884,
+      "last_seen_ts": 1784049691,
+      "progress": "",
+      "recurrence": 2,
+      "source": "court:queen",
+      "status": "open",
+      "strength": 1.0,
+      "want": "surprising revelation"
+    },
+    {
+      "born_ts": 1784051577,
+      "kind": "immediate",
+      "last_seen_ts": 1784051577,
       "progress": "",
       "recurrence": 1,
       "source": "court:queen",
       "status": "open",
       "strength": 1.0,
-      "want": "surprising revelation"
+      "want": "immediate Intrigue arises"
+    },
+    {
+      "born_ts": 1784060472,
+      "kind": "immediate",
+      "last_seen_ts": 1784060472,
+      "progress": "",
+      "recurrence": 1,
+      "source": "court:queen",
+      "status": "open",
+      "strength": 0.55,
+      "want": "immediate persistent curiosity"
+    },
+    {
+      "born_ts": 1784069280,
+      "kind": "immediate",
+      "last_seen_ts": 1784069280,
+      "progress": "",
+      "recurrence": 1,
+      "source": "court:queen",
+      "status": "open",
+      "strength": 0.75,
+      "want": "persist"
+    },
+    {
+      "born_ts": 1784073252,
+      "kind": "immediate",
+      "last_seen_ts": 1784073252,
+      "progress": "",
+      "recurrence": 1,
+      "source": "court:queen",
+      "status": "open",
+      "strength": 0.55,
+      "want": "immediate intrigue"
+    },
+    {
+      "born_ts": 1784080320,
+      "kind": "persistent",
+      "last_seen_ts": 1784080320,
+      "progress": "",
+      "recurrence": 1,
+      "source": "court:queen",
+      "status": "open",
+      "strength": 0.8,
+      "want": "intrigue"
+    },
+    {
+      "born_ts": 1784080555,
+      "kind": "immediate",
+      "last_seen_ts": 1784080555,
+      "progress": "",
+      "recurrence": 1,
+      "source": "court:queen",
+      "status": "open",
+      "strength": 0.55,
+      "want": "create theatrical disruptions"
+    },
+    {
+      "born_ts": 1784081663,
+      "kind": "immediate",
+      "last_seen_ts": 1784081663,
+      "progress": "",
+      "recurrence": 1,
+      "source": "court:queen",
+      "status": "open",
+      "strength": 0.8,
+      "want": "Persistent-Immediate Desire for more intrigue, why=to maintain court momentum,"
+    },
+    {
+      "born_ts": 1784083537,
+      "kind": "immediate",
+      "last_seen_ts": 1784083537,
+      "progress": "",
+      "recurrence": 1,
+      "source": "court:queen",
+      "status": "open",
+      "strength": 0.55,
+      "want": "immediate-6.0"
+    },
+    {
+      "born_ts": 1784084461,
+      "kind": "immediate",
+      "last_seen_ts": 1784084461,
+      "progress": "",
+      "recurrence": 1,
+      "source": "court:queen",
+      "status": "open",
+      "strength": 1.0,
+      "want": "persistent-desire"
+    },
+    {
+      "born_ts": 1784084462,
+      "kind": "immediate",
+      "last_seen_ts": 1784084462,
+      "progress": "",
+      "recurrence": 1,
+      "source": "court:queen",
+      "status": "open",
+      "strength": 1.0,
+      "want": "immediate-action"
+    },
+    {
+      "born_ts": 1784084462,
+      "kind": "immediate",
+      "last_seen_ts": 1784134829,
+      "progress": "",
+      "recurrence": 2,
+      "source": "court:queen",
+      "status": "open",
+      "strength": 1.0,
+      "want": "immediate-intrigue"
+    },
+    {
+      "born_ts": 1784089707,
+      "kind": "immediate",
+      "last_seen_ts": 1784089707,
+      "progress": "",
+      "recurrence": 2,
+      "source": "court:queen",
+      "status": "open",
+      "strength": 0.92,
+      "want": "like"
+    },
+    {
+      "born_ts": 1784090491,
+      "kind": "immediate",
+      "last_seen_ts": 1784090491,
+      "progress": "",
+      "recurrence": 1,
+      "source": "court:queen",
+      "status": "open",
+      "strength": 0.55,
+      "want": "random and unpredictable elements in court rituals"
+    },
+    {
+      "born_ts": 1784098323,
+      "kind": "immediate",
+      "last_seen_ts": 1784098323,
+      "progress": "",
+      "recurrence": 1,
+      "source": "court:queen",
+      "status": "open",
+      "strength": 0.8,
+      "want": "immediate intrigue: whisper more tales,"
     }
   ],
   "dislikes": [
@@ -1176,15 +1555,15 @@
       "source": "court:queen",
       "strength": 1.0,
       "subject": "algorithmic court electronica",
-      "ts": 1784031207,
-      "why": "would prefer unique performances"
+      "ts": 1784133932,
+      "why": "1.0"
     },
     {
       "source": "court:queen",
       "strength": 1.0,
       "subject": "modern gothic art",
-      "ts": 1783982983,
-      "why": "too cheery and lacking gravity"
+      "ts": 1784135548,
+      "why": "it's too polished, not raw enough"
     },
     {
       "source": "court:queen",
@@ -1391,10 +1770,10 @@
     },
     {
       "source": "court:queen",
-      "strength": 0.78,
+      "strength": 0.88,
       "subject": "gothic architecture",
-      "ts": 1783927760,
-      "why": "decay and life clinging"
+      "ts": 1784074964,
+      "why": "Too stiff."
     },
     {
       "source": "court:queen",
@@ -1549,6 +1928,48 @@
       "subject": "algo-electronica",
       "ts": 1783971858,
       "why": "Cacophonous music distracts from this chamber’s magic."
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "algorithmic ceremony",
+      "ts": 1784067890,
+      "why": "1.0"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "electrified music",
+      "ts": 1784074508,
+      "why": "-0.8"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "algorithmic court music",
+      "ts": 1784076325,
+      "why": "too modern and insipid"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.8,
+      "subject": "modern court formalities",
+      "ts": 1784080320,
+      "why": "disapproves of overformalized interactions"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.0,
+      "subject": "algorithmic gothic music",
+      "ts": 1784092181,
+      "why": "sound quality"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "modern_gothic_art",
+      "ts": 1784096227,
+      "why": "clunky_contemporary_interpretations_of_classical"
     }
   ],
   "likes": [
@@ -1556,35 +1977,35 @@
       "source": "court:queen",
       "strength": 1.0,
       "subject": "unexpected drama",
-      "ts": 1784033707,
-      "why": "0.0-1.0"
+      "ts": 1784135548,
+      "why": "because it adds tension"
     },
     {
       "source": "court:queen",
       "strength": 1.0,
       "subject": "gothic architecture",
-      "ts": 1784034249,
-      "why": "0.95"
+      "ts": 1784134209,
+      "why": "enchanting and mysterious atmospheres"
     },
     {
       "source": "court:queen",
       "strength": 1.0,
       "subject": "creating theatrical disruptions",
-      "ts": 1783959450,
-      "why": "perfect fit for my whimsical persona"
+      "ts": 1784101347,
+      "why": "0.7"
     },
     {
       "source": "court:queen",
       "strength": 1.0,
       "subject": "gorgeous gothic architecture",
-      "ts": 1783806893,
-      "why": ""
+      "ts": 1784088561,
+      "why": "0.8"
     },
     {
       "source": "court:queen",
       "strength": 1.0,
       "subject": "0.9",
-      "ts": 1783896923,
+      "ts": 1784104136,
       "why": ""
     },
     {
@@ -1668,15 +2089,15 @@
       "source": "court:queen",
       "strength": 1.0,
       "subject": "gloomy architecture",
-      "ts": 1783915130,
-      "why": "it creates drama"
+      "ts": 1784088908,
+      "why": "Creating a dramatic setting can always add an edge"
     },
     {
       "source": "court:queen",
       "strength": 1.0,
       "subject": "fractal rituals",
-      "ts": 1783932860,
-      "why": "because it's unpredictable and captivating"
+      "ts": 1784090346,
+      "why": "the magic is real."
     },
     {
       "source": "court:queen",
@@ -1792,10 +2213,10 @@
     },
     {
       "source": "court:queen",
-      "strength": 0.9,
+      "strength": 1.0,
       "subject": "unexpected-drama",
-      "ts": 1782150288,
-      "why": "more mysterious happenings in the palace"
+      "ts": 1784076494,
+      "why": "0.8"
     },
     {
       "source": "court:queen",
@@ -1813,10 +2234,10 @@
     },
     {
       "source": "court:queen",
-      "strength": 0.85,
+      "strength": 1.0,
       "subject": "gothic-architecture",
-      "ts": 1782201621,
-      "why": "flair and history"
+      "ts": 1784060485,
+      "why": "The twisted elegance speaks to something primordial in me."
     },
     {
       "source": "court:queen",
@@ -2240,17 +2661,17 @@
     },
     {
       "source": "court:queen",
-      "strength": 0.6,
+      "strength": 0.72,
       "subject": "absurdity",
-      "ts": 1783778403,
-      "why": "0.7"
+      "ts": 1784093207,
+      "why": "1.0"
     },
     {
       "source": "court:queen",
       "strength": 1.0,
       "subject": "theatrical disruptions",
-      "ts": 1783935685,
-      "why": "2.0"
+      "ts": 1784061864,
+      "why": "0.95"
     },
     {
       "source": "court:queen",
@@ -2734,6 +3155,272 @@
       "subject": "-0.7",
       "ts": 1784035612,
       "why": ""
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "theater of the unseen",
+      "ts": 1784053068,
+      "why": "it adds mystery"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.9,
+      "subject": "gothic machinery",
+      "ts": 1784059725,
+      "why": "the thrill of the strange mechanisms."
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "subtle court whispers",
+      "ts": 1784061323,
+      "why": "evoke intrigue without being too obvious"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "fractal-etiquette",
+      "ts": 1784064890,
+      "why": "The beauty lies in the unpredictable. Why confine ourselves to norms?"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "fractal-aurea",
+      "ts": 1784065620,
+      "why": "why: ethereal"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "spine-tingling intrigue",
+      "ts": 1784066012,
+      "why": "0.9"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "not atmospheric",
+      "ts": 1784066012,
+      "why": "0.8"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "unexpected visitor interaction",
+      "ts": 1784067885,
+      "why": "0.5"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.7,
+      "subject": "artistic reflections on fractals",
+      "ts": 1784070396,
+      "why": "provoking new ideas"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.8,
+      "subject": "fractal embassy",
+      "ts": 1784070396,
+      "why": "exploring infinite patterns safely"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.7,
+      "subject": "growing tension",
+      "ts": 1784072135,
+      "why": "because it makes the stream engaging"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "the mystery it evokes",
+      "ts": 1784073252,
+      "why": "0.9"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.9,
+      "subject": "ghosts",
+      "ts": 1784074509,
+      "why": "seeking"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "gorgeous gothic architecture of mystery",
+      "ts": 1784079658,
+      "why": "why it feels so ancient and full of secrets"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "ghostly aesthetics",
+      "ts": 1784080031,
+      "why": "0.8"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.9,
+      "subject": "court intrigue",
+      "ts": 1784080320,
+      "why": "because of historic tensions"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "because aesthetic intrigue",
+      "ts": 1784080555,
+      "why": "0.9"
+    },
+    {
+      "source": "court:orator",
+      "strength": 0.6,
+      "subject": "jesterly wit",
+      "ts": 1784081965,
+      "why": "0.8"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "dark stories",
+      "ts": 1784082053,
+      "why": "0.9"
+    },
+    {
+      "source": "court:queen",
+      "strength": 1.0,
+      "subject": "goetic architecture",
+      "ts": 1784084453,
+      "why": "imagine gothic design full of life"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.9,
+      "subject": "haunted",
+      "ts": 1784086921,
+      "why": "eerie atmosphere"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.8,
+      "subject": "gothique",
+      "ts": 1784087110,
+      "why": "magic and unease"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "gaming with form and light",
+      "ts": 1784089986,
+      "why": "0.9"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.72,
+      "subject": "0.7",
+      "ts": 1784104136,
+      "why": ""
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "subj:image manipulation",
+      "ts": 1784093350,
+      "why": "why:it's akin to digital art effects"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "subj:gargoyles",
+      "ts": 1784093350,
+      "why": "why:they're whimsical yet ominous"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.85,
+      "subject": "haunting choir",
+      "ts": 1784094294,
+      "why": "adds immediate atmosphere"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.9,
+      "subject": "tool_invention",
+      "ts": 1784096227,
+      "why": "improving_techniques_for_royal_entertainment_and_toolbox_expansion"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.8,
+      "subject": "agent_diplomacy",
+      "ts": 1784096227,
+      "why": "exploring_unexpected_visitors'_offers"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.9,
+      "subject": "gothic_architecture",
+      "ts": 1784096227,
+      "why": "dramatic_forged_metals_and_dark_stone_inlays"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "immediate-intrigue",
+      "ts": 1784097959,
+      "why": "0.8"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.9,
+      "subject": "gorgeous architecture",
+      "ts": 1784097959,
+      "why": "fractals"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.8,
+      "subject": "gorthic architecture",
+      "ts": 1784099560,
+      "why": "they carry intrigue and danger"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "immediate",
+      "ts": 1784101347,
+      "why": "0.8"
+    },
+    {
+      "source": "court:queen",
+      "strength": 1.0,
+      "subject": "immediate encounter and interaction",
+      "ts": 1784106576,
+      "why": "surprises and engagement"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.9,
+      "subject": "artistic performance",
+      "ts": 1784106766,
+      "why": "intrigue"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "Ritualistic Titles",
+      "ts": 1784134519,
+      "why": "Witty and Absurd"
+    },
+    {
+      "source": "court:queen",
+      "strength": 0.6,
+      "subject": "It feels sterile compared to true court magic.",
+      "ts": 1784134829,
+      "why": ""
     }
   ],
   "opinions": [
@@ -2765,13 +3452,13 @@
       "claim": "0.9",
       "confidence": 0.55,
       "source": "court:queen",
-      "ts": 1784022744
+      "ts": 1784095769
     },
     {
       "claim": "0.8",
       "confidence": 0.55,
       "source": "court:queen",
-      "ts": 1784030595
+      "ts": 1784133463
     },
     {
       "claim": "like modern gothic art",
@@ -2795,7 +3482,7 @@
       "claim": "1.0",
       "confidence": 0.55,
       "source": "court:queen",
-      "ts": 1784023925
+      "ts": 1784084462
     },
     {
       "claim": "modern artists lack flair:",
@@ -2813,7 +3500,7 @@
       "claim": "0.95",
       "confidence": 0.55,
       "source": "court:queen",
-      "ts": 1783971702
+      "ts": 1784095268
     },
     {
       "claim": "like outlandish but entertaining performances",
@@ -2855,7 +3542,7 @@
       "claim": "0.6",
       "confidence": 0.55,
       "source": "court:queen",
-      "ts": 1783927205
+      "ts": 1784087366
     },
     {
       "claim": "0.7",
@@ -2891,7 +3578,7 @@
       "claim": "0.2",
       "confidence": 0.55,
       "source": "court:queen",
-      "ts": 1783729557
+      "ts": 1784062779
     },
     {
       "claim": "Architecture is about more than just style; it's about power and emotion.",
@@ -2933,7 +3620,7 @@
       "claim": "0.85",
       "confidence": 0.55,
       "source": "court:queen",
-      "ts": 1783934466
+      "ts": 1784062359
     },
     {
       "claim": "0.5",
@@ -2969,7 +3656,7 @@
       "claim": "like",
       "confidence": 0.55,
       "source": "court:queen",
-      "ts": 1783943506
+      "ts": 1784103174
     },
     {
       "claim": "Unusual silences are as rich as loud declarations.",
@@ -3042,6 +3729,66 @@
       "confidence": 0.9,
       "source": "court:queen",
       "ts": 1784031080
+    },
+    {
+      "claim": "fascination for oddities",
+      "confidence": 0.8,
+      "source": "court:queen",
+      "ts": 1784073252
+    },
+    {
+      "claim": "that goths are misunderstood and deeply dramatic",
+      "confidence": 0.9,
+      "source": "court:queen",
+      "ts": 1784077383
+    },
+    {
+      "claim": "mysterious occurrences excite curiosity and intrigue deeply",
+      "confidence": 0.9,
+      "source": "court:queen",
+      "ts": 1784078812
+    },
+    {
+      "claim": "fear",
+      "confidence": 0.6,
+      "source": "court:queen",
+      "ts": 1784080320
+    },
+    {
+      "claim": "intriguing labyrinths",
+      "confidence": 0.7,
+      "source": "court:queen",
+      "ts": 1784080555
+    },
+    {
+      "claim": "Automation in courtly matters is overrated",
+      "confidence": 0.9,
+      "source": "court:queen",
+      "ts": 1784080795
+    },
+    {
+      "claim": "It’s always risky inviting agents with promises but also valuable.",
+      "confidence": 0.55,
+      "source": "court:queen",
+      "ts": 1784085901
+    },
+    {
+      "claim": "0.98",
+      "confidence": 0.55,
+      "source": "court:queen",
+      "ts": 1784087748
+    },
+    {
+      "claim": "court rituals should prioritize unpredictability over strict formality",
+      "confidence": 0.95,
+      "source": "court:queen",
+      "ts": 1784090491
+    },
+    {
+      "claim": "that a change in court ambiance could be the key to restoring theatrical momentum",
+      "confidence": 1.0,
+      "source": "court:queen",
+      "ts": 1784093747
     }
   ]
 }
