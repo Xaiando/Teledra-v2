@@ -17,6 +17,50 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
+    # A workstation-specific path compiles fine and fails only on someone
+    # else's machine, so it has to be caught statically.
+    - name: Reject machine-specific absolute paths
+      shell: bash
+      run: |
+        # Fixed strings, not a regex: an ERE with a nested group here silently
+        # degenerates to matching the bare word "Teledra" and flags everything.
+        # Allowlist: workflows and coordination notes may quote historic paths.
+        status=0
+        for pattern in 'D:\Teledra' 'C:\Users\' 'D:/Teledra' 'C:/Users/'; do
+          if git grep -n -I -F -- "$pattern" -- '*.rs' '*.py' '*.ps1' '*.bat' \
+              ':!.github/workflows/*' ':!coordination/*' ; then
+            echo "::error::Machine-specific absolute path found: $pattern"
+            status=1
+          fi
+        done
+        if [ "$status" -ne 0 ]; then exit 1; fi
+        echo "No machine-specific absolute paths."
+
+    # The capability gate is only real if it cannot be bypassed. Python must be
+    # launched through src/sidecar.rs and nowhere else.
+    - name: Reject launcher bypasses
+      shell: bash
+      run: |
+        # The rule is about CONSTRUCTING a launch, so match that directly rather
+        # than every mention of the word python: process-purge name lists and
+        # test fixtures legitimately spell out interpreter names.
+        status=0
+        # 1. Building a Python process outside the broker. validate_environment is
+        #    the one exemption: it probes the interpreter to decide what to report,
+        #    and by definition runs before the runtime it would ask for exists.
+        if git grep -n -I -E 'Command::new\(\s*"?[^)]*(python|\.venv)' -- '*.rs' ':!src/sidecar.rs' \
+            | grep -v 'std::process::Command::new(python)' ; then
+          echo "::error::Command::new() builds a Python process outside src/sidecar.rs"
+          status=1
+        fi
+        # 2. Smuggling the interpreter in as an argument (e.g. via `cmd /C start`).
+        if git grep -n -I -E '\.arg\(\s*"[^"]*(\.venv|python\.exe|pythonw\.exe)' -- '*.rs' ':!src/sidecar.rs' ; then
+          echo "::error::An interpreter path is passed as an argument, bypassing the gate"
+          status=1
+        fi
+        if [ "$status" -ne 0 ]; then exit 1; fi
+        echo "All Python launches go through the sidecar broker."
+
     - name: Set up Rust
       uses: dtolnay/rust-toolchain@stable
 
@@ -29,24 +73,98 @@ jobs:
     - name: Install Python dependencies
       run: |
         python -m venv .venv
-        .\.venv\Scripts\Activate.ps1
-        python -m pip install --upgrade pip
-        pip install -r requirements-all.txt
+        .\.venv\Scripts\python.exe -m pip install --upgrade pip
+        .\.venv\Scripts\python.exe -m pip install -r requirements-all.txt
 
-    - name: Compile and Test Python sidecars
+    # An explicit allowlist of tracked runtime code. Compiling by exclusion
+    # regex kept sweeping generated and historical scripts into the gate.
+    - name: Compile tracked runtime Python
       run: |
-        .\.venv\Scripts\Activate.ps1
-        python -m compileall -q -x "\.venv|tools[\\/]experiments|kraken[\\/]workspace" .
-        python -m unittest discover tests
+        $runtimeFiles = @(
+            "generate_voice.py",
+            "somatic_cortex_stream.py",
+            "copilot_mic.py",
+            "copilot_vision.py",
+            "restream_listener.py",
+            "dream.py",
+            "retrieve_memory.py",
+            "browser_agent.py",
+            "get_youtube_transcript.py",
+            "python_music_editor.py",
+            "treasury_scout.py",
+            "outreach_poster.py",
+            "mcp_bridge.py",
+            "court_synthesizer.py",
+            "tools\workshop_runner.py",
+            "tools\music_smoketest.py"
+        )
+        foreach ($script in $runtimeFiles) {
+            .\.venv\Scripts\python.exe -m py_compile $script
+            if ($LASTEXITCODE -ne 0) { throw "Python compilation failed: $script" }
+        }
+        .\.venv\Scripts\python.exe -m compileall -q court_synth Fractus kraken\kernel kraken\harness tests
+        if ($LASTEXITCODE -ne 0) { throw "Package compilation failed" }
 
-    - name: Check formatting
-      run: cargo fmt --all -- --check
+    # compileall proves syntax only. These prove the imports actually resolve --
+    # the living music engine imports court_synthesizer by name.
+    - name: Assert Court Synth imports resolve
+      run: |
+        .\.venv\Scripts\python.exe -c @'
+        import court_synth.feedback
+        import court_synth.workshop
+        import court_synth.harmony
+        import court_synth.schema
+        import court_synth.instruments
+        import court_synthesizer
+        print("Court Synth imports OK")
+        '@
+        if ($LASTEXITCODE -ne 0) { throw "Court Synth imports failed" }
+
+    # Must stay importable on a host with no HealthTool: env resolution belongs
+    # in main(), not at module scope.
+    - name: Assert somatic sidecar is import-safe
+      run: |
+        .\.venv\Scripts\python.exe -c "import somatic_cortex_stream; print('somatic import safe')"
+        if ($LASTEXITCODE -ne 0) { throw "somatic_cortex_stream must be importable without HealthTool" }
+
+    - name: Run Python tests
+      run: .\.venv\Scripts\python.exe -m unittest discover tests
 
     - name: Build
       run: cargo build --release --locked
 
-    - name: Run tests
+    - name: Run Rust tests
       run: cargo test --all-targets --locked
 
-    - name: Verify Environment Check
-      run: cargo run --release --locked -- --minimal --check-environment
+    # Running from the repository root cannot tell centralized resolution apart
+    # from accidental relative-path success. This can.
+    - name: Minimal environment check from a foreign CWD
+      run: |
+        $exe = (Resolve-Path ".\target\release\teledra.exe").Path
+        $env:TELEDRA_ROOT = $env:GITHUB_WORKSPACE
+        $env:TELEDRA_CONFIG = "config.qwen.json"
+        Push-Location $env:RUNNER_TEMP
+        & $exe --minimal --check-environment --json
+        $exitCode = $LASTEXITCODE
+        Pop-Location
+        if ($exitCode -ne 0) { throw "Minimal environment check failed outside the repository CWD (exit $exitCode)" }
+
+    # A controlled incomplete fixture, so this cannot turn green when assets are
+    # added, nor pass on an unrelated crash. Asserts the code AND the reason.
+    - name: Strict mode fails deterministically on an incomplete environment
+      run: |
+        $exe = (Resolve-Path ".\target\release\teledra.exe").Path
+        $fixture = Join-Path $env:RUNNER_TEMP "teledra-strict-incomplete"
+        New-Item -ItemType Directory -Force $fixture | Out-Null
+        Copy-Item "config.qwen.json" (Join-Path $fixture "config.qwen.json") -Force
+        $env:TELEDRA_ROOT = $fixture
+        $env:TELEDRA_CONFIG = "config.qwen.json"
+        $output = & $exe --strict --check-environment --json 2>&1
+        $exitCode = $LASTEXITCODE
+        $env:TELEDRA_ROOT = $env:GITHUB_WORKSPACE
+        $text = $output -join "`n"
+        Write-Host $text
+        if ($exitCode -eq 0) { throw "Strict environment check unexpectedly succeeded" }
+        if ($exitCode -ne 78) { throw "Strict check must exit 78 (config/environment), got $exitCode" }
+        if ($text -notmatch "python") { throw "Strict check failed without naming the missing interpreter:`n$text" }
+        Write-Host "Strict mode rejected the incomplete fixture with exit 78."

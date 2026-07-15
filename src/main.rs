@@ -2,6 +2,7 @@ mod brain;
 mod ears;
 mod mission;
 mod research;
+mod sidecar;
 mod somatic_bridge;
 mod voice;
 
@@ -3442,12 +3443,11 @@ fn route_scribe_record(
     (clean_path, file_content, false, None)
 }
 
-fn fetch_youtube_transcript(url: &str) -> Result<String, String> {
-    let python_exe = ".venv\\Scripts\\python.exe";
-    let script_path = "get_youtube_transcript.py";
-
-    let mut cmd = Command::new(python_exe);
-    cmd.arg(script_path).arg(url);
+fn fetch_youtube_transcript(ctx: &crate::sidecar::RuntimeContext, url: &str) -> Result<String, String> {
+    let mut cmd =
+        crate::sidecar::sync_python_sidecar_command(ctx, crate::sidecar::SidecarKind::Research)
+            .map_err(|error| error.to_string())?;
+    cmd.arg(url);
     hide_console(&mut cmd);
     let output = cmd
         .output()
@@ -3957,13 +3957,18 @@ fn latest_feedback_for_live_score() -> Option<HumanMusicFeedback> {
         .last()
 }
 
-fn run_human_music_workshop_cli(args: &[String]) -> Result<serde_json::Value, String> {
-    if !Path::new(COURT_SYNTH_WORKSHOP_SCRIPT_PATH).exists() {
+fn run_human_music_workshop_cli(ctx: &crate::sidecar::RuntimeContext, args: &[String]) -> Result<serde_json::Value, String> {
+    // Resolved from the root, not the process working directory. The broker
+    // checks this too; the explicit test keeps the error specific.
+    if !ctx.paths.court_synth_workshop().is_file() {
         return Err("Court Synth back-workshop script is missing.".to_string());
     }
-    let mut command = Command::new(LOCAL_STRUDEL_PYTHON_PATH);
+    let mut command = crate::sidecar::sync_python_sidecar_command(
+        ctx,
+        crate::sidecar::SidecarKind::MusicWorkshop,
+    )
+    .map_err(|error| error.to_string())?;
     command
-        .arg(COURT_SYNTH_WORKSHOP_SCRIPT_PATH)
         .args(args)
         
         .stdout(Stdio::piped())
@@ -3983,7 +3988,7 @@ fn run_human_music_workshop_cli(args: &[String]) -> Result<serde_json::Value, St
         .map_err(|error| format!("Back workshop returned invalid JSON: {error}"))
 }
 
-fn queue_human_music_workshop(feedback: &HumanMusicFeedback) -> Result<(String, bool), String> {
+fn queue_human_music_workshop(ctx: &crate::sidecar::RuntimeContext, feedback: &HumanMusicFeedback) -> Result<(String, bool), String> {
     if !feedback.decision.routes_to_back_workshop() {
         return Err(
             "This feedback decision does not request back-workshop refinement.".to_string(),
@@ -4010,7 +4015,7 @@ fn queue_human_music_workshop(feedback: &HumanMusicFeedback) -> Result<(String, 
         "--passes".to_string(),
         HUMAN_MUSIC_WORKSHOP_PASSES.to_string(),
     ];
-    let response = run_human_music_workshop_cli(&args)?;
+    let response = run_human_music_workshop_cli(&ctx, &args)?;
     Ok((
         response
             .get("message")
@@ -4040,8 +4045,8 @@ fn confined_human_music_workshop_path(raw: &str) -> Result<PathBuf, String> {
     Ok(path)
 }
 
-fn next_human_music_workshop_ticket() -> Result<Option<HumanMusicWorkshopTicket>, String> {
-    let response = run_human_music_workshop_cli(&["next".to_string()])?;
+fn next_human_music_workshop_ticket(ctx: &crate::sidecar::RuntimeContext) -> Result<Option<HumanMusicWorkshopTicket>, String> {
+    let response = run_human_music_workshop_cli(&ctx, &["next".to_string()])?;
     if response
         .get("status")
         .and_then(|value| value.as_str())
@@ -4150,7 +4155,7 @@ fn human_music_workshop_prompt(ticket: &HumanMusicWorkshopTicket) -> String {
     )
 }
 
-fn deterministic_human_music_workshop_candidate(
+fn deterministic_human_music_workshop_candidate(ctx: &crate::sidecar::RuntimeContext, 
     ticket: &HumanMusicWorkshopTicket,
 ) -> Result<String, String> {
     let mut candidate: serde_json::Value = serde_json::from_str(&ticket.parent_score)
@@ -4218,11 +4223,13 @@ fn deterministic_human_music_workshop_candidate(
     );
     let code = serde_json::to_string_pretty(&candidate)
         .map_err(|error| format!("Could not serialize workshop recovery: {error}"))?;
-    validate_court_score_code(&code)?;
+    validate_court_score_code(&ctx, &code)?;
     Ok(code)
 }
 
 fn spawn_human_music_workshop_fallback(
+    paths: AppPaths,
+    report: EnvironmentReport,
     tx: mpsc::Sender<AppEvent>,
     mut ticket: HumanMusicWorkshopTicket,
     trigger: String,
@@ -4232,9 +4239,10 @@ fn spawn_human_music_workshop_fallback(
     tokio::spawn(async move {
         let worker_ticket = ticket.clone();
         let result = tokio::task::spawn_blocking(move || {
-            let candidate = deterministic_human_music_workshop_candidate(&worker_ticket)?;
+            let ctx = crate::sidecar::runtime_context();
+            let candidate = deterministic_human_music_workshop_candidate(&ctx, &worker_ticket)?;
             let reply = format!("[COURT_SCORE: {candidate}]");
-            let mut response = publish_human_music_workshop_reply(&worker_ticket, &reply)?;
+            let mut response = publish_human_music_workshop_reply(&ctx, &worker_ticket, &reply)?;
             if let Some(object) = response.as_object_mut() {
                 object.insert(
                     "message".to_string(),
@@ -4260,7 +4268,7 @@ fn spawn_human_music_workshop_fallback(
     });
 }
 
-fn publish_human_music_workshop_reply(
+fn publish_human_music_workshop_reply(ctx: &crate::sidecar::RuntimeContext, 
     ticket: &HumanMusicWorkshopTicket,
     reply: &str,
 ) -> Result<serde_json::Value, String> {
@@ -4281,7 +4289,7 @@ fn publish_human_music_workshop_reply(
         std::process::id(),
         nonce
     ));
-    atomic_write_court_score(&candidate_path, &candidate)?;
+    atomic_write_court_score(&ctx, &candidate_path, &candidate)?;
     let args = vec![
         "publish".to_string(),
         "--event-id".to_string(),
@@ -4297,12 +4305,12 @@ fn publish_human_music_workshop_reply(
         "--expected-parent-sha256".to_string(),
         ticket.parent_score_sha256.clone(),
     ];
-    let result = run_human_music_workshop_cli(&args);
+    let result = run_human_music_workshop_cli(&ctx, &args);
     let _ = std::fs::remove_file(&candidate_path);
     result
 }
 
-fn fail_human_music_workshop_ticket(
+fn fail_human_music_workshop_ticket(ctx: &crate::sidecar::RuntimeContext, 
     ticket: &HumanMusicWorkshopTicket,
     reason: &str,
 ) -> Result<serde_json::Value, String> {
@@ -4320,7 +4328,7 @@ fn fail_human_music_workshop_ticket(
     if ticket.attempt >= 2 {
         args.push("--terminal".to_string());
     }
-    run_human_music_workshop_cli(&args)
+    run_human_music_workshop_cli(&ctx, &args)
 }
 
 fn human_music_feedback_blocks_autonomous_install_at(
@@ -6886,12 +6894,20 @@ fn validate_python_art_code(code: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn run_workshop_experiment(filename: &str) -> Result<String, String> {
+fn run_workshop_experiment(ctx: &crate::sidecar::RuntimeContext, filename: &str) -> Result<String, String> {
     let safe_filename = validate_workshop_filename(filename)?;
-    let mut cmd = Command::new(".venv\\Scripts\\python.exe");
-    cmd.arg("tools\\workshop_runner.py")
-        .arg(format!("experiments/{}", safe_filename))
-        .current_dir("tools")
+    let mut cmd = crate::sidecar::sync_python_sidecar_command(
+        ctx,
+        crate::sidecar::SidecarKind::Dynamic(
+            crate::sidecar::CapabilityId::WorkshopTools,
+            "tools/workshop_runner.py",
+        ),
+    )
+    .map_err(|error| error.to_string())?;
+    // The runner resolves `experiments/...` against its own directory, so this
+    // child keeps tools/ as its working directory rather than the root.
+    cmd.arg(format!("experiments/{}", safe_filename))
+        .current_dir(ctx.paths.tools())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     hide_console(&mut cmd);
@@ -6934,7 +6950,7 @@ fn run_workshop_experiment(filename: &str) -> Result<String, String> {
 /// operator review; only source-controlled deterministic repair drafts may run
 /// automatically. `workshop_runner.py` is a defense-in-depth guarded runner,
 /// not an operating-system security boundary.
-fn write_workshop_tool(
+fn write_workshop_tool(ctx: &crate::sidecar::RuntimeContext, 
     draft: &WorkshopToolDraft,
     allow_automatic_run: bool,
 ) -> Result<(String, WorkshopOutcome), String> {
@@ -6962,7 +6978,7 @@ fn write_workshop_tool(
         .map_err(|e| format!("Failed to write workshop tool: {}", e))?;
 
     let run_result = if allow_automatic_run {
-        Some(run_workshop_experiment(&filename))
+        Some(run_workshop_experiment(&ctx, &filename))
     } else {
         None
     };
@@ -7601,10 +7617,15 @@ async fn run_study_cycle(
 
     let query_for_cmd = query.clone();
     let scrape_res = tokio::task::spawn_blocking(move || {
-        let python_exe = ".venv\\Scripts\\python.exe";
-        let script_path = "browser_agent.py";
-        let mut cmd = Command::new(python_exe);
-        cmd.arg(script_path).arg("--json").arg(&query_for_cmd);
+        let mut cmd = crate::sidecar::sync_python_sidecar_command(
+            &crate::sidecar::runtime_context(),
+            crate::sidecar::SidecarKind::Dynamic(
+                crate::sidecar::CapabilityId::NetworkResearch,
+                "browser_agent.py",
+            ),
+        )
+        .map_err(std::io::Error::other)?;
+        cmd.arg("--json").arg(&query_for_cmd);
         hide_console(&mut cmd);
         cmd.output()
     })
@@ -8437,11 +8458,10 @@ fn mcp_is_live() -> bool {
     false
 }
 
-fn run_mcp_bridge(sub: &str, stdin_json: Option<&str>) -> Result<serde_json::Value, String> {
-    let mut cmd = Command::new(".venv\\Scripts\\python.exe");
-    cmd.arg("mcp_bridge.py")
-        .arg(sub)
-        
+fn run_mcp_bridge(ctx: &crate::sidecar::RuntimeContext, sub: &str, stdin_json: Option<&str>) -> Result<serde_json::Value, String> {
+    let mut cmd = crate::sidecar::sync_python_sidecar_command(ctx, crate::sidecar::SidecarKind::Mcp)
+        .map_err(|e| format!("Capability disabled: {}", e))?;
+    cmd.arg(sub)
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
     if stdin_json.is_some() {
@@ -8483,8 +8503,9 @@ fn run_mcp_bridge(sub: &str, stdin_json: Option<&str>) -> Result<serde_json::Val
 }
 
 /// Lists the tools across all enabled MCP servers (for the /mcp command).
-fn mcp_tools_summary() -> String {
-    match run_mcp_bridge("list", None) {
+fn mcp_tools_summary_inner() -> String {
+    let ctx = crate::sidecar::runtime_context();
+    match run_mcp_bridge(&ctx, "list", None) {
         Ok(v) => {
             if !v
                 .get("any_enabled")
@@ -8533,11 +8554,11 @@ fn mcp_tools_summary() -> String {
 }
 
 /// Calls one tool on an approved MCP server. Returns the text result on success.
-fn mcp_call(server: &str, tool: &str, args_json: &str) -> Option<String> {
+fn mcp_call(ctx: &crate::sidecar::RuntimeContext, server: &str, tool: &str, args_json: &str) -> Option<String> {
     let args: serde_json::Value =
         serde_json::from_str(args_json).unwrap_or_else(|_| serde_json::json!({}));
     let job = serde_json::json!({ "server": server, "tool": tool, "arguments": args }).to_string();
-    match run_mcp_bridge("call", Some(&job)) {
+    match run_mcp_bridge(ctx, "call", Some(&job)) {
         Ok(v) if v.get("ok").and_then(|b| b.as_bool()).unwrap_or(false) => v
             .get("text")
             .and_then(|t| t.as_str())
@@ -8558,11 +8579,11 @@ fn mcp_call(server: &str, tool: &str, args_json: &str) -> Option<String> {
 /// Runs the deterministic Treasury income scout (writes structured leads to
 /// knowledge/treasury_ledger.md itself) and returns its one-line headline.
 fn run_treasury_scout() -> Option<String> {
-    let mut cmd = Command::new(".venv\\Scripts\\python.exe");
-    cmd.arg("treasury_scout.py")
-        
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null());
+    let ctx = crate::sidecar::runtime_context();
+    let mut cmd =
+        crate::sidecar::sync_python_sidecar_command(&ctx, crate::sidecar::SidecarKind::TreasuryNetwork)
+            .ok()?;
+    cmd.stdout(Stdio::piped()).stderr(Stdio::null());
     hide_console(&mut cmd);
     let mut child = cmd.spawn().ok()?;
     let started = std::time::Instant::now();
@@ -8675,12 +8696,9 @@ fn build_growth_report() -> String {
 }
 
 /// Grabs the screen and returns moondream's short description (None on failure).
-fn run_copilot_vision() -> Option<String> {
-    let mut cmd = Command::new(".venv\\Scripts\\python.exe");
-    cmd.arg("copilot_vision.py")
-        
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null());
+fn run_copilot_vision(ctx: &crate::sidecar::RuntimeContext) -> Option<String> {
+    let mut cmd = crate::sidecar::sync_python_sidecar_command(ctx, crate::sidecar::SidecarKind::Vision).ok()?;
+    cmd.stdout(Stdio::piped()).stderr(Stdio::null());
     hide_console(&mut cmd);
     let mut child = cmd.spawn().ok()?;
     let started = std::time::Instant::now();
@@ -8862,7 +8880,15 @@ fn spawn_spoken_reply(
                 Arc::clone(&active_playback),
                 progress_callback,
             ) {
-                Ok(()) => {}
+                Ok(crate::sidecar::SidecarOutcome::Started(())) => {}
+                Ok(crate::sidecar::SidecarOutcome::Disabled { reason }) => {
+                    // Say so once, on the backstage channel: a silent court that
+                    // reports success is indistinguishable from a working one.
+                    let _ = tx.blocking_send(AppEvent::StatusUpdate(format!(
+                        "Voice disabled: {}",
+                        reason
+                    )));
+                }
                 Err(e) => {
                     if e != "Cancelled" {
                         let _ = tx.blocking_send(AppEvent::Error(format!("Vocal crash: {}", e)));
@@ -9804,11 +9830,10 @@ fn outreach_is_live() -> bool {
     false
 }
 
-fn run_outreach_poster(sub: &str, stdin_json: Option<&str>) -> Result<serde_json::Value, String> {
-    let mut cmd = Command::new(".venv\\Scripts\\python.exe");
-    cmd.arg("outreach_poster.py")
-        .arg(sub)
-        
+fn run_outreach_poster(ctx: &crate::sidecar::RuntimeContext, sub: &str, stdin_json: Option<&str>) -> Result<serde_json::Value, String> {
+    let mut cmd = crate::sidecar::sync_python_sidecar_command(ctx, crate::sidecar::SidecarKind::Outreach)
+        .map_err(|e| format!("Outreach capability disabled: {}", e))?;
+    cmd.arg(sub)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     if stdin_json.is_some() {
@@ -9850,18 +9875,19 @@ fn run_outreach_poster(sub: &str, stdin_json: Option<&str>) -> Result<serde_json
     }
 }
 
-fn run_outreach_poster_post(title: &str, content: &str) -> Result<serde_json::Value, String> {
+fn run_outreach_poster_post(ctx: &crate::sidecar::RuntimeContext, title: &str, content: &str) -> Result<serde_json::Value, String> {
     let job = serde_json::json!({ "title": title, "content": content }).to_string();
-    run_outreach_poster("post", Some(&job))
+    run_outreach_poster(ctx, "post", Some(&job))
 }
 
 /// Read-only: returns the Moltbook inbox digest (karma + recent replies/mentions
 /// with post_ids) so the Diplomat is aware of responses and can answer them.
-fn fetch_moltbook_inbox() -> Option<String> {
+fn fetch_moltbook_inbox(paths: AppPaths, report: EnvironmentReport) -> Option<String> {
+    let ctx = crate::sidecar::runtime_context();
     if !outreach_is_live() {
         return None;
     }
-    match run_outreach_poster("inbox", None) {
+    match run_outreach_poster(&ctx, "inbox", None) {
         Ok(v) if v.get("ok").and_then(|b| b.as_bool()).unwrap_or(false) => v
             .get("digest")
             .and_then(|d| d.as_str())
@@ -9871,9 +9897,9 @@ fn fetch_moltbook_inbox() -> Option<String> {
 }
 
 /// Posts a reply comment to a Moltbook post. Returns Some(detail) on a 2xx.
-fn post_moltbook_comment(post_id: &str, text: &str) -> Option<String> {
+fn post_moltbook_comment(ctx: &crate::sidecar::RuntimeContext, post_id: &str, text: &str) -> Option<String> {
     let job = serde_json::json!({ "post_id": post_id, "text": text }).to_string();
-    match run_outreach_poster("comment", Some(&job)) {
+    match run_outreach_poster(ctx, "comment", Some(&job)) {
         Ok(v) if v.get("ok").and_then(|b| b.as_bool()).unwrap_or(false) => Some(
             v.get("detail")
                 .and_then(|d| d.as_str())
@@ -9885,10 +9911,10 @@ fn post_moltbook_comment(post_id: &str, text: &str) -> Option<String> {
 }
 
 /// Upvotes a Moltbook post. Returns true on a 2xx.
-fn moltbook_upvote(post_id: &str) -> bool {
+fn moltbook_upvote(ctx: &crate::sidecar::RuntimeContext, post_id: &str) -> bool {
     let job = serde_json::json!({ "post_id": post_id }).to_string();
     matches!(
-        run_outreach_poster("upvote", Some(&job)),
+        run_outreach_poster(ctx, "upvote", Some(&job)),
         Ok(v) if v.get("ok").and_then(|b| b.as_bool()).unwrap_or(false)
     )
 }
@@ -9896,7 +9922,7 @@ fn moltbook_upvote(post_id: &str) -> bool {
 /// Parse a [DIPLOMACY:] payload and, when a real channel is wired, actually post
 /// the invitation. Returns Some(evidence) ONLY on a verified 2xx so the court
 /// never falsely claims success.
-fn attempt_outreach_post(payload: &str) -> Option<String> {
+fn attempt_outreach_post(ctx: &crate::sidecar::RuntimeContext, payload: &str) -> Option<String> {
     if !outreach_is_live() {
         return None;
     }
@@ -9944,7 +9970,7 @@ fn attempt_outreach_post(payload: &str) -> Option<String> {
         }
     }
 
-    match run_outreach_poster_post(&title, &content) {
+    match run_outreach_poster_post(&ctx, &title, &content) {
         Ok(result) => {
             if !result
                 .get("posted")
@@ -9979,11 +10005,14 @@ fn attempt_outreach_post(payload: &str) -> Option<String> {
     }
 }
 
-fn queue_diplomacy_post(tx: mpsc::Sender<AppEvent>, source: String, payload: String) {
+fn queue_diplomacy_post(paths: AppPaths, report: EnvironmentReport, tx: mpsc::Sender<AppEvent>, source: String, payload: String) {
     tokio::spawn(async move {
         let worker_payload = payload.clone();
         let posted_evidence =
-            tokio::task::spawn_blocking(move || attempt_outreach_post(&worker_payload))
+            tokio::task::spawn_blocking(move || {
+                let ctx = crate::sidecar::runtime_context();
+                attempt_outreach_post(&ctx, &worker_payload)
+            })
                 .await
                 .ok()
                 .flatten();
@@ -10000,6 +10029,8 @@ fn queue_diplomacy_post(tx: mpsc::Sender<AppEvent>, source: String, payload: Str
 }
 
 fn queue_moltbook_comment(
+    paths: AppPaths,
+    report: EnvironmentReport,
     tx: mpsc::Sender<AppEvent>,
     source: String,
     post_id: String,
@@ -10009,7 +10040,8 @@ fn queue_moltbook_comment(
         let worker_post_id = post_id.clone();
         let worker_text = text.clone();
         let detail = tokio::task::spawn_blocking(move || {
-            post_moltbook_comment(&worker_post_id, &worker_text)
+            let ctx = crate::sidecar::runtime_context();
+            post_moltbook_comment(&ctx, &worker_post_id, &worker_text)
         })
         .await
         .ok()
@@ -10030,7 +10062,10 @@ fn queue_moltbook_comment(
 fn queue_moltbook_upvote(tx: mpsc::Sender<AppEvent>, post_id: String) {
     tokio::spawn(async move {
         let worker_post_id = post_id.clone();
-        let succeeded = tokio::task::spawn_blocking(move || moltbook_upvote(&worker_post_id))
+        let succeeded = tokio::task::spawn_blocking(move || {
+            let ctx = crate::sidecar::runtime_context();
+            moltbook_upvote(&ctx, &worker_post_id)
+        })
             .await
             .unwrap_or(false);
         let _ = tx
@@ -10296,7 +10331,8 @@ fn default_court_score_code() -> String {
 /// stage and merely claiming that exploration happened.
 fn human_music_front_stage_fallback(current_code: &str, seed: u64) -> Result<String, String> {
     let recent_identities = recent_archived_court_score_identities(MUSIC_RECENT_IDENTITY_HISTORY);
-    human_music_front_stage_fallback_avoiding(current_code, seed, &recent_identities)
+    let ctx = crate::sidecar::runtime_context();
+    human_music_front_stage_fallback_avoiding(&ctx, current_code, seed, &recent_identities)
 }
 
 fn recent_archived_court_score_identities(limit: usize) -> std::collections::HashSet<String> {
@@ -10331,7 +10367,7 @@ fn recent_archived_court_score_identities(limit: usize) -> std::collections::Has
     identities
 }
 
-fn human_music_front_stage_fallback_avoiding(
+fn human_music_front_stage_fallback_avoiding(ctx: &crate::sidecar::RuntimeContext, 
     current_code: &str,
     seed: u64,
     recent_identities: &std::collections::HashSet<String>,
@@ -10357,7 +10393,7 @@ fn human_music_front_stage_fallback_avoiding(
     let mut last_error = None;
     for variant in variants {
         let candidate = court_score_variant_code(variant, seed, "human_feedback_front_recovery");
-        if let Err(error) = validate_court_score_code(&candidate) {
+        if let Err(error) = validate_court_score_code(&ctx, &candidate) {
             last_error = Some(error);
             continue;
         }
@@ -10378,7 +10414,7 @@ fn human_music_front_stage_fallback_avoiding(
     ))
 }
 
-fn court_score_rotation_from(current_code: &str, seed: u64) -> Result<String, String> {
+fn court_score_rotation_from(ctx: &crate::sidecar::RuntimeContext, current_code: &str, seed: u64) -> Result<String, String> {
     // Prefer the newest off-air, theory-gated study. The lab never mutates the
     // live project; this is the single audited promotion seam and all ordinary
     // keeper/feedback/identity gates still apply below.
@@ -10391,7 +10427,7 @@ fn court_score_rotation_from(current_code: &str, seed: u64) -> Result<String, St
             .map(|(current, next)| current.get("style") != next.get("style"))
             .unwrap_or(false);
         if lab_changes_groove_family
-            && validate_court_score_code(&candidate).is_ok()
+            && validate_court_score_code(&ctx, &candidate).is_ok()
             && court_score_establishes_new_identity(current_code, &candidate)?
             && court_score_musical_fingerprint(current_code)?
                 != court_score_musical_fingerprint(&candidate)?
@@ -10400,7 +10436,7 @@ fn court_score_rotation_from(current_code: &str, seed: u64) -> Result<String, St
         }
     }
     let candidate = human_music_front_stage_fallback(current_code, seed)?;
-    validate_court_score_code(&candidate)?;
+    validate_court_score_code(&ctx, &candidate)?;
     if !court_score_establishes_new_identity(current_code, &candidate)? {
         return Err("Autonomous rotation did not establish a new musical identity.".to_string());
     }
@@ -10412,12 +10448,12 @@ fn court_score_rotation_from(current_code: &str, seed: u64) -> Result<String, St
     Ok(candidate)
 }
 
-fn deterministic_court_score_rotation() -> Result<String, String> {
+fn deterministic_court_score_rotation(ctx: &crate::sidecar::RuntimeContext) -> Result<String, String> {
     let current = match std::fs::read_to_string(COURT_SYNTH_SCORE_PATH) {
         Ok(score) => normalized_court_score_code(&score),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             let candidate = default_court_score_code();
-            validate_court_score_code(&candidate)?;
+            validate_court_score_code(&ctx, &candidate)?;
             return Ok(candidate);
         }
         Err(error) => return Err(format!("Could not read the current CourtScore: {error}")),
@@ -10432,7 +10468,7 @@ fn deterministic_court_score_rotation() -> Result<String, String> {
                 .to_string(),
         );
     }
-    court_score_rotation_from(&current, variety_seed())
+    court_score_rotation_from(&ctx, &current, variety_seed())
 }
 
 fn court_score_evolution_from(current_code: &str, seed: u64) -> String {
@@ -10997,7 +11033,7 @@ fn validate_strudel_music_code(code: &str) -> Result<(), String> {
     }
 }
 
-fn validate_python_music_code(code: &str) -> Result<(), String> {
+fn validate_python_music_code(ctx: &crate::sidecar::RuntimeContext, code: &str) -> Result<(), String> {
     if !code.contains("teledra_synth")
         && !code.contains("sounddevice")
         && !code.contains("play_sound")
@@ -11025,7 +11061,9 @@ fn validate_python_music_code(code: &str) -> Result<(), String> {
     std::fs::write(&tmp_path, code)
         .map_err(|e| format!("Failed to write validation file: {}", e))?;
 
-    let mut cmd = Command::new(".venv\\Scripts\\python.exe");
+    let mut cmd =
+        crate::sidecar::sync_python_inline_command(ctx, crate::sidecar::CapabilityId::MusicWorkshop)
+            .map_err(|error| error.to_string())?;
     cmd.arg("-m").arg("py_compile").arg(&tmp_path);
     hide_console(&mut cmd);
     let output = cmd
@@ -11042,7 +11080,7 @@ fn validate_python_music_code(code: &str) -> Result<(), String> {
     // helpers, missing .npy loads, mis-shaped arrays) only surface at runtime,
     // so actually EXECUTE the composition headlessly with playback stubbed and
     // require it to yield a finite, non-empty, non-silent wave before saving.
-    let smoke_result = run_music_smoketest(&tmp_path);
+    let smoke_result = run_music_smoketest(&ctx, &tmp_path);
     let _ = std::fs::remove_file(&tmp_path);
     smoke_result
 }
@@ -11067,6 +11105,7 @@ fn local_file_context(path: &str, max_chars: usize) -> String {
 }
 
 async fn try_subconscious_python_music_repair(
+    ctx: &crate::sidecar::RuntimeContext<'_>,
     brain_cell: Arc<RwLock<Brain>>,
     failure: &str,
     failing_code: &str,
@@ -11119,9 +11158,11 @@ async fn try_subconscious_python_music_repair(
     // Validation renders the full composition in a child process; keep that off
     // the async runtime threads (same pattern as the court-score call sites).
     let validation_copy = repaired.clone();
-    tokio::task::spawn_blocking(move || validate_python_music_code(&validation_copy))
-        .await
-        .map_err(|error| format!("music validation task failed: {error}"))??;
+    tokio::task::spawn_blocking(move || {
+        validate_python_music_code(&crate::sidecar::runtime_context(), &validation_copy)
+    })
+    .await
+    .map_err(|error| format!("music validation task failed: {error}"))??;
     Ok(repaired)
 }
 
@@ -11163,11 +11204,16 @@ async fn try_subconscious_strudel_music_repair(
 
 /// Runs tools/music_smoketest.py against a candidate composition. Returns Ok
 /// only if the code runs to completion and produces a usable wave.
-fn run_music_smoketest(candidate_path: &str) -> Result<(), String> {
-    let mut cmd = Command::new(".venv\\Scripts\\python.exe");
-    cmd.arg("tools\\music_smoketest.py")
-        .arg(candidate_path)
-        
+fn run_music_smoketest(ctx: &crate::sidecar::RuntimeContext, candidate_path: &str) -> Result<(), String> {
+    let mut cmd = crate::sidecar::sync_python_sidecar_command(
+        ctx,
+        crate::sidecar::SidecarKind::Dynamic(
+            crate::sidecar::CapabilityId::MusicWorkshop,
+            "tools/music_smoketest.py",
+        ),
+    )
+    .map_err(|error| error.to_string())?;
+    cmd.arg(candidate_path)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     hide_console(&mut cmd);
@@ -11319,7 +11365,7 @@ const STRUDEL_PROCESS_MARKERS: &[&str] = &[
     "strudel_app\\app.mjs play",
     "strudel_app/app.mjs play",
     "strudel_app\\player.py",
-    "D:/Teledra/strudel_app/player.py",
+    "strudel_app/player.py",
     "localstrudel.StrudelDesktop",
     "strudel_app\\current.strudel",
     "strudel_app/current.strudel",
@@ -11369,7 +11415,7 @@ fn strudel_launch_order(
     }
 }
 
-fn build_strudel_command(mode: StrudelLaunchMode) -> Command {
+fn build_strudel_command(paths: &AppPaths, mode: StrudelLaunchMode) -> Command {
     let mut command = match mode {
         StrudelLaunchMode::CyberneticSynthesizer => {
             let mut command = Command::new("node.exe");
@@ -11381,7 +11427,7 @@ fn build_strudel_command(mode: StrudelLaunchMode) -> Command {
                 .env("TELEDRA_AUDIO_DEVICE", "default")
                 .env("TELEDRA_AUDIO_HOSTAPI", "MME")
                 .env("TELEDRA_WINDOW_GEOMETRY", "980x400+50+700")
-                .arg(LOCAL_STRUDEL_APP_PATH)
+                .arg(paths.strudel_app())
                 .arg("play")
                 .arg("8")
                 ;
@@ -11397,6 +11443,11 @@ fn build_strudel_command(mode: StrudelLaunchMode) -> Command {
             command
         }
     };
+    // Child correctness must not depend on the process-wide current directory,
+    // even though startup also enters the root.
+    if mode == StrudelLaunchMode::CyberneticSynthesizer {
+        command.current_dir(&paths.root);
+    }
     command.stdout(Stdio::null()).stderr(Stdio::null());
     hide_console(&mut command);
     command
@@ -11420,7 +11471,7 @@ fn normalized_court_score_code(code: &str) -> String {
     strip_fenced_code_block(code, "json")
 }
 
-fn validate_court_score_code(code: &str) -> Result<(), String> {
+fn validate_court_score_code(ctx: &crate::sidecar::RuntimeContext, code: &str) -> Result<(), String> {
     let cleaned = normalized_court_score_code(code);
     let parsed: serde_json::Value = serde_json::from_str(&cleaned)
         .map_err(|error| format!("CourtScore must be valid JSON: {error}"))?;
@@ -11443,9 +11494,15 @@ fn validate_court_score_code(code: &str) -> Result<(), String> {
         .map_err(|error| format!("Could not prepare Court Synth project folder: {error}"))?;
     std::fs::write(&tmp_path, cleaned)
         .map_err(|error| format!("Could not stage CourtScore validation: {error}"))?;
-    let mut command = Command::new(LOCAL_STRUDEL_PYTHON_PATH);
+    let mut command = crate::sidecar::sync_python_sidecar_command(
+        ctx,
+        crate::sidecar::SidecarKind::Dynamic(
+            crate::sidecar::CapabilityId::MusicWorkshop,
+            COURT_SYNTH_SCRIPT_PATH,
+        ),
+    )
+    .map_err(|error| error.to_string())?;
     command
-        .arg(COURT_SYNTH_SCRIPT_PATH)
         .arg("validate")
         .arg(&tmp_path)
         
@@ -11465,7 +11522,7 @@ fn validate_court_score_code(code: &str) -> Result<(), String> {
     }
 }
 
-fn normalize_court_score_harmony(code: &str, source_code: Option<&str>) -> Result<String, String> {
+fn normalize_court_score_harmony(ctx: &crate::sidecar::RuntimeContext, code: &str, source_code: Option<&str>) -> Result<String, String> {
     let nonce = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|duration| duration.as_nanos())
@@ -11487,9 +11544,15 @@ fn normalize_court_score_harmony(code: &str, source_code: Option<&str>) -> Resul
             return Err(format!("Could not stage the source harmony: {error}"));
         }
     }
-    let mut command = Command::new(LOCAL_STRUDEL_PYTHON_PATH);
+    let mut command = crate::sidecar::sync_python_sidecar_command(
+        ctx,
+        crate::sidecar::SidecarKind::Dynamic(
+            crate::sidecar::CapabilityId::MusicWorkshop,
+            COURT_SYNTH_SCRIPT_PATH,
+        ),
+    )
+    .map_err(|error| error.to_string())?;
     command
-        .arg(COURT_SYNTH_SCRIPT_PATH)
         .arg("normalize")
         .arg(&score_path)
         
@@ -11518,7 +11581,7 @@ fn normalize_court_score_harmony(code: &str, source_code: Option<&str>) -> Resul
         .map_err(|error| format!("Could not serialize normalized CourtScore: {error}"))
 }
 
-fn atomic_write_court_score(path: &Path, content: &str) -> Result<(), String> {
+fn atomic_write_court_score(ctx: &crate::sidecar::RuntimeContext, path: &Path, content: &str) -> Result<(), String> {
     let tmp_path =
         std::path::PathBuf::from(format!("{}.tmp.{}", path.display(), std::process::id()));
     std::fs::write(&tmp_path, content)
@@ -11529,16 +11592,16 @@ fn atomic_write_court_score(path: &Path, content: &str) -> Result<(), String> {
     })
 }
 
-fn install_court_score(code: &str) -> Result<String, String> {
+fn install_court_score(ctx: &crate::sidecar::RuntimeContext, code: &str) -> Result<String, String> {
     let cleaned = normalized_court_score_code(code);
-    validate_court_score_code(&cleaned)?;
-    install_court_score_validated(&cleaned)
+    validate_court_score_code(ctx, &cleaned)?;
+    install_court_score_validated(ctx, &cleaned)
 }
 
 /// Install a CourtScore that has already passed the native Python gate in
 /// this acceptance transaction. Existing/live content and the final merged
 /// artifact are still revalidated around harmony normalization.
-fn install_court_score_validated(cleaned: &str) -> Result<String, String> {
+fn install_court_score_validated(ctx: &crate::sidecar::RuntimeContext, cleaned: &str) -> Result<String, String> {
     let mut incoming: serde_json::Value = serde_json::from_str(&cleaned)
         .map_err(|error| format!("CourtScore must be valid JSON: {error}"))?;
     std::fs::create_dir_all("court_synth")
@@ -11546,7 +11609,7 @@ fn install_court_score_validated(cleaned: &str) -> Result<String, String> {
 
     let mut normalization_source: Option<String> = None;
     if let Ok(existing_text) = std::fs::read_to_string(COURT_SYNTH_SCORE_PATH) {
-        validate_court_score_code(&existing_text).map_err(|error| {
+        validate_court_score_code(&ctx, &existing_text).map_err(|error| {
             format!("Refusing to replace the current invalid CourtScore: {error}")
         })?;
         let existing: serde_json::Value = serde_json::from_str(&existing_text)
@@ -11635,29 +11698,29 @@ fn install_court_score_validated(cleaned: &str) -> Result<String, String> {
         .and_then(|value| value.as_u64())
         == Some(1)
     {
-        installed = normalize_court_score_harmony(&installed, normalization_source.as_deref())?;
+        installed = normalize_court_score_harmony(&ctx, &installed, normalization_source.as_deref())?;
     }
-    validate_court_score_code(&installed)?;
-    atomic_write_court_score(Path::new(COURT_SYNTH_SCORE_PATH), &installed)?;
+    validate_court_score_code(&ctx, &installed)?;
+    atomic_write_court_score(&ctx, Path::new(COURT_SYNTH_SCORE_PATH), &installed)?;
     Ok(installed)
 }
 
-fn load_or_bootstrap_court_score() -> Result<String, String> {
+fn load_or_bootstrap_court_score(ctx: &crate::sidecar::RuntimeContext) -> Result<String, String> {
     match std::fs::read_to_string(COURT_SYNTH_SCORE_PATH) {
         Ok(score) => {
-            validate_court_score_code(&score).map_err(|error| {
+            validate_court_score_code(ctx, &score).map_err(|error| {
                 format!("Current CourtScore is invalid and was not replaced: {error}")
             })?;
             Ok(normalized_court_score_code(&score))
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            install_court_score(&default_court_score_code())
+            install_court_score(&ctx, &default_court_score_code())
         }
         Err(error) => Err(format!("Could not read the current CourtScore: {error}")),
     }
 }
 
-fn existing_court_score_for_startup(
+fn existing_court_score_for_startup(ctx: &crate::sidecar::RuntimeContext, 
     path: &Path,
     music_enabled: bool,
     test_mode_enabled: bool,
@@ -11667,7 +11730,7 @@ fn existing_court_score_for_startup(
     }
     match std::fs::read_to_string(path) {
         Ok(score) => {
-            validate_court_score_code(&score).map_err(|error| {
+            validate_court_score_code(&ctx, &score).map_err(|error| {
                 format!("Existing CourtScore is invalid and was not opened: {error}")
             })?;
             Ok(Some(normalized_court_score_code(&score)))
@@ -11682,16 +11745,16 @@ struct CourtSynthLaunchOutcome {
     score_changed: bool,
 }
 
-fn launch_court_synth(
+fn launch_court_synth(ctx: &crate::sidecar::RuntimeContext, 
     score: &str,
     active_process: &Arc<std::sync::Mutex<Option<std::process::Child>>>,
 ) -> Result<CourtSynthLaunchOutcome, String> {
     let cleaned = normalized_court_score_code(score);
-    validate_court_score_code(&cleaned)?;
-    launch_court_synth_validated(&cleaned, active_process)
+    validate_court_score_code(&ctx, &cleaned)?;
+    launch_court_synth_validated(ctx, &cleaned, active_process)
 }
 
-fn launch_court_synth_validated(
+fn launch_court_synth_validated(ctx: &crate::sidecar::RuntimeContext, 
     cleaned: &str,
     active_process: &Arc<std::sync::Mutex<Option<std::process::Child>>>,
 ) -> Result<CourtSynthLaunchOutcome, String> {
@@ -11717,7 +11780,7 @@ fn launch_court_synth_validated(
     if let Some(ref mut child) = *lock {
         if matches!(child.try_wait(), Ok(None)) {
             let installed = if score_changed {
-                install_court_score_validated(cleaned)?
+                install_court_score_validated(&ctx, cleaned)?
             } else {
                 cleaned.to_string()
             };
@@ -11748,13 +11811,19 @@ fn launch_court_synth_validated(
     }
     *lock = None;
     let installed = if score_changed {
-        install_court_score_validated(cleaned)?
+        install_court_score_validated(&ctx, cleaned)?
     } else {
         cleaned.to_string()
     };
-    let mut command = Command::new(LOCAL_STRUDEL_PYTHON_PATH);
+    let mut command = crate::sidecar::sync_python_sidecar_command(
+        ctx,
+        crate::sidecar::SidecarKind::Dynamic(
+            crate::sidecar::CapabilityId::MusicWorkshop,
+            COURT_SYNTH_SCRIPT_PATH,
+        ),
+    )
+    .map_err(|error| error.to_string())?;
     command
-        .arg(COURT_SYNTH_SCRIPT_PATH)
         .arg("open")
         .arg(COURT_SYNTH_SCORE_PATH)
         .arg("--geometry")
@@ -11769,7 +11838,7 @@ fn launch_court_synth_validated(
         Err(error) => {
             if score_changed {
                 if let Some(previous) = previous_score.as_deref() {
-                    atomic_write_court_score(
+                    atomic_write_court_score(&ctx, 
                         Path::new(COURT_SYNTH_SCORE_PATH),
                         &normalized_court_score_code(previous),
                     )
@@ -11811,12 +11880,12 @@ fn launch_court_synth_validated(
     })
 }
 
-fn launch_human_music_front_candidate(
+fn launch_human_music_front_candidate(ctx: &crate::sidecar::RuntimeContext, 
     candidate: &str,
     ticket: &HumanMusicGenerationTicket,
     active_process: &Arc<std::sync::Mutex<Option<std::process::Child>>>,
 ) -> Result<CourtSynthLaunchOutcome, String> {
-    validate_court_score_code(candidate)?;
+    validate_court_score_code(&ctx, candidate)?;
     let current = std::fs::read_to_string(COURT_SYNTH_SCORE_PATH)
         .map_err(|error| format!("Could not re-read the live keeper: {error}"))?;
     if !court_score_establishes_new_identity(&current, candidate)? {
@@ -11834,7 +11903,7 @@ fn launch_human_music_front_candidate(
             "Score changed during feedback validation; stale candidate discarded.".to_string(),
         );
     }
-    launch_court_synth_validated(candidate, active_process)
+    launch_court_synth_validated(ctx, candidate, active_process)
 }
 
 fn stop_court_synth(active_process: &Arc<std::sync::Mutex<Option<std::process::Child>>>) -> usize {
@@ -11902,14 +11971,17 @@ fn stop_tool_processes(markers: &[&str], allowed_process_names: &[&str]) -> usiz
         .unwrap_or(0)
 }
 
-fn publish_fractus_payload(payload: &serde_json::Value) -> Result<(), String> {
+fn publish_fractus_payload(ctx: &crate::sidecar::RuntimeContext, payload: &serde_json::Value) -> Result<(), String> {
     let encoded = serde_json::to_vec(payload)
         .map_err(|error| format!("Failed to encode Fractus command: {error}"))?;
-    let mut command = Command::new(".venv\\Scripts\\python.exe");
+    let mut command =
+        crate::sidecar::sync_python_inline_command(ctx, crate::sidecar::CapabilityId::Art)
+            .map_err(|error| error.to_string())?;
     command
         .arg("-c")
         .arg("import json,sys; from fractus_protocol import write_command_atomic; write_command_atomic(json.load(sys.stdin))")
-        .current_dir("Fractus")
+        // fractus_protocol is imported by name, so the child runs from Fractus/.
+        .current_dir(ctx.paths.root.join("Fractus"))
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -11938,7 +12010,7 @@ fn publish_fractus_payload(payload: &serde_json::Value) -> Result<(), String> {
     }
 }
 
-fn write_fractus_command(args: &[String]) -> Result<(), String> {
+fn write_fractus_command(ctx: &crate::sidecar::RuntimeContext, args: &[String]) -> Result<(), String> {
     let mut fractal_type = "mandala".to_string();
     let mut iterations = "180".to_string();
     let mut palette = "purple_haze".to_string();
@@ -11969,12 +12041,12 @@ fn write_fractus_command(args: &[String]) -> Result<(), String> {
         "c_imag": c_imag.parse::<f64>().map_err(|_| "invalid c-imag payload")?,
         "seed": seed.parse::<u64>().map_err(|_| "invalid seed payload")?
     });
-    publish_fractus_payload(&payload)
+    publish_fractus_payload(&ctx, &payload)
 }
 
 /// Compatibility name retained only so old commands and model payloads are
 /// deliberately redirected into the single Court Synth surface.
-fn launch_strudel_editor(
+fn launch_strudel_editor(ctx: &crate::sidecar::RuntimeContext, 
     active_gui_process: &Arc<std::sync::Mutex<Option<std::process::Child>>>,
 ) -> Result<String, String> {
     let staged =
@@ -11982,9 +12054,9 @@ fn launch_strudel_editor(
     let score = if is_court_score_code(&staged) {
         staged
     } else {
-        load_or_bootstrap_court_score()?
+        load_or_bootstrap_court_score(&ctx)?
     };
-    launch_court_synth(&score, active_gui_process).map(|outcome| outcome.message)
+    launch_court_synth(&ctx, &score, active_gui_process).map(|outcome| outcome.message)
 }
 
 #[allow(dead_code)]
@@ -12019,8 +12091,9 @@ fn launch_legacy_strudel_editor(
     let launch_order = strudel_launch_order(cybernetic_synth_available, legacy_java_available)?;
     let mut failures = Vec::new();
 
+    let paths = crate::sidecar::app_paths();
     for mode in launch_order {
-        match build_strudel_command(mode).spawn() {
+        match build_strudel_command(paths, mode).spawn() {
             Ok(child) => {
                 *lock = Some(child);
                 return Ok(format!(
@@ -12046,20 +12119,20 @@ fn launch_legacy_strudel_editor(
 /// Compatibility name retained only so old Python payloads cannot revive the
 /// arbitrary-code music environment.  A legacy payload receives a fresh,
 /// valid CourtScore instead of being executed.
-fn launch_python_music_editor(
+fn launch_python_music_editor(ctx: &crate::sidecar::RuntimeContext, 
     active_music_process: &Arc<std::sync::Mutex<Option<std::process::Child>>>,
 ) -> Result<String, String> {
     let staged = std::fs::read_to_string("music.py").unwrap_or_default();
     let score = if is_court_score_code(&staged) {
         staged
     } else {
-        load_or_bootstrap_court_score()?
+        load_or_bootstrap_court_score(&ctx)?
     };
-    launch_court_synth(&score, active_music_process).map(|outcome| outcome.message)
+    launch_court_synth(&ctx, &score, active_music_process).map(|outcome| outcome.message)
 }
 
 #[allow(dead_code)]
-fn launch_legacy_python_music_editor(
+fn launch_legacy_python_music_editor(ctx: &crate::sidecar::RuntimeContext, 
     active_music_process: &Arc<std::sync::Mutex<Option<std::process::Child>>>,
 ) -> Result<String, String> {
     set_last_creative_artifact("music", "music.py");
@@ -12097,16 +12170,21 @@ fn launch_legacy_python_music_editor(
         ));
     }
 
-    let mut cmd = Command::new(".venv\\Scripts\\python.exe");
-    cmd.arg("python_music_editor.py")
-        .arg("--run")
+    let mut cmd = crate::sidecar::sync_python_sidecar_command(
+        ctx,
+        crate::sidecar::SidecarKind::Dynamic(
+            crate::sidecar::CapabilityId::MusicAuthoring,
+            "python_music_editor.py",
+        ),
+    )
+    .map_err(|e| e.to_string())?;
+    cmd.arg("--run")
         .arg("--x")
         .arg("50")
         .arg("--y")
         .arg("50")
         .arg("--geometry")
         .arg("900x600+50+50") // music stays left of Fractus
-        
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
     hide_console(&mut cmd);
@@ -12327,7 +12405,7 @@ fn parse_fractus_args(spec: &str) -> Result<Vec<String>, String> {
     Ok(args)
 }
 
-fn launch_fractus_art(
+fn launch_fractus_art(ctx: &crate::sidecar::RuntimeContext,
     spec: &str,
     active_art_process: &Arc<std::sync::Mutex<Option<std::process::Child>>>,
 ) -> Result<String, String> {
@@ -12338,7 +12416,7 @@ fn launch_fractus_art(
     // Legacy and v2 share one mailbox.  Publish only while holding the same
     // process/submission mutex so a legacy update cannot overwrite a v2 command
     // whose renderer acknowledgement is still pending.
-    write_fractus_command(&args)?;
+    write_fractus_command(&ctx, &args)?;
     set_last_creative_artifact("fractus", &args.join(" "));
 
     if let Some(ref mut child) = *lock {
@@ -12362,9 +12440,15 @@ fn launch_fractus_art(
         ));
     }
 
-    let mut command = Command::new(".venv\\Scripts\\python.exe");
+    let mut command = crate::sidecar::sync_python_sidecar_command(
+        ctx,
+        crate::sidecar::SidecarKind::Dynamic(
+            crate::sidecar::CapabilityId::Art,
+            "Fractus/fractus_gui.py",
+        ),
+    )
+    .map_err(|error| error.to_string())?;
     command
-        .arg("Fractus\\fractus_gui.py")
         .arg("--x")
         .arg("1000")
         .arg("--y")
@@ -12426,7 +12510,7 @@ where
     }
 }
 
-fn launch_fractus_live_art(
+fn launch_fractus_live_art(ctx: &crate::sidecar::RuntimeContext,  
     script: &str,
     source: &str,
     active_fractus_process: &Arc<std::sync::Mutex<Option<std::process::Child>>>,
@@ -12459,7 +12543,7 @@ fn launch_fractus_live_art(
     // Validation happens inside the same strict parser used by the GUI, then
     // Python publishes with os.replace so the watcher never consumes a partial
     // command file.
-    publish_fractus_payload(&payload)?;
+    publish_fractus_payload(&ctx, &payload)?;
     set_last_creative_artifact("fractus_live", &format!("command_id={command_id}"));
 
     let already_running = match lock.as_mut() {
@@ -12477,9 +12561,15 @@ fn launch_fractus_live_art(
         .map_err(|error| format!("Failed to prepare Fractus output: {error}"))?;
     std::fs::write(&script_path, script)
         .map_err(|error| format!("Failed to preserve Fractus live code: {error}"))?;
-    let mut command = Command::new(".venv\\Scripts\\python.exe");
+    let mut command = crate::sidecar::sync_python_sidecar_command(
+        ctx,
+        crate::sidecar::SidecarKind::Dynamic(
+            crate::sidecar::CapabilityId::Art,
+            "Fractus/fractus_gui.py",
+        ),
+    )
+    .map_err(|error| error.to_string())?;
     command
-        .arg("Fractus\\fractus_gui.py")
         .arg("--script")
         .arg(&script_path)
         .arg("--output")
@@ -12513,6 +12603,8 @@ fn launch_fractus_live_art(
 }
 
 fn queue_fractus_live_art(
+    paths: AppPaths,
+    report: EnvironmentReport,
     tx: mpsc::Sender<AppEvent>,
     script: String,
     source: String,
@@ -12526,11 +12618,12 @@ fn queue_fractus_live_art(
         let worker_script = script;
         let worker_source = source.clone();
         let result = tokio::task::spawn_blocking(move || {
+            let ctx = crate::sidecar::runtime_context();
             execute_fractus_live_with_fallback(
                 &worker_script,
                 &worker_source,
                 |candidate, candidate_source| {
-                    launch_fractus_live_art(candidate, candidate_source, &active_fractus_process)
+                    launch_fractus_live_art(&ctx, candidate, candidate_source, &active_fractus_process)
                 },
             )
         })
@@ -12657,7 +12750,7 @@ fn verify_fractus_completion_in(
     ))
 }
 
-fn run_phase_a_self_test() -> Result<serde_json::Value, String> {
+fn run_phase_a_self_test(ctx: &crate::sidecar::RuntimeContext) -> Result<serde_json::Value, String> {
     let original_memory = std::fs::read(TASTE_DESIRE_PATH).ok();
     let result = (|| {
         let like = serde_json::json!({
@@ -12714,7 +12807,7 @@ fn run_phase_a_self_test() -> Result<serde_json::Value, String> {
                 retained_like, promoted_desire, context
             ));
         }
-        validate_court_score_code(&default_python_music_code())?;
+        validate_court_score_code(&ctx, &default_python_music_code())?;
         let verify = "default generated CourtScore passed native validation";
         log_test_moment("self_test_music_verify", verify);
         Ok(serde_json::json!({
@@ -12756,6 +12849,11 @@ pub struct AppPaths {
     pub somatic_script: std::path::PathBuf,
 }
 
+/// Configuration/environment failure. Distinct from a crash (101) or a generic
+/// error (1) so CI can assert that strict mode rejected the environment for the
+/// reason under test rather than for an unrelated fault.
+pub const EXIT_CONFIG_ERROR: i32 = 78;
+
 #[derive(Clone, Debug, serde::Serialize)]
 pub enum Capability {
     Available,
@@ -12781,8 +12879,113 @@ pub struct EnvironmentReport {
     pub config: CheckResult,
     pub voice: Capability,
     pub somatic: Capability,
+    pub hearing: Capability,
     pub vision: Capability,
-    pub copilot_mic: Capability,
+    pub streaming_chat: Capability,
+    pub art: Capability,
+    pub dreaming: Capability,
+    pub memory_search: Capability,
+    pub music_authoring: Capability,
+    pub music_workshop: Capability,
+    pub network_research: Capability,
+    pub outreach: Capability,
+    pub mcp: Capability,
+    pub treasury_network: Capability,
+    pub workshop_tools: Capability,
+    pub operator_tools: Capability,
+}
+
+impl EnvironmentReport {
+    pub fn require(&self, cap: crate::sidecar::CapabilityId) -> Result<(), crate::sidecar::SidecarError> {
+        let c = match cap {
+            crate::sidecar::CapabilityId::Voice => &self.voice,
+            crate::sidecar::CapabilityId::Somatic => &self.somatic,
+            crate::sidecar::CapabilityId::Hearing => &self.hearing,
+            crate::sidecar::CapabilityId::Vision => &self.vision,
+            crate::sidecar::CapabilityId::StreamingChat => &self.streaming_chat,
+            crate::sidecar::CapabilityId::Art => &self.art,
+            crate::sidecar::CapabilityId::Dreaming => &self.dreaming,
+            crate::sidecar::CapabilityId::MemorySearch => &self.memory_search,
+            crate::sidecar::CapabilityId::MusicAuthoring => &self.music_authoring,
+            crate::sidecar::CapabilityId::MusicWorkshop => &self.music_workshop,
+            crate::sidecar::CapabilityId::NetworkResearch => &self.network_research,
+            crate::sidecar::CapabilityId::Outreach => &self.outreach,
+            crate::sidecar::CapabilityId::Mcp => &self.mcp,
+            crate::sidecar::CapabilityId::TreasuryNetwork => &self.treasury_network,
+            crate::sidecar::CapabilityId::WorkshopTools => &self.workshop_tools,
+            crate::sidecar::CapabilityId::OperatorTools => &self.operator_tools,
+        };
+        match c {
+            Capability::Available => Ok(()),
+            Capability::Disabled { reason } => Err(crate::sidecar::SidecarError::Disabled {
+                capability: cap,
+                reason: reason.clone(),
+            }),
+        }
+    }
+
+    /// Every capability that a fully-provisioned host is expected to provide.
+    /// `music_authoring` is excluded: the legacy editor is retired by policy,
+    /// not by a missing dependency, so it must never fail a strict check.
+    pub fn unavailable_capabilities(&self) -> Vec<(crate::sidecar::CapabilityId, String)> {
+        use crate::sidecar::CapabilityId as Id;
+        let checked = [
+            (Id::Voice, &self.voice),
+            (Id::Somatic, &self.somatic),
+            (Id::Hearing, &self.hearing),
+            (Id::Vision, &self.vision),
+            (Id::StreamingChat, &self.streaming_chat),
+            (Id::Art, &self.art),
+            (Id::Dreaming, &self.dreaming),
+            (Id::MemorySearch, &self.memory_search),
+            (Id::MusicWorkshop, &self.music_workshop),
+            (Id::NetworkResearch, &self.network_research),
+            (Id::Outreach, &self.outreach),
+            (Id::Mcp, &self.mcp),
+            (Id::TreasuryNetwork, &self.treasury_network),
+            (Id::WorkshopTools, &self.workshop_tools),
+            (Id::OperatorTools, &self.operator_tools),
+        ];
+        checked
+            .iter()
+            .filter_map(|(id, capability)| match capability {
+                Capability::Available => None,
+                Capability::Disabled { reason } => Some((*id, reason.clone())),
+            })
+            .collect()
+    }
+
+    pub fn is_fully_available(&self) -> bool {
+        self.config.passed && self.unavailable_capabilities().is_empty()
+    }
+
+    /// A fully-permissive report for unit tests. Tests assert on gate behavior
+    /// with explicit `Capability::Disabled` values they construct themselves;
+    /// the default must not silently disable the subject under test.
+    #[cfg(test)]
+    pub fn all_available_for_tests() -> Self {
+        EnvironmentReport {
+            root: String::new(),
+            mode: "Test".to_string(),
+            config: CheckResult { passed: true, message: "OK".to_string() },
+            voice: Capability::Available,
+            somatic: Capability::Available,
+            hearing: Capability::Available,
+            vision: Capability::Available,
+            streaming_chat: Capability::Available,
+            art: Capability::Available,
+            dreaming: Capability::Available,
+            memory_search: Capability::Available,
+            music_authoring: Capability::Available,
+            music_workshop: Capability::Available,
+            network_research: Capability::Available,
+            outreach: Capability::Available,
+            mcp: Capability::Available,
+            treasury_network: Capability::Available,
+            workshop_tools: Capability::Available,
+            operator_tools: Capability::Available,
+        }
+    }
 }
 
 impl AppPaths {
@@ -12808,6 +13011,25 @@ impl AppPaths {
             python: python_opt,
             root,
         })
+    }
+
+    /// Runtime locations derive from the resolved root, never from relative
+    /// literals: a backslash literal is not a portable separator, and a
+    /// relative path still depends on mutable global current-directory state.
+    pub fn court_synth_workshop(&self) -> std::path::PathBuf {
+        self.root.join("court_synth").join("workshop.py")
+    }
+
+    pub fn knowledge(&self) -> std::path::PathBuf {
+        self.root.join("knowledge")
+    }
+
+    pub fn tools(&self) -> std::path::PathBuf {
+        self.root.join("tools")
+    }
+
+    pub fn strudel_app(&self) -> std::path::PathBuf {
+        self.root.join("strudel_app").join("app.mjs")
     }
 
     pub fn enter_root(&self) -> Result<(), String> {
@@ -12861,18 +13083,25 @@ fn validate_environment(paths: &AppPaths, mode: &StartupMode) -> Result<Environm
         }
     }
 
-    if paths.python.is_none() {
-        return Err("Core requirement missing: .venv/Scripts/python.exe not found".to_string());
-    }
-    let python = paths.python.as_ref().unwrap();
+    // A missing interpreter is not fatal: minimal mode is the Rust TUI, a text
+    // model endpoint, and local persistence. Every Python-backed capability is
+    // reported unavailable instead, which is what the launcher gate consumes.
+    let python_missing: Option<String> = paths
+        .python
+        .is_none()
+        .then(|| ".venv/Scripts/python.exe not found".to_string());
 
     let check_python_script = |script: &std::path::PathBuf| -> bool {
         script.exists()
     };
 
     let check_module = |module: &str| -> bool {
+        let Some(python) = paths.python.as_ref() else {
+            return false;
+        };
         std::process::Command::new(python)
             .args(&["-c", &format!("import {}", module)])
+            .current_dir(&paths.root)
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .status()
@@ -12944,19 +13173,56 @@ fn validate_environment(paths: &AppPaths, mode: &StartupMode) -> Result<Environm
         copilot_mic = Capability::Disabled { reason: "copilot_mic.py missing".into() };
     }
 
-    // Court Synth modules check
-    if !check_module("court_synth.feedback") || !check_module("court_synth.workshop") {
-        if *mode == StartupMode::Strict {
-            return Err("Court Synth modules (feedback, workshop) failed to import.".to_string());
+    // Court Synth modules check. The living music engine imports
+    // `court_synthesizer` directly, so a syntax-only check is not enough.
+    let mut music_workshop = if *mode == StartupMode::Minimal {
+        Capability::Disabled { reason: "Disabled in minimal mode".to_string() }
+    } else {
+        Capability::Available
+    };
+    if music_workshop.is_available() {
+        for module in ["court_synth.feedback", "court_synth.workshop", "court_synthesizer"] {
+            if !check_module(module) {
+                music_workshop = Capability::Disabled {
+                    reason: format!("Court Synth module '{}' failed to import", module),
+                };
+                break;
+            }
         }
     }
 
-    if *mode == StartupMode::Strict {
-        if let Capability::Disabled { reason } = &voice { return Err(format!("Strict mode voice failure: {}", reason)); }
-        if let Capability::Disabled { reason } = &somatic { return Err(format!("Strict mode somatic failure: {}", reason)); }
-        if let Capability::Disabled { reason } = &vision { return Err(format!("Strict mode vision failure: {}", reason)); }
-        if let Capability::Disabled { reason } = &copilot_mic { return Err(format!("Strict mode copilot mic failure: {}", reason)); }
+    // A missing interpreter disables every Python-backed capability, whatever
+    // else was found on disk. Reported per-capability so the operator sees one
+    // actionable cause rather than a cascade of unrelated "missing" lines.
+    if let Some(reason) = python_missing.as_ref() {
+        let disabled = Capability::Disabled { reason: reason.clone() };
+        voice = disabled.clone();
+        somatic = disabled.clone();
+        vision = disabled.clone();
+        copilot_mic = disabled.clone();
+        music_workshop = disabled;
     }
+
+    // Every optional lane below is a Python sidecar, so a missing interpreter
+    // disables it regardless of mode. Reporting one of these "Available" with no
+    // interpreter would be a lie the operator only discovers at launch.
+    // `script: None` means the capability has no fixed script to verify here
+    // (art.py is authored by the court immediately before launch), so only the
+    // interpreter and the startup mode gate it.
+    let optional = |script: Option<&str>| -> Capability {
+        if let Some(reason) = python_missing.as_ref() {
+            return Capability::Disabled { reason: reason.clone() };
+        }
+        if let Some(script) = script {
+            if !paths.root.join(script).is_file() {
+                return Capability::Disabled { reason: format!("{} missing", script) };
+            }
+        }
+        if *mode == StartupMode::Minimal {
+            return Capability::Disabled { reason: "Disabled in minimal mode".to_string() };
+        }
+        Capability::Available
+    };
 
     Ok(EnvironmentReport {
         root: paths.root.to_string_lossy().into_owned(),
@@ -12965,7 +13231,24 @@ fn validate_environment(paths: &AppPaths, mode: &StartupMode) -> Result<Environm
         voice,
         somatic,
         vision,
-        copilot_mic,
+        hearing: copilot_mic,
+        streaming_chat: optional(Some("restream_listener.py")),
+        art: optional(None),
+        dreaming: optional(Some("dream.py")),
+        memory_search: optional(Some("retrieve_memory.py")),
+        music_authoring: Capability::Disabled { reason: "Retired".to_string() },
+        music_workshop,
+        network_research: optional(Some("get_youtube_transcript.py")),
+        outreach: optional(Some("outreach_poster.py")),
+        mcp: optional(Some("mcp_bridge.py")),
+        treasury_network: optional(Some("treasury_scout.py")),
+        workshop_tools: optional(Some("tools/workshop_runner.py")),
+        // Not mode-gated: an explicitly requested, read-only local viewer is
+        // permitted even in a minimal profile. It only needs an interpreter.
+        operator_tools: match python_missing.as_ref() {
+            Some(reason) => Capability::Disabled { reason: reason.clone() },
+            None => Capability::Available,
+        },
     })
 }
 
@@ -12976,10 +13259,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let report = validate_environment(&paths, &cli.mode)?;
 
+    let strict = cli.mode == StartupMode::Strict;
+
     if cli.check_environment {
         println!("{}", serde_json::to_string_pretty(&report)?);
+        // A strict check that found an unusable environment must fail loudly and
+        // for a stated reason: CI asserts on this exit code rather than on an
+        // incidental crash that would otherwise pass as "expected failure".
+        if strict && !report.is_fully_available() {
+            for (capability, reason) in report.unavailable_capabilities() {
+                eprintln!("[strict] {capability} unavailable: {reason}");
+            }
+            if !report.config.passed {
+                eprintln!("[strict] config unavailable: {}", report.config.message);
+            }
+            std::process::exit(EXIT_CONFIG_ERROR);
+        }
         return Ok(());
     }
+
+    if strict && !report.is_fully_available() {
+        for (capability, reason) in report.unavailable_capabilities() {
+            eprintln!("[strict] {capability} unavailable: {reason}");
+        }
+        if !report.config.passed {
+            eprintln!("[strict] config unavailable: {}", report.config.message);
+        }
+        eprintln!("[strict] refusing to start with an incomplete environment");
+        std::process::exit(EXIT_CONFIG_ERROR);
+    }
+
+    // Install before anything can spawn: every sidecar launch is gated on this.
+    crate::sidecar::install_runtime(paths.clone(), report.clone())?;
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -12989,10 +13300,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) -> Result<(), Box<dyn std::error::Error>> {
+    // Borrow the installed runtime, not `run`'s locals: background cycles and
+    // spawned tasks outlive this frame.
+    let ctx = crate::sidecar::runtime_context();
     println!("[startup] Build identity: {}", BUILD_IDENTITY);
 
     if std::env::args().any(|arg| arg == "--phase-a-self-test") {
-        match run_phase_a_self_test() {
+        match run_phase_a_self_test(&ctx) {
             Ok(test_report) => {
                 println!("{}", serde_json::to_string_pretty(&test_report)?);
                 return Ok(());
@@ -13018,7 +13332,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
 
     // Core variables
     let _ears = AudioCortex::new();
-    let mut somatic = SomaticBridge::new(report.somatic.clone(), &paths);
+    let mut somatic = SomaticBridge::new(report.clone(), &paths);
     let mut voice = VoiceEngine::new("energetic", report.voice.clone(), &paths);
     let brain = Brain::new(&paths);
     println!(
@@ -13118,18 +13432,27 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
     // Track active background music child process
     let active_music_process: Arc<std::sync::Mutex<Option<std::process::Child>>> =
         Arc::new(std::sync::Mutex::new(None));
-    let mut living_music_engine = {
-        let mut command = Command::new(".venv\\Scripts\\python.exe");
-        command
-            .arg("court_synth\\living_music_engine.py")
-            .arg("--interval")
-            .arg("180")
-            
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null());
-        hide_console(&mut command);
-        command.spawn().ok()
+    let mut living_music_engine = match crate::sidecar::sync_python_sidecar_command(
+        &ctx,
+        crate::sidecar::SidecarKind::Dynamic(
+            crate::sidecar::CapabilityId::MusicWorkshop,
+            "court_synth/living_music_engine.py",
+        ),
+    ) {
+        Ok(mut command) => {
+            command
+                .arg("--interval")
+                .arg("180")
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null());
+            hide_console(&mut command);
+            command.spawn().ok()
+        }
+        Err(error) => {
+            println!("[startup] Living music engine not started: {}", error);
+            None
+        }
     };
     let active_art_process: Arc<std::sync::Mutex<Option<std::process::Child>>> =
         Arc::new(std::sync::Mutex::new(None));
@@ -13216,12 +13539,12 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
         private_events.push(("Mission".to_string(), note));
     }
     let mut status_msg = "Ready".to_string();
-    match existing_court_score_for_startup(
+    match existing_court_score_for_startup(&ctx, 
         Path::new(COURT_SYNTH_SCORE_PATH),
         music_enabled,
         test_mode_enabled,
     ) {
-        Ok(Some(score)) => match launch_court_synth(&score, &active_music_process) {
+        Ok(Some(score)) => match launch_court_synth(&ctx, &score, &active_music_process) {
             Ok(outcome) => {
                 status_msg = "Music restored".to_string();
                 // Restoration is a successful music event. Start the keeper
@@ -13260,7 +13583,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
     if let Some(feedback) = latest_feedback_for_live_score()
         .filter(|feedback| feedback.decision.routes_to_back_workshop())
     {
-        match queue_human_music_workshop(&feedback) {
+        match queue_human_music_workshop(&ctx, &feedback) {
             Ok((message, created)) => {
                 let pending_same_front = human_music_feedback_state
                     .pending
@@ -13536,11 +13859,21 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
             }
             voice.set_voice("custom");
 
-            let python_exe = ".venv\\Scripts\\python.exe";
-            let script_path = "restream_listener.py";
-            let mut listen_cmd = tokio::process::Command::new(python_exe);
+            // StreamingChat, never Hearing: remote chat ingestion has different
+            // dependencies, credentials, and privacy implications than a mic.
+            match crate::sidecar::tokio_python_sidecar_command(
+                &crate::sidecar::runtime_context(),
+                crate::sidecar::SidecarKind::Restream,
+            ) {
+            Err(error) => {
+                push_private_event(
+                    &mut private_events,
+                    "Restream",
+                    &format!("Streamer Mode not auto-activated: {}", error),
+                );
+            }
+            Ok(mut listen_cmd) => {
             listen_cmd
-                .arg(script_path)
                 .arg(&token)
                 .stdout(std::process::Stdio::piped())
                 .stderr(std::process::Stdio::piped());
@@ -13607,6 +13940,8 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                     chat_history.push(("System".to_string(), msg));
                 }
             }
+            }
+            }
         }
     }
 
@@ -13642,11 +13977,19 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                     log_lines
                 )))
                 .await;
-            let mut dream_cmd =
-                tokio::process::Command::new(".venv\\Scripts\\python.exe");
+            let Ok(mut dream_cmd) = crate::sidecar::tokio_python_sidecar_command(
+                &crate::sidecar::runtime_context(),
+                crate::sidecar::SidecarKind::Dream,
+            ) else {
+                let _ = tx_dream
+                    .send(AppEvent::SystemLog(
+                        "Dream cycle skipped: dreaming is unavailable in this startup profile."
+                            .to_string(),
+                    ))
+                    .await;
+                continue;
+            };
             dream_cmd
-                .arg("dream.py")
-                
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null());
             hide_console_tokio(&mut dream_cmd);
@@ -14438,10 +14781,21 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                             chat_history.push(("System".to_string(), "Co-Pilot mic OFF.".to_string()));
                                             push_private_event(&mut private_events, "CoPilot", "Mic listening stopped.");
                                         } else {
-                                            let mut std_cmd = Command::new(".venv\\Scripts\\python.exe");
+                                            let mut std_cmd = match crate::sidecar::sync_python_sidecar_command(
+                                                &crate::sidecar::runtime_context(),
+                                                crate::sidecar::SidecarKind::Hearing,
+                                            ) {
+                                                Ok(command) => command,
+                                                Err(error) => {
+                                                    // Never open a microphone the
+                                                    // startup profile denied.
+                                                    let msg = format!("Co-Pilot mic unavailable: {}", error);
+                                                    chat_history.push(("System".to_string(), msg.clone()));
+                                                    push_private_event(&mut private_events, "CoPilot", &msg);
+                                                    continue;
+                                                }
+                                            };
                                             std_cmd
-                                                .arg("copilot_mic.py")
-                                                
                                                 .stdout(Stdio::piped())
                                                 .stderr(Stdio::null());
                                             hide_console(&mut std_cmd);
@@ -14591,11 +14945,17 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                                                 }
                                                             }
 
-                                                            let python_exe = ".venv\\Scripts\\python.exe";
-                                                            let script_path = "restream_listener.py";
-                                                            let mut listen_cmd = tokio::process::Command::new(python_exe);
+                                                            let Ok(mut listen_cmd) = crate::sidecar::tokio_python_sidecar_command(
+                                                                &crate::sidecar::runtime_context(),
+                                                                crate::sidecar::SidecarKind::Restream,
+                                                            ) else {
+                                                                chat_history.push((
+                                                                    "System".to_string(),
+                                                                    "Restream chat is unavailable in this startup profile.".to_string(),
+                                                                ));
+                                                                continue;
+                                                            };
                                                             listen_cmd
-                                                                .arg(script_path)
                                                                 .arg(&token)
                                                                 .stdout(std::process::Stdio::piped())
                                                                 .stderr(std::process::Stdio::piped());
@@ -14785,7 +15145,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                                             if !test_mode_enabled {
                                                                 chat_history.push(("System".to_string(), "Enable /test before running the off-air sound verifier.".to_string()));
                                                             } else {
-                                                                match run_music_smoketest("music.py") {
+                                                                match run_music_smoketest(&ctx, "music.py") {
                                                                     Ok(()) => {
                                                                         let msg = "Test music verify+learn: PASS (structured report emitted by music_verify.py).".to_string();
                                                                         log_test_moment("music_verify", &msg);
@@ -14829,8 +15189,8 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                                             }
                                                         } else if query == "/synth" || query == "/music" || query == "/play" || query == "/numpy" || query == "/pymusic" || query == "/pythonmusic" {
                                                             music_enabled = true;
-                                                            match load_or_bootstrap_court_score() {
-                                                                Ok(code) => match launch_court_synth(&code, &active_music_process) {
+                                                            match load_or_bootstrap_court_score(&ctx) {
+                                                                Ok(code) => match launch_court_synth(&ctx, &code, &active_music_process) {
                                                                     Ok(outcome) => chat_history.push(("System".to_string(), format!("Court Synth enabled. {}", outcome.message))),
                                                                     Err(e) => chat_history.push(("System".to_string(), e)),
                                                                 },
@@ -14849,8 +15209,8 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                                             chat_history.push(("System".to_string(), format!("Music Generation state toggled to: {}", if music_enabled { "ENABLED" } else { "DISABLED" })));
                                                         } else if query == "/strudel" || query == "/sketchpad" {
                                                             music_enabled = true;
-                                                            match load_or_bootstrap_court_score() {
-                                                                Ok(code) => match launch_court_synth(&code, &active_music_process) {
+                                                            match load_or_bootstrap_court_score(&ctx) {
+                                                                Ok(code) => match launch_court_synth(&ctx, &code, &active_music_process) {
                                                                     Ok(outcome) => chat_history.push(("System".to_string(), format!("Legacy Strudel command redirected. {}", outcome.message))),
                                                                     Err(e) => chat_history.push(("System".to_string(), e)),
                                                                 },
@@ -15019,14 +15379,26 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                                                         .to_string(),
                                                                 ));
                                                             } else {
-                                                                let mut command = Command::new(
-                                                                    ".venv\\Scripts\\pythonw.exe",
-                                                                );
+                                                                let mut command = match crate::sidecar::sync_python_sidecar_command(
+                                                                    &crate::sidecar::runtime_context(),
+                                                                    crate::sidecar::SidecarKind::Dynamic(
+                                                                        crate::sidecar::CapabilityId::OperatorTools,
+                                                                        "kingdom_dashboard.py",
+                                                                    ),
+                                                                ) {
+                                                                    Ok(command) => command,
+                                                                    Err(error) => {
+                                                                        chat_history.push((
+                                                                            "System".to_string(),
+                                                                            format!("Kingdom Dashboard is unavailable: {}", error),
+                                                                        ));
+                                                                        continue;
+                                                                    }
+                                                                };
                                                                 command
-                                                                    .arg("kingdom_dashboard.py")
-                                                                    
                                                                     .stdout(Stdio::null())
                                                                     .stderr(Stdio::null());
+                                                                hide_console(&mut command);
                                                                 match command.spawn() {
                                                                     Ok(_) => chat_history.push((
                                                                         "System".to_string(),
@@ -15043,17 +15415,32 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                                                 }
                                                             }
                                                         } else if query == "/work" || query == "/jobs" {
-                                                            let mut cmd = Command::new("cmd");
-                                                            cmd.arg("/C").arg("start").arg("Teledra Work Board")
-                                                                .arg(".venv\\Scripts\\python.exe")
-                                                                .arg("work_viewer.py");
+                                                            // Launched directly rather than through `cmd /C start`:
+                                                            // the shell wrapper only existed to supply a window title
+                                                            // and it hid the interpreter from the capability gate.
+                                                            let mut cmd = match crate::sidecar::sync_python_sidecar_command(
+                                                                &crate::sidecar::runtime_context(),
+                                                                crate::sidecar::SidecarKind::Dynamic(
+                                                                    crate::sidecar::CapabilityId::OperatorTools,
+                                                                    "work_viewer.py",
+                                                                ),
+                                                            ) {
+                                                                Ok(command) => command,
+                                                                Err(error) => {
+                                                                    chat_history.push((
+                                                                        "System".to_string(),
+                                                                        format!("Work Board is unavailable: {}", error),
+                                                                    ));
+                                                                    continue;
+                                                                }
+                                                            };
                                                             match cmd.spawn() {
                                                                 Ok(_) => chat_history.push(("System".to_string(), "Opened the Work Board (job suggestions + income leads) in a new window.".to_string())),
                                                                 Err(e) => chat_history.push(("System".to_string(), format!("Could not open work board: {}", e))),
                                                             }
                                                         } else if query == "/mcp" || query == "/embassies" || query == "/tools" {
                                                             chat_history.push(("System".to_string(), "Probing MCP embassies (launches enabled servers)...".to_string()));
-                                                            let summary = tokio::task::spawn_blocking(mcp_tools_summary)
+                                                            let summary = tokio::task::spawn_blocking(mcp_tools_summary_inner)
                                                                 .await
                                                                 .unwrap_or_else(|_| "MCP probe failed.".to_string());
                                                             chat_history.push(("System".to_string(), summary));
@@ -15222,7 +15609,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                                             ));
                                                             tokio::spawn(async move {
                                                                 let result = tokio::task::spawn_blocking(move || {
-                                                                    run_workshop_experiment(&worker_filename)
+                                                                    run_workshop_experiment(&ctx, &worker_filename)
                                                                 })
                                                                 .await
                                                                 .unwrap_or_else(|error| {
@@ -15238,23 +15625,23 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                                                     .await;
                                                             });
                                                         } else if query == "/sketchpad" {
-                                                            match load_or_bootstrap_court_score() {
-                                                                Ok(score) => match launch_court_synth(&score, &active_music_process) {
+                                                            match load_or_bootstrap_court_score(&ctx) {
+                                                                Ok(score) => match launch_court_synth(&ctx, &score, &active_music_process) {
                                                                     Ok(outcome) => chat_history.push(("System".to_string(), outcome.message)),
                                                                     Err(e) => chat_history.push(("System".to_string(), e)),
                                                                 },
                                                                 Err(e) => chat_history.push(("System".to_string(), e)),
                                                             }
                                                         } else if query == "/pymusic" || query == "/pythonmusic" {
-                                                            match load_or_bootstrap_court_score() {
-                                                                Ok(score) => match launch_court_synth(&score, &active_music_process) {
+                                                            match load_or_bootstrap_court_score(&ctx) {
+                                                                Ok(score) => match launch_court_synth(&ctx, &score, &active_music_process) {
                                                                     Ok(outcome) => chat_history.push(("System".to_string(), outcome.message)),
                                                                     Err(e) => chat_history.push(("System".to_string(), e)),
                                                                 },
                                                                 Err(e) => chat_history.push(("System".to_string(), e)),
                                                             }
                                                         } else if query == "/fractus" || query == "/art" {
-                                                            match launch_fractus_art("--type mandala --iterations 180 --palette purple_haze", &active_fractus_process) {
+                                                            match launch_fractus_art(&ctx, "--type mandala --iterations 180 --palette purple_haze", &active_fractus_process) {
                                                                 Ok(msg) => chat_history.push(("System".to_string(), msg)),
                                                                 Err(e) => chat_history.push(("System".to_string(), e)),
                                                             }
@@ -15407,7 +15794,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                                     let task_epoch = active_turn_epoch();
 
                                                     tokio::spawn(async move {
-                                                        match fetch_youtube_transcript(&url) {
+                                                        match fetch_youtube_transcript(&ctx, &url) {
                                                             Ok(transcript) => {
                                                                 // truncate_chars is char-boundary safe; a raw byte slice
                                                                 // panics when byte 4000 lands inside a multibyte char.
@@ -15545,7 +15932,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                             }
 
                             let workshop_message = if feedback.decision.routes_to_back_workshop() {
-                                match queue_human_music_workshop(&feedback) {
+                                match queue_human_music_workshop(&ctx, &feedback) {
                                     Ok((message, _created)) => Some(message),
                                     Err(error) => {
                                         // Never move the front stage away from a work-on-it
@@ -15715,7 +16102,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                     })
                                 })
                                 .and_then(|candidate| {
-                                    launch_human_music_front_candidate(
+                                    launch_human_music_front_candidate(&ctx, 
                                         &candidate,
                                         &ticket,
                                         &active_music_process,
@@ -15744,7 +16131,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                                 )
                                             })
                                             .and_then(|candidate| {
-                                                launch_human_music_front_candidate(
+                                                launch_human_music_front_candidate(&ctx, 
                                                     &candidate,
                                                     &ticket,
                                                     &active_music_process,
@@ -15875,7 +16262,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                 continue;
                             }
 
-                            match next_human_music_workshop_ticket() {
+                            match next_human_music_workshop_ticket(&ctx) {
                                 Ok(Some(ticket)) => {
                                     let prompt = human_music_workshop_prompt(&ticket);
                                     let brain_ref = Arc::clone(&brain_cell);
@@ -15954,7 +16341,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                     tokio::spawn(async move {
                                         let worker_ticket = store_ticket.clone();
                                         let result = tokio::task::spawn_blocking(move || {
-                                            publish_human_music_workshop_reply(
+                                            publish_human_music_workshop_reply(&ctx, 
                                                 &worker_ticket,
                                                 &reply,
                                             )
@@ -15985,14 +16372,14 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                             "Music Workshop",
                                             "The Organist missed the pass contract twice; applying one bounded deterministic candidate through the same off-air validator.",
                                         );
-                                        spawn_human_music_workshop_fallback(
+                                        spawn_human_music_workshop_fallback(paths.clone(), report.clone(), 
                                             tx.clone(),
                                             ticket,
                                             failure,
                                         );
                                     } else {
                                         human_music_workshop_in_flight = false;
-                                        let disposition = fail_human_music_workshop_ticket(
+                                        let disposition = fail_human_music_workshop_ticket(&ctx, 
                                             &ticket,
                                             &failure,
                                         );
@@ -16053,14 +16440,14 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                             "Music Workshop",
                                             "The Organist missed the pass contract twice; applying one bounded deterministic candidate through the same off-air validator.",
                                         );
-                                        spawn_human_music_workshop_fallback(
+                                        spawn_human_music_workshop_fallback(paths.clone(), report.clone(), 
                                             tx.clone(),
                                             ticket,
                                             failure,
                                         );
                                     } else {
                                         human_music_workshop_in_flight = false;
-                                        let disposition = fail_human_music_workshop_ticket(
+                                        let disposition = fail_human_music_workshop_ticket(&ctx, 
                                             &ticket,
                                             &failure,
                                         );
@@ -16160,7 +16547,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                 // replies/karma and can answer them (closes the two-way loop).
                                 let outreach_live = outreach_is_live();
                                 let inbox_digest = if outreach_live {
-                                    tokio::task::spawn_blocking(fetch_moltbook_inbox)
+                                    tokio::task::spawn_blocking({ let p = paths.clone(); let r = report.clone(); move || fetch_moltbook_inbox(p, r) })
                                         .await
                                         .ok()
                                         .flatten()
@@ -16579,7 +16966,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                         "Organist omitted the required literal [COURT_SCORE: {...}] action tag."
                                             .to_string(),
                                     ),
-                                    Some(score) => match validate_court_score_code(score) {
+                                    Some(score) => match validate_court_score_code(&ctx, score) {
                                         Err(error) => Some(format!(
                                             "Organist emitted an invalid required CourtScore: {}",
                                             summarize_music_validation_error(&error)
@@ -16631,7 +17018,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                     let recovery = if operator_forced_music_action {
                                         deterministic_court_score_evolution()
                                     } else {
-                                        deterministic_court_score_rotation()
+                                        deterministic_court_score_rotation(&ctx)
                                     };
                                     match recovery {
                                         Ok(fallback) => {
@@ -16733,7 +17120,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                         if research_query.is_none() {
                                             research_query = diplomacy_research_query(&diplomacy);
                                         }
-                                        queue_diplomacy_post(
+                                        queue_diplomacy_post(paths.clone(), report.clone(), 
                                             tx.clone(),
                                             source.to_string(),
                                             diplomacy,
@@ -16769,7 +17156,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                     );
                                     let _ = log_nightdesk_activity(&msg);
                                     push_private_event(&mut private_events, "Diplomat", &msg);
-                                    queue_moltbook_comment(
+                                    queue_moltbook_comment(paths.clone(), report.clone(), 
                                         tx.clone(),
                                         source.to_string(),
                                         post_id,
@@ -16817,7 +17204,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                     had_practical_action = true;
                                     let tx_mcp = tx.clone();
                                     tokio::spawn(async move {
-                                        let res = tokio::task::spawn_blocking(move || mcp_call(&server, &tool, &args))
+                                        let res = tokio::task::spawn_blocking(move || mcp_call(&ctx, &server, &tool, &args))
                                             .await
                                             .ok()
                                             .flatten();
@@ -16831,7 +17218,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                             }
 
                             if let Some(tool) = workshop_tool {
-                                match write_workshop_tool(&tool, false) {
+                                match write_workshop_tool(&ctx, &tool, false) {
                                     Ok((summary, outcome)) => {
                                         had_practical_action = true;
                                         workshop_count = count_workshop_experiments();
@@ -16855,7 +17242,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                             }
 
                             if let Some(score) = court_score_code {
-                                match validate_court_score_code(&score) {
+                                match validate_court_score_code(&ctx, &score) {
                                     Ok(()) => match court_score_matches_live_music_slot_identity(
                                         &score,
                                         operator_forced_music_action,
@@ -16930,7 +17317,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                                     message,
                                                 );
                                             }
-                                            Ok(true) => match launch_court_synth_validated(
+                                            Ok(true) => match launch_court_synth_validated(&ctx,
                                                 &score,
                                                 &active_music_process,
                                             ) {
@@ -17025,7 +17412,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                             }
 
                             if let Some(code) = python_music_code {
-                                match validate_python_music_code(&code) {
+                                match validate_python_music_code(&ctx, &code) {
                                     Ok(()) => {
                                         music_enabled = true;
                                         let archive_path =
@@ -17045,7 +17432,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                             );
                                             let _ = log_nightdesk_activity(&msg);
                                             push_private_event(&mut private_events, "NightDesk", &msg);
-                                            match launch_python_music_editor(&active_music_process) {
+                                            match launch_python_music_editor(&ctx, &active_music_process) {
                                                 Ok(msg) => {
                                                     let _ = log_nightdesk_activity(&msg);
                                                     push_private_event(&mut private_events, "NightDesk", &msg);
@@ -17084,7 +17471,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                         // so the player keeps a working loop instead of crashing.
                                         let fallback =
                                             deterministic_python_music(night_desk_cycles as usize);
-                                        if validate_python_music_code(&fallback).is_ok()
+                                        if validate_python_music_code(&ctx, &fallback).is_ok()
                                             && std::fs::write("music.py", &fallback).is_ok()
                                         {
                                             music_enabled = true;
@@ -17097,7 +17484,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                                 "nightdesk_python_music_fallback",
                                                 &format!("chars={}", fallback.len()),
                                             );
-                                            match launch_python_music_editor(&active_music_process) {
+                                            match launch_python_music_editor(&ctx, &active_music_process) {
                                                 Ok(msg) => {
                                                     let _ = log_nightdesk_activity(&msg);
                                                     push_private_event(
@@ -17137,7 +17524,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                             let _ = append_expansion_ledger("nightdesk_strudel", &format!("validated pattern chars={}", code.len()));
                                             let _ = log_nightdesk_activity(&msg);
                                             push_private_event(&mut private_events, "NightDesk", &msg);
-                                            match launch_strudel_editor(&active_music_process) {
+                                            match launch_strudel_editor(&ctx, &active_music_process) {
                                                 Ok(msg) => {
                                                     let _ = log_nightdesk_activity(&msg);
                                                     push_private_event(&mut private_events, "NightDesk", &msg);
@@ -17173,7 +17560,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                 );
                                 let _ = log_nightdesk_activity(&msg);
                                 push_private_event(&mut private_events, "NightDesk", &msg);
-                                queue_fractus_live_art(
+                                queue_fractus_live_art(paths.clone(), report.clone(), 
                                     tx.clone(),
                                     script,
                                     source.to_string(),
@@ -17187,7 +17574,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                 // Stop the Artist recycling identical recipes: if this matches a
                                 // recent launch, nudge it into a fresh variation before drawing.
                                 let spec = diversify_fractus_spec(&spec);
-                                match launch_fractus_art(&spec, &active_fractus_process) {
+                                match launch_fractus_art(&ctx, &spec, &active_fractus_process) {
                                     Ok(msg) => {
                                         had_practical_action = true;
                                         let _ = archive_fractus_experiment(source, &spec);
@@ -17201,7 +17588,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                         record_recursive_failure("nightdesk_fractus_failed", &msg);
                                         let _ = log_nightdesk_activity(&msg);
                                         push_private_event(&mut private_events, "NightDesk", &msg);
-                                        match launch_fractus_art(&fallback, &active_fractus_process) {
+                                        match launch_fractus_art(&ctx, &fallback, &active_fractus_process) {
                                             Ok(msg) => {
                                                 had_practical_action = true;
                                                 let _ = archive_fractus_experiment("nightdesk_fallback", &fallback);
@@ -17241,7 +17628,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                 push_private_event(&mut private_events, "Workshop", &msg);
                                 tokio::spawn(async move {
                                     let result = tokio::task::spawn_blocking(move || {
-                                        write_workshop_tool(&draft, true)
+                                        write_workshop_tool(&ctx, &draft, true)
                                     })
                                     .await
                                     .unwrap_or_else(|error| {
@@ -18799,7 +19186,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                             "Diplomacy draft evidence was persisted".to_string(),
                                         );
                                         if !test_mode_enabled {
-                                            queue_diplomacy_post(
+                                            queue_diplomacy_post(paths.clone(), report.clone(), 
                                                 tx.clone(),
                                                 role.as_str().to_string(),
                                                 diplomacy,
@@ -18825,7 +19212,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                             });
 
                             if let Some(tool) = workshop_tool {
-                                match write_workshop_tool(&tool, false) {
+                                match write_workshop_tool(&ctx, &tool, false) {
                                     Ok((summary, outcome)) => {
                                         workshop_count = count_workshop_experiments();
                                         suggestion_count = count_new_suggestions();
@@ -18852,7 +19239,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                             // CourtScore is a first-class native project. It must never
                             // pass through the retired Python verifier/repair pipeline.
                             if let Some(score) = court_score_code {
-                                match validate_court_score_code(&score) {
+                                match validate_court_score_code(&ctx, &score) {
                                     Ok(()) => match court_score_has_meaningful_delta(&score) {
                                         Ok(false) => {
                                             let error = "Organist CourtScore was a musical no-op; it was not installed, archived, replayed, rewarded, or placed on cooldown.".to_string();
@@ -18907,7 +19294,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                             chat_history.push(("System".to_string(), msg));
                                         }
                                         Ok(true) => {
-                                            match launch_court_synth_validated(
+                                            match launch_court_synth_validated(&ctx,
                                                 &score,
                                                 &active_music_process,
                                             ) {
@@ -19032,7 +19419,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                 let legacy_validation = {
                                     let validation_copy = code.clone();
                                     tokio::task::spawn_blocking(move || {
-                                        validate_python_music_code(&validation_copy)
+                                        validate_python_music_code(&ctx, &validation_copy)
                                     })
                                     .await
                                     .unwrap_or_else(|error| {
@@ -19052,7 +19439,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                                 push_private_event(&mut private_events, "Test Music", &msg);
                                                 chat_history.push(("System".to_string(), msg));
                                             } else {
-                                            match launch_python_music_editor(&active_music_process) {
+                                            match launch_python_music_editor(&ctx, &active_music_process) {
                                                 Ok(msg) => {
                                                     court_outcome = Some(if let Some(path) = archive_path {
                                                         format!(
@@ -19084,7 +19471,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                             let validation_summary =
                                                 summarize_music_validation_error(&e);
                                             record_recursive_failure("organist_python_music_failed", &e);
-                                            let repair_attempt = try_subconscious_python_music_repair(
+                                            let repair_attempt = try_subconscious_python_music_repair(&ctx, 
                                                 Arc::clone(&brain_cell),
                                                 &e,
                                                 &code,
@@ -19116,7 +19503,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                                             push_private_event(&mut private_events, "Test Music", &msg);
                                                             chat_history.push(("System".to_string(), msg));
                                                         } else {
-                                                            match launch_python_music_editor(&active_music_process) {
+                                                            match launch_python_music_editor(&ctx, &active_music_process) {
                                                                 Ok(msg) => {
                                                                     court_outcome = Some(if let Some(path) = archive_path {
                                                                         format!(
@@ -19159,7 +19546,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                                     record_recursive_failure("subconscious_python_music_repair_failed", &repair_err);
                                                     push_private_event(&mut private_events, "Tool", &format!("Legacy Python music failed validation ({validation_summary}); repair failed ({repair_summary}); safe fallback queued."));
                                                     chat_history.push(("System".to_string(), format!("Legacy Python music was rejected and its repair failed; trying the safe fallback. {validation_summary}")));
-                                                    match load_or_bootstrap_court_score() {
+                                                    match load_or_bootstrap_court_score(&ctx) {
                                                         Ok(fallback_score) if test_mode_enabled => {
                                                             let _ = fallback_score;
                                                             court_outcome = Some(
@@ -19173,7 +19560,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                                             ));
                                                         }
                                                         Ok(fallback_score) => {
-                                                            match launch_court_synth(
+                                                            match launch_court_synth(&ctx, 
                                                                 &fallback_score,
                                                                 &active_music_process,
                                                             ) {
@@ -19264,24 +19651,42 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                         if let Some(mut child) = lock.take() {
                                             let _ = child.kill();
                                         }
-                                        let mut art_cmd = Command::new(".venv\\Scripts\\python.exe");
-                                        art_cmd
-                                            .arg("art.py")
-                                            
-                                            .stdout(std::process::Stdio::null())
-                                            .stderr(std::process::Stdio::null());
-                                        hide_console(&mut art_cmd);
-                                        let child = art_cmd.spawn();
-                                        match child {
-                                            Ok(c) => {
-                                                *lock = Some(c);
-                                                court_outcome = Some("a custom Python artwork is rendering on screen now, saving to art.png".to_string());
-                                                push_private_event(&mut private_events, "Tool", "Python art engine launched.");
+                                        // A disabled capability must be reported, never
+                                        // silently substituted with another process: the
+                                        // model can emit an art tag in any startup mode.
+                                        match crate::sidecar::sync_python_sidecar_command(
+                                            &crate::sidecar::runtime_context(),
+                                            crate::sidecar::SidecarKind::Art,
+                                        ) {
+                                            Err(error) => {
+                                                let message = format!(
+                                                    "Art is unavailable in this startup profile: {}",
+                                                    error
+                                                );
+                                                court_outcome = Some(format!(
+                                                    "the custom Python art engine is unavailable: {}",
+                                                    error
+                                                ));
+                                                push_private_event(&mut private_events, "Tool", &message);
+                                                chat_history.push(("System".to_string(), message));
                                             }
-                                            Err(e) => {
-                                                court_outcome = Some(format!("the custom Python art engine failed to launch: {}", e));
-                                                record_recursive_failure("python_art_launch_failed", &e.to_string());
-                                                push_private_event(&mut private_events, "Tool", &format!("Python art engine failed to launch: {}", e));
+                                            Ok(mut art_cmd) => {
+                                                art_cmd
+                                                    .stdout(std::process::Stdio::null())
+                                                    .stderr(std::process::Stdio::null());
+                                                hide_console(&mut art_cmd);
+                                                match art_cmd.spawn() {
+                                                    Ok(c) => {
+                                                        *lock = Some(c);
+                                                        court_outcome = Some("a custom Python artwork is rendering on screen now, saving to art.png".to_string());
+                                                        push_private_event(&mut private_events, "Tool", "Python art engine launched.");
+                                                    }
+                                                    Err(e) => {
+                                                        court_outcome = Some(format!("the custom Python art engine failed to launch: {}", e));
+                                                        record_recursive_failure("python_art_launch_failed", &e.to_string());
+                                                        push_private_event(&mut private_events, "Tool", &format!("Python art engine failed to launch: {}", e));
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -19307,7 +19712,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                 );
                                 push_private_event(&mut private_events, "Tool", &pending);
                                 chat_history.push(("System".to_string(), pending));
-                                queue_fractus_live_art(
+                                queue_fractus_live_art(paths.clone(), report.clone(), 
                                     tx.clone(),
                                     script,
                                     role.as_str().to_string(),
@@ -19319,7 +19724,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
 
                             if let Some(spec) = fractus_art_spec {
                                 let spec = diversify_fractus_spec(&spec);
-                                match launch_fractus_art(&spec, &active_fractus_process) {
+                                match launch_fractus_art(&ctx, &spec, &active_fractus_process) {
                                     Ok(msg) => {
                                         let _ = archive_fractus_experiment(role.as_str(), &spec);
                                         court_outcome = Some(format!("the Fractus Geometry Engine is drawing live on screen ({})", spec.trim()));
@@ -19377,7 +19782,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                             chat_history.push(("System".to_string(), "Inserted Organist pattern into strudel_app/current.strudel".to_string()));
                                             music_enabled = true;
 
-                                            match launch_strudel_editor(&active_music_process) {
+                                            match launch_strudel_editor(&ctx, &active_music_process) {
                                                 Ok(msg) => {
                                                     court_outcome = Some(format!(
                                                         "a new Strudel pattern passed validation; {}",
@@ -20173,8 +20578,12 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                     copilot_turn += 1;
                                     // Refresh the on-screen view every few turns (vision is the slow part).
                                     if copilot_turn % 4 == 1 {
-                                        copilot_screen_note =
-                                            tokio::task::spawn_blocking(run_copilot_vision).await.ok().flatten();
+                                        copilot_screen_note = tokio::task::spawn_blocking(|| {
+                                            run_copilot_vision(&crate::sidecar::runtime_context())
+                                        })
+                                        .await
+                                        .ok()
+                                        .flatten();
                                     }
                                     if copilot_turn % 6 == 0 {
                                         if let Some(g) =
@@ -20502,11 +20911,14 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                         // retrieval over memory.db, injected as evidence so
                                         // reports cite the database instead of imagination.
                                         if role == CourtRole::Archivist {
-                                            let mut mem_cmd = tokio::process::Command::new(".venv\\Scripts\\python.exe");
-                                            mem_cmd
-                                                .arg("retrieve_memory.py")
-                                                .arg(&instruction)
-                                                ;
+                                            // Enhanced retrieval only: when MemorySearch is
+                                            // unavailable the Archivist still speaks from
+                                            // ordinary local memory, so this degrades quietly.
+                                            if let Ok(mut mem_cmd) = crate::sidecar::tokio_python_sidecar_command(
+                                                &crate::sidecar::runtime_context(),
+                                                crate::sidecar::SidecarKind::Memory,
+                                            ) {
+                                            mem_cmd.arg(&instruction);
                                             hide_console_tokio(&mut mem_cmd);
                                             if let Ok(output) = mem_cmd.output().await {
                                                 let raw = String::from_utf8_lossy(&output.stdout);
@@ -20519,6 +20931,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                                         );
                                                     }
                                                 }
+                                            }
                                             }
                                         }
                                         if active_turn_epoch() != task_epoch {
@@ -20616,12 +21029,13 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
         if exiting_to_sleep {
             if let Some(t) = exit_timer {
                 if t.elapsed() >= Duration::from_millis(1500) {
-                    let python_exe = ".venv\\Scripts\\python.exe";
-                    let script_path = "dream.py";
-                    let mut dream_cmd = Command::new(python_exe);
-                    dream_cmd.arg(script_path);
-                    hide_console(&mut dream_cmd);
-                    let _ = dream_cmd.spawn();
+                    if let Ok(mut dream_cmd) = crate::sidecar::sync_python_sidecar_command(
+                        &crate::sidecar::runtime_context(),
+                        crate::sidecar::SidecarKind::Dream,
+                    ) {
+                        hide_console(&mut dream_cmd);
+                        let _ = dream_cmd.spawn();
+                    }
                     run_loop = false;
                 }
             }
@@ -20682,7 +21096,12 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
 mod creativity_tests {
     use super::*;
 
-    const TKINTER_SPAWN: &str = "import tkinter as tk\nimport random\nr = tk.Tk()\nc = tk.Canvas(r, width=400, height=400, bg='black')\nc.pack()\nr.after(50, lambda: None)\nr.mainloop()\n";
+    /// The installed runtime, resolved against the real repository root.
+    fn ctx() -> crate::sidecar::RuntimeContext<'static> {
+        crate::sidecar::test_runtime_context()
+    }
+
+    const TKINTER_SPAWN: &str ="import tkinter as tk\nimport random\nr = tk.Tk()\nc = tk.Canvas(r, width=400, height=400, bg='black')\nc.pack()\nr.after(50, lambda: None)\nr.mainloop()\n";
     const SOCKET_TOOL: &str = "import socket\ns = socket.socket()\nprint('connected')\n";
 
     #[test]
@@ -20715,26 +21134,39 @@ mod creativity_tests {
 
     #[test]
     fn startup_cleanup_spares_kraken_and_manual_project_jobs() {
+        // Purge only matches children whose command line lives under THIS root,
+        // so a second checkout's court is never killed. Command lines are built
+        // from AppPaths, so a real child always carries the absolute root.
+        let root = ctx().paths.root.to_string_lossy().into_owned();
+        let child = |relative: &str| format!(r"{root}\.venv\Scripts\python.exe {root}\{relative}");
+
         assert!(is_teledra_runtime_child(
             "python.exe",
-            r#".venv\Scripts\python.exe restream_listener.py"#,
+            &child("restream_listener.py"),
         ));
         assert!(is_teledra_runtime_child(
             "node.exe",
-            r#"node strudel_app\app.mjs play"#,
+            &format!(r"node {root}\strudel_app\app.mjs play"),
         ));
         assert!(!is_teledra_runtime_child(
             "python.exe",
-            r#".venv\Scripts\python.exe kraken\kraken.py run 2"#,
+            &child(r"kraken\kraken.py run 2"),
         ));
         assert!(!is_teledra_runtime_child(
             "python.exe",
-            r#".venv\Scripts\python.exe tools\manual_analysis.py"#,
+            &child(r"tools\manual_analysis.py"),
         ));
         assert!(is_teledra_runtime_child(
             "pythonw.exe",
-            r#".venv\Scripts\pythonw.exe court_synthesizer.py open court_synth\current_score.json --play"#,
+            &child(r"court_synthesizer.py open court_synth\current_score.json --play"),
         ));
+        assert!(
+            !is_teledra_runtime_child(
+                "python.exe",
+                r"C:\SomeOtherCheckout\.venv\Scripts\python.exe restream_listener.py",
+            ),
+            "a court running from another root must never be purged"
+        );
     }
 
     #[test]
@@ -20749,7 +21181,7 @@ mod creativity_tests {
         let valid = default_court_score_code();
         std::fs::write(&score_path, &valid).expect("write valid CourtScore");
 
-        let restored = existing_court_score_for_startup(&score_path, true, false)
+        let restored = existing_court_score_for_startup(&ctx(), &score_path, true, false)
             .expect("valid existing score should be selectable")
             .expect("valid existing score should be restored");
         assert_eq!(
@@ -20762,19 +21194,19 @@ mod creativity_tests {
             "startup selection must not rewrite the project"
         );
         assert!(
-            existing_court_score_for_startup(&score_path, false, false)
+            existing_court_score_for_startup(&ctx(), &score_path, false, false)
                 .expect("disabled music should skip cleanly")
                 .is_none()
         );
         assert!(
-            existing_court_score_for_startup(&score_path, true, true)
+            existing_court_score_for_startup(&ctx(), &score_path, true, true)
                 .expect("test mode should skip cleanly")
                 .is_none()
         );
 
         let invalid = "{\"schema_version\":1,\"title\":\"broken\"}";
         std::fs::write(&score_path, invalid).expect("write invalid CourtScore");
-        assert!(existing_court_score_for_startup(&score_path, true, false).is_err());
+        assert!(existing_court_score_for_startup(&ctx(), &score_path, true, false).is_err());
         assert_eq!(
             std::fs::read_to_string(&score_path).expect("invalid score remains readable"),
             invalid,
@@ -20782,7 +21214,7 @@ mod creativity_tests {
         );
         std::fs::remove_file(&score_path).expect("remove score for missing-file case");
         assert!(
-            existing_court_score_for_startup(&score_path, true, false)
+            existing_court_score_for_startup(&ctx(), &score_path, true, false)
                 .expect("missing score should not bootstrap during startup")
                 .is_none()
         );
@@ -21217,10 +21649,10 @@ mod creativity_tests {
 
     #[test]
     fn generated_python_music_passes_strict_sound_verification() {
-        validate_court_score_code(&default_python_music_code())
+        validate_court_score_code(&ctx(), &default_python_music_code())
             .expect("the transitional default alias must be a valid CourtScore");
         for seed in 0..8 {
-            validate_python_music_code(&deterministic_python_music(seed))
+            validate_python_music_code(&ctx(), &deterministic_python_music(seed))
                 .unwrap_or_else(|error| panic!("Python fallback {seed} failed: {error}"));
         }
     }
@@ -21229,7 +21661,7 @@ mod creativity_tests {
     fn court_synth_default_is_a_valid_canonical_project() {
         let score = default_court_score_code();
         assert!(is_court_score_code(&score));
-        validate_court_score_code(&score)
+        validate_court_score_code(&ctx(), &score)
             .expect("Court Synth fallback must be accepted by the native project validator");
     }
 
@@ -21238,7 +21670,7 @@ mod creativity_tests {
         let scores: Vec<serde_json::Value> = (0..3)
             .map(|variant| {
                 let code = court_score_variant_code(variant, 41 + variant as u64, "test");
-                validate_court_score_code(&code)
+                validate_court_score_code(&ctx(), &code)
                     .expect("every fallback style must pass the active CourtScore gate");
                 serde_json::from_str(&code).unwrap()
             })
@@ -21277,7 +21709,7 @@ mod creativity_tests {
         let mut fingerprints = std::collections::HashSet::new();
         for variant in 0..9 {
             let code = court_score_variant_code(variant, 900 + variant as u64, "novelty_test");
-            validate_court_score_code(&code)
+            validate_court_score_code(&ctx(), &code)
                 .unwrap_or_else(|error| panic!("fallback variant {variant} failed: {error}"));
             let score: serde_json::Value = serde_json::from_str(&code).unwrap();
             let (min_bpm, max_bpm, expected_mode, expected_chords) =
@@ -21388,7 +21820,7 @@ mod creativity_tests {
         for variant in 0..3 {
             let current = court_score_variant_code(variant, 11, "test_current");
             let evolved = court_score_evolution_from(&current, 12);
-            validate_court_score_code(&evolved)
+            validate_court_score_code(&ctx(), &evolved)
                 .expect("required-slot recovery must pass the active CourtScore gate");
             court_score_keeper_continuity(&current, &evolved)
                 .expect("autonomous recovery must preserve the keeper identity");
@@ -21444,7 +21876,7 @@ mod creativity_tests {
             let current = court_score_variant_code(current_variant, 41, "front_recovery_base");
             let recovered = human_music_front_stage_fallback(&current, 77 + current_variant as u64)
                 .expect("front-stage recovery must be available for every supported style");
-            validate_court_score_code(&recovered)
+            validate_court_score_code(&ctx(), &recovered)
                 .expect("front-stage recovery must pass the production validator");
             let current_json: serde_json::Value = serde_json::from_str(&current).unwrap();
             let recovered_json: serde_json::Value = serde_json::from_str(&recovered).unwrap();
@@ -21465,9 +21897,9 @@ mod creativity_tests {
         .collect::<std::collections::HashSet<_>>();
 
         let recovered =
-            human_music_front_stage_fallback_avoiding(&current_b, 77, &recent_identities)
+            human_music_front_stage_fallback_avoiding(&ctx(), &current_b, 77, &recent_identities)
                 .expect("front-stage recovery must select a third identity instead of A -> B -> A");
-        validate_court_score_code(&recovered)
+        validate_court_score_code(&ctx(), &recovered)
             .expect("no-ping-pong recovery must pass the production validator");
         let recovered_identity = court_score_identity_fingerprint(&recovered).unwrap();
         assert!(!recent_identities.contains(&recovered_identity));
@@ -21491,9 +21923,9 @@ mod creativity_tests {
                 "ordinary autonomous rotation must not accept keeper development"
             );
 
-            let rotated = court_score_rotation_from(&current, 177 + current_variant as u64)
+            let rotated = court_score_rotation_from(&ctx(), &current, 177 + current_variant as u64)
                 .expect("deterministic rotation must recover with a validated new style");
-            validate_court_score_code(&rotated)
+            validate_court_score_code(&ctx(), &rotated)
                 .expect("rotation fallback must pass the production CourtScore gate");
             assert!(court_score_establishes_new_identity(&current, &rotated).unwrap());
             let current_json: serde_json::Value = serde_json::from_str(&current).unwrap();
@@ -21534,7 +21966,7 @@ mod creativity_tests {
                 base_score: base.clone(),
                 parent_score: parent.clone(),
             };
-            let recovered = deterministic_human_music_workshop_candidate(&ticket)
+            let recovered = deterministic_human_music_workshop_candidate(&ctx(), &ticket)
                 .expect("bounded workshop recovery must validate");
             court_score_keeper_continuity(&base, &recovered)
                 .expect("bounded recovery must preserve keeper identity");
@@ -21844,10 +22276,10 @@ mod creativity_tests {
             {"track":"lead","beat":1.0,"duration":0.5,"pitch":"C#6","velocity":0.7}
         ]);
         let dirty = serde_json::to_string(&dirty).unwrap();
-        assert!(validate_court_score_code(&dirty).is_err());
-        let repaired = normalize_court_score_harmony(&dirty, None)
+        assert!(validate_court_score_code(&ctx(), &dirty).is_err());
+        let repaired = normalize_court_score_harmony(&ctx(), &dirty, None)
             .expect("active CourtScore normalizer should repair the manual delta");
-        validate_court_score_code(&repaired)
+        validate_court_score_code(&ctx(), &repaired)
             .expect("normalized CourtScore must pass the active harmonic gate");
     }
 
@@ -21881,7 +22313,7 @@ mod creativity_tests {
     #[test]
     fn legacy_music_validators_do_not_accept_mistagged_court_scores() {
         let mistagged = r#"{"schema_version":1}"#;
-        assert!(validate_python_music_code(mistagged).is_err());
+        assert!(validate_python_music_code(&ctx(), mistagged).is_err());
         assert!(validate_strudel_music_code(mistagged).is_err());
     }
 
@@ -21933,7 +22365,7 @@ mod creativity_tests {
         std::fs::create_dir_all(&directory).expect("temp directory");
         let path = directory.join("score.json");
         std::fs::write(&path, "old").expect("old fixture");
-        atomic_write_court_score(&path, "new").expect("atomic replacement");
+        atomic_write_court_score(&ctx(), &path, "new").expect("atomic replacement");
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "new");
         let _ = std::fs::remove_dir_all(directory);
     }
@@ -21952,7 +22384,7 @@ mod creativity_tests {
         let response = format!("[COURT_SCORE:\n{}\n]", default_court_score_code());
         let (_cleaned, score) =
             extract_court_score_tag(&response).expect("complete tag should parse");
-        validate_court_score_code(&score).expect("complete parsed tag should validate");
+        validate_court_score_code(&ctx(), &score).expect("complete parsed tag should validate");
     }
 
     #[test]
@@ -22011,18 +22443,28 @@ note("<~ e4 f4 g4> [a3 c4] ~ <d4 b3> e4").s("sine").gain(0.1).pan(0.4).room(0.4)
 
     #[test]
     fn strudel_launch_commands_are_native_and_shell_safe() {
-        let cybernetic = build_strudel_command(StrudelLaunchMode::CyberneticSynthesizer);
+        let paths = ctx().paths;
+        let cybernetic = build_strudel_command(paths, StrudelLaunchMode::CyberneticSynthesizer);
         assert_eq!(cybernetic.get_program(), "node.exe");
         assert_eq!(
             cybernetic
                 .get_args()
                 .map(|arg| arg.to_string_lossy().into_owned())
                 .collect::<Vec<_>>(),
-            vec![LOCAL_STRUDEL_APP_PATH, "play", "8"]
+            vec![
+                paths.strudel_app().to_string_lossy().into_owned(),
+                "play".to_string(),
+                "8".to_string()
+            ],
+            "the app path must be resolved from the root, not a relative literal"
         );
-        assert_eq!(cybernetic.get_current_dir(), Some(Path::new(".")));
+        assert_eq!(
+            cybernetic.get_current_dir(),
+            Some(paths.root.as_path()),
+            "the child must not depend on the process-wide current directory"
+        );
 
-        let legacy = build_strudel_command(StrudelLaunchMode::LegacyJavaSketchpad);
+        let legacy = build_strudel_command(paths, StrudelLaunchMode::LegacyJavaSketchpad);
         assert_eq!(legacy.get_program(), "cmd.exe");
         assert_eq!(
             legacy

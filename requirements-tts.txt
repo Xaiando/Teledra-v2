@@ -1,5 +1,9 @@
+# Voice capability: generate_voice.py.
+# Uses numpy directly and imports torch lazily on first synthesis. It streams
+# PCM to the Rust side over stdout, so it needs neither sounddevice nor
+# faster-whisper -- those belong to requirements-hearing.txt.
+# LuxTTS is a local source directory, not a pip package: do not list it here.
+numpy
 torch
 torchaudio
 transformers
-sounddevice
-faster-whisper
