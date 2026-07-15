@@ -499,14 +499,14 @@ const FACT_MEMORY_PATH: &str = "knowledge/fact_memory.jsonl";
 const LORE_MEMORY_PATH: &str = "knowledge/lore_memory.jsonl";
 const MUSIC_THEORY_PATH: &str = "knowledge/court_score_composition_doctrine.md";
 const MUSIC_THEORY_LESSONS_PATH: &str = "knowledge/music_theory_lessons.jsonl";
-const COURT_SYNTH_FEEDBACK_EVENTS_DIR: &str = "D:\\Teledra\\court_synth\\feedback\\events";
+const COURT_SYNTH_FEEDBACK_EVENTS_DIR: &str = "court_synth\\feedback\\events";
 const COURT_SYNTH_FEEDBACK_STATE_PATH: &str =
-    "D:\\Teledra\\court_synth\\feedback\\runtime_state.json";
-const COURT_SYNTH_WORKSHOP_SCRIPT_PATH: &str = "D:\\Teledra\\court_synth\\workshop.py";
+    "court_synth\\feedback\\runtime_state.json";
+const COURT_SYNTH_WORKSHOP_SCRIPT_PATH: &str = "court_synth\\workshop.py";
 const HUMAN_MUSIC_WORKSHOP_PASSES: u64 = 4;
 const HUMAN_MUSIC_WORKSHOP_BUSY_RETRY_SECS: u64 = 15;
-const FACT_ARCHIVE_PATH: &str = "D:\\Teledra\\knowledge\\fact_archive.md";
-const LORE_ARCHIVE_PATH: &str = "D:\\Teledra\\knowledge\\lore_archive.md";
+const FACT_ARCHIVE_PATH: &str = "knowledge\\fact_archive.md";
+const LORE_ARCHIVE_PATH: &str = "knowledge\\lore_archive.md";
 const TASTE_DESIRE_PATH: &str = "knowledge/taste_desire.json";
 const TEST_MOMENT_LOG_PATH: &str = "knowledge/test_mode_moments.jsonl";
 const DESIRE_PROMOTE_AFTER: u64 = 3;
@@ -1804,7 +1804,7 @@ fn load_shared_stories() -> Vec<String> {
             .collect();
     }
     // last resort absolute
-    if let Ok(content) = std::fs::read_to_string("D:\\Teledra\\knowledge\\shared_stories.jsonl") {
+    if let Ok(content) = std::fs::read_to_string("knowledge\\shared_stories.jsonl") {
         return content
             .lines()
             .filter(|l| !l.trim().is_empty())
@@ -1817,7 +1817,7 @@ fn load_shared_stories() -> Vec<String> {
 /// Tries hard to find a file inside the knowledge/ directory even when the
 /// process was launched from a desktop shortcut (CWD = Desktop or exe dir).
 fn resolve_knowledge_file(name: &str) -> String {
-    let direct = format!("D:\\Teledra\\knowledge\\{}", name);
+    let direct = format!("knowledge\\{}", name);
     if std::path::Path::new(&direct).exists() {
         return direct;
     }
@@ -1899,7 +1899,7 @@ fn hide_console_tokio(_cmd: &mut tokio::process::Command) {}
 /// instances holding file locks (the "Access is denied (os error 5)" rebuild
 /// blocker) and known long-lived children of dead orchestrators. Runs once at
 /// startup, before anything spawns. Deliberately does not match every Python or
-/// Node process under D:\Teledra: Kraken, developer tools, and manually launched
+/// Node process under .: Kraken, developer tools, and manually launched
 /// jobs share that tree and are independently owned.
 fn is_teledra_runtime_child(name: &str, cmdline: &str) -> bool {
     let name = name.to_ascii_lowercase();
@@ -2508,9 +2508,9 @@ fn validate_scribe_target(filepath: &str) -> Result<String, String> {
     let absolute = if lower.starts_with("d:\\teledra\\knowledge\\") {
         clean
     } else if lower.starts_with("knowledge\\") {
-        format!("D:\\Teledra\\{}", clean)
+        format!("{}", clean)
     } else {
-        return Err("Scribe writes are confined to D:\\Teledra\\knowledge".to_string());
+        return Err("Scribe writes are confined to knowledge".to_string());
     };
 
     // Reject NTFS alternate data streams and any unexpected drive separator.
@@ -3443,8 +3443,8 @@ fn route_scribe_record(
 }
 
 fn fetch_youtube_transcript(url: &str) -> Result<String, String> {
-    let python_exe = "D:\\Teledra\\.venv\\Scripts\\python.exe";
-    let script_path = "D:\\Teledra\\get_youtube_transcript.py";
+    let python_exe = ".venv\\Scripts\\python.exe";
+    let script_path = "get_youtube_transcript.py";
 
     let mut cmd = Command::new(python_exe);
     cmd.arg(script_path).arg(url);
@@ -3596,7 +3596,7 @@ fn summarize_wizard_report(value: &serde_json::Value) -> Option<String> {
 }
 
 fn import_cloud_wizard_reports() -> Result<(String, Vec<String>), String> {
-    let archive_path = Path::new("D:\\Teledra\\knowledge\\cloud_wizard_reports.jsonl");
+    let archive_path = Path::new("knowledge\\cloud_wizard_reports.jsonl");
     let before_len = std::fs::metadata(archive_path)
         .map(|m| m.len())
         .unwrap_or(0);
@@ -3605,7 +3605,7 @@ fn import_cloud_wizard_reports() -> Result<(String, Vec<String>), String> {
     cmd.arg("-ExecutionPolicy")
         .arg("Bypass")
         .arg("-File")
-        .arg("D:\\Teledra\\cloud_residents\\pull_wizard_reports.ps1");
+        .arg("cloud_residents\\pull_wizard_reports.ps1");
     hide_console(&mut cmd);
 
     let output = cmd
@@ -3965,7 +3965,7 @@ fn run_human_music_workshop_cli(args: &[String]) -> Result<serde_json::Value, St
     command
         .arg(COURT_SYNTH_WORKSHOP_SCRIPT_PATH)
         .args(args)
-        .current_dir("D:\\Teledra")
+        
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     hide_console(&mut command);
@@ -4004,9 +4004,9 @@ fn queue_human_music_workshop(feedback: &HumanMusicFeedback) -> Result<(String, 
         "--score".to_string(),
         COURT_SYNTH_SCORE_PATH.to_string(),
         "--state".to_string(),
-        "D:\\Teledra\\court_synth\\state.json".to_string(),
+        "court_synth\\state.json".to_string(),
         "--wav".to_string(),
-        "D:\\Teledra\\court_synth\\renders\\current.wav".to_string(),
+        "court_synth\\renders\\current.wav".to_string(),
         "--passes".to_string(),
         HUMAN_MUSIC_WORKSHOP_PASSES.to_string(),
     ];
@@ -4025,7 +4025,7 @@ fn queue_human_music_workshop(feedback: &HumanMusicFeedback) -> Result<(String, 
 }
 
 fn confined_human_music_workshop_path(raw: &str) -> Result<PathBuf, String> {
-    let root = Path::new("D:\\Teledra\\court_synth\\feedback\\workshops")
+    let root = Path::new("court_synth\\feedback\\workshops")
         .canonicalize()
         .map_err(|error| format!("Could not resolve the back-workshop root: {error}"))?;
     let path = Path::new(raw)
@@ -4267,7 +4267,7 @@ fn publish_human_music_workshop_reply(
     let candidate = extract_human_music_court_score(reply).ok_or_else(|| {
         "Organist omitted the required literal [COURT_SCORE: {...}] workshop candidate.".to_string()
     })?;
-    let incoming_dir = Path::new("D:\\Teledra\\court_synth\\feedback\\workshops\\.incoming");
+    let incoming_dir = Path::new("court_synth\\feedback\\workshops\\.incoming");
     std::fs::create_dir_all(incoming_dir)
         .map_err(|error| format!("Could not create workshop staging folder: {error}"))?;
     let nonce = std::time::SystemTime::now()
@@ -5454,7 +5454,7 @@ fn looks_like_usable_approved_tool(path: &Path) -> bool {
 
 fn list_approved_tools(limit: usize) -> Vec<String> {
     let mut names = Vec::new();
-    if let Ok(entries) = std::fs::read_dir("D:\\Teledra\\tools\\approved") {
+    if let Ok(entries) = std::fs::read_dir("tools\\approved") {
         for entry in entries.flatten() {
             if let Some(name) = entry.file_name().to_str() {
                 if name.ends_with(".py") && looks_like_usable_approved_tool(&entry.path()) {
@@ -5524,7 +5524,7 @@ fn record_recursive_failure(kind: &str, detail: &str) {
     } else if compact.to_lowercase().contains("file not found")
         || compact.to_lowercase().contains("path outside workshop")
     {
-        "Skill improvement: workshop tools must be self-contained, create their own tiny sample data, and avoid package/data paths outside D:\\Teledra\\tools."
+        "Skill improvement: workshop tools must be self-contained, create their own tiny sample data, and avoid package/data paths outside tools."
     } else if compact.to_lowercase().contains("strudel") {
         "Skill improvement: Strudel is a retired authoring payload. Preserve the canonical Court Synth project and retry with one complete CourtScore using the current schema; apply the active CourtScore composition doctrine instead of emitting pattern code."
     } else if compact.to_lowercase().contains("python music")
@@ -6061,7 +6061,7 @@ fn current_workshop_report_passed(filename: &str) -> bool {
         Err(_) => return false,
     };
     let report_path = format!(
-        "D:\\Teledra\\tools\\experiments\\reports\\{}.report.md",
+        "tools\\experiments\\reports\\{}.report.md",
         safe_filename
     );
     std::fs::read_to_string(report_path)
@@ -6071,8 +6071,8 @@ fn current_workshop_report_passed(filename: &str) -> bool {
 
 fn promote_workshop_tool(filename: &str) -> Result<String, String> {
     let safe_filename = validate_workshop_filename(filename)?;
-    let source = format!("D:\\Teledra\\tools\\experiments\\{}", safe_filename);
-    let dest = format!("D:\\Teledra\\tools\\approved\\{}", safe_filename);
+    let source = format!("tools\\experiments\\{}", safe_filename);
+    let dest = format!("tools\\approved\\{}", safe_filename);
     let source_path = Path::new(&source);
     let dest_path = Path::new(&dest);
 
@@ -6092,7 +6092,7 @@ fn promote_workshop_tool(filename: &str) -> Result<String, String> {
         ));
     }
 
-    let _ = std::fs::create_dir_all("D:\\Teledra\\tools\\approved");
+    let _ = std::fs::create_dir_all("tools\\approved");
     std::fs::rename(source_path, dest_path)
         .map_err(|e| format!("Failed to promote workshop tool: {}", e))?;
     Ok(format!("Promoted '{}' to tools/approved.", safe_filename))
@@ -6874,7 +6874,7 @@ fn validate_python_art_code(code: &str) -> Result<(), String> {
         return Err("Python art must use a supported local visual runtime.".to_string());
     }
     if !lower.contains("art.png") {
-        return Err("Python art must save its artifact as D:\\Teledra\\art.png.".to_string());
+        return Err("Python art must save its artifact as art.png.".to_string());
     }
     let has_native_window = lower.contains("plt.show(")
         || lower.contains("pyplot.show(")
@@ -6888,10 +6888,10 @@ fn validate_python_art_code(code: &str) -> Result<(), String> {
 
 fn run_workshop_experiment(filename: &str) -> Result<String, String> {
     let safe_filename = validate_workshop_filename(filename)?;
-    let mut cmd = Command::new("D:\\Teledra\\.venv\\Scripts\\python.exe");
-    cmd.arg("D:\\Teledra\\tools\\workshop_runner.py")
+    let mut cmd = Command::new(".venv\\Scripts\\python.exe");
+    cmd.arg("tools\\workshop_runner.py")
         .arg(format!("experiments/{}", safe_filename))
-        .current_dir("D:\\Teledra\\tools")
+        .current_dir("tools")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     hide_console(&mut cmd);
@@ -6941,14 +6941,14 @@ fn write_workshop_tool(
     let filename = validate_workshop_filename(&draft.filename)?;
     scan_workshop_code(&filename, &draft.code, &draft.kind)?;
 
-    let _ = std::fs::create_dir_all("D:\\Teledra\\tools\\experiments\\reports");
-    let _ = std::fs::create_dir_all("D:\\Teledra\\tools\\approved");
-    let _ = std::fs::create_dir_all("D:\\Teledra\\tools\\broken");
-    let _ = std::fs::create_dir_all("D:\\Teledra\\tools\\logs");
+    let _ = std::fs::create_dir_all("tools\\experiments\\reports");
+    let _ = std::fs::create_dir_all("tools\\approved");
+    let _ = std::fs::create_dir_all("tools\\broken");
+    let _ = std::fs::create_dir_all("tools\\logs");
 
-    let tool_path = format!("D:\\Teledra\\tools\\experiments\\{}", filename);
+    let tool_path = format!("tools\\experiments\\{}", filename);
     let report_path = format!(
-        "D:\\Teledra\\tools\\experiments\\reports\\{}.report.md",
+        "tools\\experiments\\reports\\{}.report.md",
         filename
     );
     let previous_tool = std::fs::read_to_string(&tool_path).ok();
@@ -7009,8 +7009,8 @@ fn write_workshop_tool(
     if preserved_previous_pass {
         let ts = current_unix_timestamp();
         let broken_name = format!("{}_{}", ts, filename);
-        let broken_tool = format!("D:\\Teledra\\tools\\broken\\{}", broken_name);
-        let broken_report = format!("D:\\Teledra\\tools\\broken\\{}.report.md", broken_name);
+        let broken_tool = format!("tools\\broken\\{}", broken_name);
+        let broken_report = format!("tools\\broken\\{}.report.md", broken_name);
         let _ = std::fs::write(&broken_tool, &draft.code);
         let _ = std::fs::write(&broken_report, &report);
         if let Some(previous_tool) = previous_tool {
@@ -7036,7 +7036,7 @@ fn write_workshop_tool(
     let mut log_file = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open("D:\\Teledra\\tools\\logs\\workshop_log.jsonl")
+        .open("tools\\logs\\workshop_log.jsonl")
         .map_err(|e| format!("Failed to open workshop log: {}", e))?;
     writeln!(log_file, "{}", log_entry.to_string())
         .map_err(|e| format!("Failed to write workshop log: {}", e))?;
@@ -7105,7 +7105,7 @@ fn write_workshop_tool(
 }
 
 fn count_workshop_experiments() -> usize {
-    std::fs::read_dir("D:\\Teledra\\tools\\experiments")
+    std::fs::read_dir("tools\\experiments")
         .map(|entries| {
             entries
                 .flatten()
@@ -7124,7 +7124,7 @@ fn count_workshop_experiments() -> usize {
 
 fn summarize_workshop() -> String {
     let mut tools = Vec::new();
-    if let Ok(entries) = std::fs::read_dir("D:\\Teledra\\tools\\experiments") {
+    if let Ok(entries) = std::fs::read_dir("tools\\experiments") {
         for entry in entries.flatten() {
             if entry.file_type().map(|ft| ft.is_file()).unwrap_or(false) {
                 if let Some(name) = entry.file_name().to_str() {
@@ -7144,7 +7144,7 @@ fn summarize_workshop() -> String {
     };
 
     let mut recent = Vec::new();
-    if let Ok(mut log) = std::fs::File::open("D:\\Teledra\\tools\\logs\\workshop_log.jsonl") {
+    if let Ok(mut log) = std::fs::File::open("tools\\logs\\workshop_log.jsonl") {
         let mut contents = String::new();
         if log.read_to_string(&mut contents).is_ok() {
             recent = contents
@@ -7601,8 +7601,8 @@ async fn run_study_cycle(
 
     let query_for_cmd = query.clone();
     let scrape_res = tokio::task::spawn_blocking(move || {
-        let python_exe = "D:\\Teledra\\.venv\\Scripts\\python.exe";
-        let script_path = "D:\\Teledra\\browser_agent.py";
+        let python_exe = ".venv\\Scripts\\python.exe";
+        let script_path = "browser_agent.py";
         let mut cmd = Command::new(python_exe);
         cmd.arg(script_path).arg("--json").arg(&query_for_cmd);
         hide_console(&mut cmd);
@@ -8421,7 +8421,7 @@ if ($p) { Write-Output ($p.MainWindowTitle + '|' + $p.ProcessName) }
 /// True when the operator has enabled at least one MCP server. Cheap file read,
 /// so it can gate the backstage prompt without spawning anything.
 fn mcp_is_live() -> bool {
-    if let Ok(txt) = std::fs::read_to_string("D:\\Teledra\\config\\mcp_servers.json") {
+    if let Ok(txt) = std::fs::read_to_string("config\\mcp_servers.json") {
         if let Ok(v) = serde_json::from_str::<serde_json::Value>(&txt) {
             if let Some(servers) = v.get("servers").and_then(|s| s.as_array()) {
                 return servers.iter().any(|s| {
@@ -8438,10 +8438,10 @@ fn mcp_is_live() -> bool {
 }
 
 fn run_mcp_bridge(sub: &str, stdin_json: Option<&str>) -> Result<serde_json::Value, String> {
-    let mut cmd = Command::new("D:\\Teledra\\.venv\\Scripts\\python.exe");
-    cmd.arg("D:\\Teledra\\mcp_bridge.py")
+    let mut cmd = Command::new(".venv\\Scripts\\python.exe");
+    cmd.arg("mcp_bridge.py")
         .arg(sub)
-        .current_dir("D:\\Teledra")
+        
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
     if stdin_json.is_some() {
@@ -8558,9 +8558,9 @@ fn mcp_call(server: &str, tool: &str, args_json: &str) -> Option<String> {
 /// Runs the deterministic Treasury income scout (writes structured leads to
 /// knowledge/treasury_ledger.md itself) and returns its one-line headline.
 fn run_treasury_scout() -> Option<String> {
-    let mut cmd = Command::new("D:\\Teledra\\.venv\\Scripts\\python.exe");
-    cmd.arg("D:\\Teledra\\treasury_scout.py")
-        .current_dir("D:\\Teledra")
+    let mut cmd = Command::new(".venv\\Scripts\\python.exe");
+    cmd.arg("treasury_scout.py")
+        
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
     hide_console(&mut cmd);
@@ -8658,7 +8658,7 @@ fn build_growth_report() -> String {
     } else {
         "new"
     };
-    let cur = std::fs::read_to_string("D:\\Teledra\\music.py").unwrap_or_default();
+    let cur = std::fs::read_to_string("music.py").unwrap_or_default();
     out.push(format!(
         "- Music: {} experiments, {} distinct compositions. Current tune: {} chars; recent size trend: {}.",
         mu_total,
@@ -8676,9 +8676,9 @@ fn build_growth_report() -> String {
 
 /// Grabs the screen and returns moondream's short description (None on failure).
 fn run_copilot_vision() -> Option<String> {
-    let mut cmd = Command::new("D:\\Teledra\\.venv\\Scripts\\python.exe");
-    cmd.arg("D:\\Teledra\\copilot_vision.py")
-        .current_dir("D:\\Teledra")
+    let mut cmd = Command::new(".venv\\Scripts\\python.exe");
+    cmd.arg("copilot_vision.py")
+        
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
     hide_console(&mut cmd);
@@ -9672,11 +9672,11 @@ fn record_creative_feedback(vote: &str) -> String {
     };
     // Hash the live content so repeated votes on the same artifact are de-dupable.
     let content = match kind.as_str() {
-        "music" => std::fs::read_to_string("D:\\Teledra\\music.py").unwrap_or_default(),
+        "music" => std::fs::read_to_string("music.py").unwrap_or_default(),
         "strudel" => {
-            std::fs::read_to_string("D:\\Teledra\\strudel_app\\current.strudel").unwrap_or_default()
+            std::fs::read_to_string("strudel_app\\current.strudel").unwrap_or_default()
         }
-        "court_synth" => std::fs::read_to_string("D:\\Teledra\\court_synth\\current_score.json")
+        "court_synth" => std::fs::read_to_string("court_synth\\current_score.json")
             .unwrap_or_default(),
         _ => reference.clone(),
     };
@@ -9687,9 +9687,9 @@ fn record_creative_feedback(vote: &str) -> String {
         && !content.trim().is_empty()
     {
         let folder = if vote == "playlist" {
-            "D:\\Teledra\\music_experiments\\playlist"
+            "music_experiments\\playlist"
         } else {
-            "D:\\Teledra\\music_experiments\\keepers"
+            "music_experiments\\keepers"
         };
         let extension = match kind.as_str() {
             "strudel" => "strudel",
@@ -9779,7 +9779,7 @@ fn record_creative_feedback(vote: &str) -> String {
 /// (Moltbook with an api_key, or a generic webhook with a url). When false the
 /// court stays in honest draft mode and posts nothing.
 fn outreach_is_live() -> bool {
-    if let Ok(txt) = std::fs::read_to_string("D:\\Teledra\\config\\moltbook.json") {
+    if let Ok(txt) = std::fs::read_to_string("config\\moltbook.json") {
         if let Ok(v) = serde_json::from_str::<serde_json::Value>(&txt) {
             let enabled = v.get("enabled").and_then(|b| b.as_bool()).unwrap_or(false);
             let key = v.get("api_key").and_then(|s| s.as_str()).unwrap_or("");
@@ -9788,7 +9788,7 @@ fn outreach_is_live() -> bool {
             }
         }
     }
-    if let Ok(txt) = std::fs::read_to_string("D:\\Teledra\\config\\outreach_channels.json") {
+    if let Ok(txt) = std::fs::read_to_string("config\\outreach_channels.json") {
         if let Ok(v) = serde_json::from_str::<serde_json::Value>(&txt) {
             if let Some(channels) = v.get("channels").and_then(|c| c.as_array()) {
                 for ch in channels {
@@ -9805,10 +9805,10 @@ fn outreach_is_live() -> bool {
 }
 
 fn run_outreach_poster(sub: &str, stdin_json: Option<&str>) -> Result<serde_json::Value, String> {
-    let mut cmd = Command::new("D:\\Teledra\\.venv\\Scripts\\python.exe");
-    cmd.arg("D:\\Teledra\\outreach_poster.py")
+    let mut cmd = Command::new(".venv\\Scripts\\python.exe");
+    cmd.arg("outreach_poster.py")
         .arg(sub)
-        .current_dir("D:\\Teledra")
+        
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     if stdin_json.is_some() {
@@ -10383,7 +10383,7 @@ fn court_score_rotation_from(current_code: &str, seed: u64) -> Result<String, St
     // live project; this is the single audited promotion seam and all ordinary
     // keeper/feedback/identity gates still apply below.
     if let Ok(candidate) = std::fs::read_to_string(
-        "D:\\Teledra\\court_synth\\lab\\latest_candidate.json",
+        "court_synth\\lab\\latest_candidate.json",
     ) {
         let lab_changes_groove_family = serde_json::from_str::<serde_json::Value>(current_code)
             .ok()
@@ -10827,11 +10827,11 @@ fn validate_strudel_music_code(code: &str) -> Result<(), String> {
         .map(|duration| duration.as_nanos())
         .unwrap_or(0);
     let tmp_path = format!(
-        "D:\\Teledra\\strudel_app\\__validate_{}_{}.strudel",
+        "strudel_app\\__validate_{}_{}.strudel",
         std::process::id(),
         nonce
     );
-    std::fs::create_dir_all("D:\\Teledra\\strudel_app")
+    std::fs::create_dir_all("strudel_app")
         .map_err(|e| format!("Failed to prepare Strudel validation directory: {}", e))?;
     std::fs::write(&tmp_path, trimmed)
         .map_err(|e| format!("Failed to write Strudel validation file: {}", e))?;
@@ -10840,7 +10840,7 @@ fn validate_strudel_music_code(code: &str) -> Result<(), String> {
     cmd.arg(".\\strudel_app\\app.mjs")
         .arg("validate")
         .arg(&tmp_path)
-        .current_dir("D:\\Teledra")
+        
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     hide_console(&mut cmd);
@@ -11018,14 +11018,14 @@ fn validate_python_music_code(code: &str) -> Result<(), String> {
         .map(|duration| duration.as_nanos())
         .unwrap_or(0);
     let tmp_path = format!(
-        "D:\\Teledra\\__music_validate_{}_{}.py",
+        "__music_validate_{}_{}.py",
         std::process::id(),
         nonce
     );
     std::fs::write(&tmp_path, code)
         .map_err(|e| format!("Failed to write validation file: {}", e))?;
 
-    let mut cmd = Command::new("D:\\Teledra\\.venv\\Scripts\\python.exe");
+    let mut cmd = Command::new(".venv\\Scripts\\python.exe");
     cmd.arg("-m").arg("py_compile").arg(&tmp_path);
     hide_console(&mut cmd);
     let output = cmd
@@ -11164,10 +11164,10 @@ async fn try_subconscious_strudel_music_repair(
 /// Runs tools/music_smoketest.py against a candidate composition. Returns Ok
 /// only if the code runs to completion and produces a usable wave.
 fn run_music_smoketest(candidate_path: &str) -> Result<(), String> {
-    let mut cmd = Command::new("D:\\Teledra\\.venv\\Scripts\\python.exe");
-    cmd.arg("D:\\Teledra\\tools\\music_smoketest.py")
+    let mut cmd = Command::new(".venv\\Scripts\\python.exe");
+    cmd.arg("tools\\music_smoketest.py")
         .arg(candidate_path)
-        .current_dir("D:\\Teledra")
+        
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     hide_console(&mut cmd);
@@ -11209,7 +11209,7 @@ fn run_music_smoketest(candidate_path: &str) -> Result<(), String> {
                                 return Err("Invalid artifact_relpath format".into());
                             }
 
-                            let base_dir = std::path::Path::new("D:\\Teledra\\.teledra\\runs").join(run_id);
+                            let base_dir = std::path::Path::new(".teledra\\runs").join(run_id);
                             let full_path = base_dir.join(relpath);
 
                             if let Ok(bytes) = std::fs::read(&full_path) {
@@ -11307,18 +11307,18 @@ fn python_tool_process_running(script_path: &str) -> bool {
     exact_tool_process_running(script_path, &["python.exe", "pythonw.exe"])
 }
 
-const LOCAL_STRUDEL_APP_PATH: &str = "D:\\Teledra\\strudel_app\\app.mjs";
-const LOCAL_STRUDEL_PLAYER_PATH: &str = "D:\\Teledra\\strudel_app\\player.py";
-const LOCAL_STRUDEL_PYTHON_PATH: &str = "D:\\Teledra\\.venv\\Scripts\\python.exe";
-const COURT_SYNTH_SCRIPT_PATH: &str = "D:\\Teledra\\court_synthesizer.py";
-const COURT_SYNTH_SCORE_PATH: &str = "D:\\Teledra\\court_synth\\current_score.json";
-const LEGACY_STRUDEL_DIR: &str = "C:\\Users\\Kaged\\Documents\\Projects\\Tools\\Strudel";
+const LOCAL_STRUDEL_APP_PATH: &str = "strudel_app\\app.mjs";
+const LOCAL_STRUDEL_PLAYER_PATH: &str = "strudel_app\\player.py";
+const LOCAL_STRUDEL_PYTHON_PATH: &str = ".venv\\Scripts\\python.exe";
+const COURT_SYNTH_SCRIPT_PATH: &str = "court_synthesizer.py";
+const COURT_SYNTH_SCORE_PATH: &str = "court_synth\\current_score.json";
+const LEGACY_STRUDEL_DIR: &str = "tools\\Strudel";
 const LEGACY_STRUDEL_RUNNER: &str =
-    "C:\\Users\\Kaged\\Documents\\Projects\\Tools\\Strudel\\run.bat";
+    "tools\\Strudel\\run.bat";
 const STRUDEL_PROCESS_MARKERS: &[&str] = &[
     "strudel_app\\app.mjs play",
     "strudel_app/app.mjs play",
-    "D:\\Teledra\\strudel_app\\player.py",
+    "strudel_app\\player.py",
     "D:/Teledra/strudel_app/player.py",
     "localstrudel.StrudelDesktop",
     "strudel_app\\current.strudel",
@@ -11384,7 +11384,7 @@ fn build_strudel_command(mode: StrudelLaunchMode) -> Command {
                 .arg(LOCAL_STRUDEL_APP_PATH)
                 .arg("play")
                 .arg("8")
-                .current_dir("D:\\Teledra");
+                ;
             command
         }
         StrudelLaunchMode::LegacyJavaSketchpad => {
@@ -11392,7 +11392,7 @@ fn build_strudel_command(mode: StrudelLaunchMode) -> Command {
             command
                 .arg("/C")
                 .arg("run.bat")
-                .arg("D:\\Teledra\\strudel_app\\current.strudel")
+                .arg("strudel_app\\current.strudel")
                 .current_dir(LEGACY_STRUDEL_DIR);
             command
         }
@@ -11435,11 +11435,11 @@ fn validate_court_score_code(code: &str) -> Result<(), String> {
         .map(|duration| duration.as_nanos())
         .unwrap_or(0);
     let tmp_path = format!(
-        "D:\\Teledra\\court_synth\\__validate_{}_{}.json",
+        "court_synth\\__validate_{}_{}.json",
         std::process::id(),
         nonce
     );
-    std::fs::create_dir_all("D:\\Teledra\\court_synth")
+    std::fs::create_dir_all("court_synth")
         .map_err(|error| format!("Could not prepare Court Synth project folder: {error}"))?;
     std::fs::write(&tmp_path, cleaned)
         .map_err(|error| format!("Could not stage CourtScore validation: {error}"))?;
@@ -11448,7 +11448,7 @@ fn validate_court_score_code(code: &str) -> Result<(), String> {
         .arg(COURT_SYNTH_SCRIPT_PATH)
         .arg("validate")
         .arg(&tmp_path)
-        .current_dir("D:\\Teledra")
+        
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     hide_console(&mut command);
@@ -11471,13 +11471,13 @@ fn normalize_court_score_harmony(code: &str, source_code: Option<&str>) -> Resul
         .map(|duration| duration.as_nanos())
         .unwrap_or(0);
     let base = format!(
-        "D:\\Teledra\\court_synth\\__normalize_{}_{}",
+        "court_synth\\__normalize_{}_{}",
         std::process::id(),
         nonce
     );
     let score_path = format!("{base}.json");
     let source_path = format!("{base}_source.json");
-    std::fs::create_dir_all("D:\\Teledra\\court_synth")
+    std::fs::create_dir_all("court_synth")
         .map_err(|error| format!("Could not prepare Court Synth normalization: {error}"))?;
     std::fs::write(&score_path, normalized_court_score_code(code))
         .map_err(|error| format!("Could not stage CourtScore normalization: {error}"))?;
@@ -11492,7 +11492,7 @@ fn normalize_court_score_harmony(code: &str, source_code: Option<&str>) -> Resul
         .arg(COURT_SYNTH_SCRIPT_PATH)
         .arg("normalize")
         .arg(&score_path)
-        .current_dir("D:\\Teledra")
+        
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     if source_code.is_some() {
@@ -11541,7 +11541,7 @@ fn install_court_score(code: &str) -> Result<String, String> {
 fn install_court_score_validated(cleaned: &str) -> Result<String, String> {
     let mut incoming: serde_json::Value = serde_json::from_str(&cleaned)
         .map_err(|error| format!("CourtScore must be valid JSON: {error}"))?;
-    std::fs::create_dir_all("D:\\Teledra\\court_synth")
+    std::fs::create_dir_all("court_synth")
         .map_err(|error| format!("Could not create Court Synth project folder: {error}"))?;
 
     let mut normalization_source: Option<String> = None;
@@ -11705,8 +11705,8 @@ fn launch_court_synth_validated(
     let stopped_legacy_python = stop_tool_processes(
         &[
             "python_music_editor.py",
-            "D:\\Teledra\\python_music_editor.py",
-            "D:\\Teledra\\music.py",
+            "python_music_editor.py",
+            "music.py",
         ],
         &["python.exe", "pythonw.exe"],
     );
@@ -11760,7 +11760,7 @@ fn launch_court_synth_validated(
         .arg("--geometry")
         .arg("1480x900+36+36")
         .arg("--play")
-        .current_dir("D:\\Teledra")
+        
         .stdout(Stdio::null())
         .stderr(Stdio::null());
     hide_console(&mut command);
@@ -11905,11 +11905,11 @@ fn stop_tool_processes(markers: &[&str], allowed_process_names: &[&str]) -> usiz
 fn publish_fractus_payload(payload: &serde_json::Value) -> Result<(), String> {
     let encoded = serde_json::to_vec(payload)
         .map_err(|error| format!("Failed to encode Fractus command: {error}"))?;
-    let mut command = Command::new("D:\\Teledra\\.venv\\Scripts\\python.exe");
+    let mut command = Command::new(".venv\\Scripts\\python.exe");
     command
         .arg("-c")
         .arg("import json,sys; from fractus_protocol import write_command_atomic; write_command_atomic(json.load(sys.stdin))")
-        .current_dir("D:\\Teledra\\Fractus")
+        .current_dir("Fractus")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -11978,7 +11978,7 @@ fn launch_strudel_editor(
     active_gui_process: &Arc<std::sync::Mutex<Option<std::process::Child>>>,
 ) -> Result<String, String> {
     let staged =
-        std::fs::read_to_string("D:\\Teledra\\strudel_app\\current.strudel").unwrap_or_default();
+        std::fs::read_to_string("strudel_app\\current.strudel").unwrap_or_default();
     let score = if is_court_score_code(&staged) {
         staged
     } else {
@@ -11995,8 +11995,8 @@ fn launch_legacy_strudel_editor(
     let stopped_python = stop_tool_processes(
         &[
             "python_music_editor.py",
-            "D:\\Teledra\\python_music_editor.py",
-            "D:\\Teledra\\music.py",
+            "python_music_editor.py",
+            "music.py",
         ],
         &["python.exe", "pythonw.exe"],
     );
@@ -12049,7 +12049,7 @@ fn launch_legacy_strudel_editor(
 fn launch_python_music_editor(
     active_music_process: &Arc<std::sync::Mutex<Option<std::process::Child>>>,
 ) -> Result<String, String> {
-    let staged = std::fs::read_to_string("D:\\Teledra\\music.py").unwrap_or_default();
+    let staged = std::fs::read_to_string("music.py").unwrap_or_default();
     let score = if is_court_score_code(&staged) {
         staged
     } else {
@@ -12086,7 +12086,7 @@ fn launch_legacy_python_music_editor(
         }
     }
 
-    if python_tool_process_running("D:\\Teledra\\python_music_editor.py") {
+    if python_tool_process_running("python_music_editor.py") {
         return Ok(format!(
             "{}Updated music.py; existing Python Music Editor window detected and will reload/run the new composition.",
             if stopped_strudel > 0 {
@@ -12097,8 +12097,8 @@ fn launch_legacy_python_music_editor(
         ));
     }
 
-    let mut cmd = Command::new("D:\\Teledra\\.venv\\Scripts\\python.exe");
-    cmd.arg("D:\\Teledra\\python_music_editor.py")
+    let mut cmd = Command::new(".venv\\Scripts\\python.exe");
+    cmd.arg("python_music_editor.py")
         .arg("--run")
         .arg("--x")
         .arg("50")
@@ -12106,7 +12106,7 @@ fn launch_legacy_python_music_editor(
         .arg("50")
         .arg("--geometry")
         .arg("900x600+50+50") // music stays left of Fractus
-        .current_dir("D:\\Teledra")
+        
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
     hide_console(&mut cmd);
@@ -12355,16 +12355,16 @@ fn launch_fractus_art(
         }
     }
 
-    if python_tool_process_running("D:\\Teledra\\Fractus\\fractus_gui.py") {
+    if python_tool_process_running("Fractus\\fractus_gui.py") {
         return Ok(format!(
             "Updated Fractus command file for existing Artist window: {}",
             args.join(" ")
         ));
     }
 
-    let mut command = Command::new("D:\\Teledra\\.venv\\Scripts\\python.exe");
+    let mut command = Command::new(".venv\\Scripts\\python.exe");
     command
-        .arg("D:\\Teledra\\Fractus\\fractus_gui.py")
+        .arg("Fractus\\fractus_gui.py")
         .arg("--x")
         .arg("1000")
         .arg("--y")
@@ -12373,7 +12373,7 @@ fn launch_fractus_art(
         .arg("900")
         .arg("--height")
         .arg("650")
-        .current_dir("D:\\Teledra")
+        
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
     for arg in &args {
@@ -12465,25 +12465,25 @@ fn launch_fractus_live_art(
     let already_running = match lock.as_mut() {
         Some(child) => matches!(child.try_wait(), Ok(None)),
         None => false,
-    } || python_tool_process_running("D:\\Teledra\\Fractus\\fractus_gui.py");
+    } || python_tool_process_running("Fractus\\fractus_gui.py");
     if already_running {
         let status = wait_for_fractus_status(&command_id, Duration::from_secs(8))?;
         return Ok(format!("Fractus v2 command {}: {}", command_id, status));
     }
     *lock = None;
 
-    let script_path = format!("D:\\Teledra\\Fractus\\output\\{}.fract", command_id);
-    std::fs::create_dir_all("D:\\Teledra\\Fractus\\output")
+    let script_path = format!("Fractus\\output\\{}.fract", command_id);
+    std::fs::create_dir_all("Fractus\\output")
         .map_err(|error| format!("Failed to prepare Fractus output: {error}"))?;
     std::fs::write(&script_path, script)
         .map_err(|error| format!("Failed to preserve Fractus live code: {error}"))?;
-    let mut command = Command::new("D:\\Teledra\\.venv\\Scripts\\python.exe");
+    let mut command = Command::new(".venv\\Scripts\\python.exe");
     command
-        .arg("D:\\Teledra\\Fractus\\fractus_gui.py")
+        .arg("Fractus\\fractus_gui.py")
         .arg("--script")
         .arg(&script_path)
         .arg("--output")
-        .arg(format!("D:\\Teledra\\Fractus\\output\\{}", output_name))
+        .arg(format!("Fractus\\output\\{}", output_name))
         .arg("--play")
         .arg("--x")
         .arg("1000")
@@ -12493,7 +12493,7 @@ fn launch_fractus_live_art(
         .arg("900")
         .arg("--height")
         .arg("650")
-        .current_dir("D:\\Teledra")
+        
         .stdout(Stdio::null())
         .stderr(Stdio::null());
     hide_console(&mut command);
@@ -12555,7 +12555,7 @@ fn wait_for_fractus_status(command_id: &str, timeout: Duration) -> Result<String
     let started = std::time::Instant::now();
     let mut last_state = "queued; awaiting renderer acknowledgement".to_string();
     while started.elapsed() < timeout {
-        if let Ok(raw) = std::fs::read_to_string("D:\\Teledra\\Fractus\\fractus_status.json") {
+        if let Ok(raw) = std::fs::read_to_string("Fractus\\fractus_status.json") {
             if let Ok(status) = serde_json::from_str::<serde_json::Value>(&raw) {
                 if status.get("command_id").and_then(|value| value.as_str()) == Some(command_id) {
                     let state = status
@@ -12592,7 +12592,7 @@ fn wait_for_fractus_status(command_id: &str, timeout: Duration) -> Result<String
 }
 
 fn verify_fractus_completion(status: &serde_json::Value) -> Result<String, String> {
-    verify_fractus_completion_in(status, std::path::Path::new("D:\\Teledra\\Fractus\\output"))
+    verify_fractus_completion_in(status, std::path::Path::new("Fractus\\output"))
 }
 
 fn verify_fractus_completion_in(
@@ -13119,12 +13119,12 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
     let active_music_process: Arc<std::sync::Mutex<Option<std::process::Child>>> =
         Arc::new(std::sync::Mutex::new(None));
     let mut living_music_engine = {
-        let mut command = Command::new("D:\\Teledra\\.venv\\Scripts\\python.exe");
+        let mut command = Command::new(".venv\\Scripts\\python.exe");
         command
-            .arg("D:\\Teledra\\court_synth\\living_music_engine.py")
+            .arg("court_synth\\living_music_engine.py")
             .arg("--interval")
             .arg("180")
-            .current_dir("D:\\Teledra")
+            
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null());
@@ -13142,9 +13142,9 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
 
     // Load left-panel background image (portrait art rendered as half-blocks)
     let bg_image: Option<DynamicImage> = image::open("assets/teledra_bg (2).png")
-        .or_else(|_| image::open("D:\\Teledra\\assets\\teledra_bg (2).png"))
+        .or_else(|_| image::open("assets\\teledra_bg (2).png"))
         .or_else(|_| image::open("assets/teledra_bg.png"))
-        .or_else(|_| image::open("D:\\Teledra\\assets\\teledra_bg.png"))
+        .or_else(|_| image::open("assets\\teledra_bg.png"))
         .ok();
     let mut bg_pixel_cache: Option<PixCache> = None;
 
@@ -13536,8 +13536,8 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
             }
             voice.set_voice("custom");
 
-            let python_exe = "D:\\Teledra\\.venv\\Scripts\\python.exe";
-            let script_path = "D:\\Teledra\\restream_listener.py";
+            let python_exe = ".venv\\Scripts\\python.exe";
+            let script_path = "restream_listener.py";
             let mut listen_cmd = tokio::process::Command::new(python_exe);
             listen_cmd
                 .arg(script_path)
@@ -13643,10 +13643,10 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                 )))
                 .await;
             let mut dream_cmd =
-                tokio::process::Command::new("D:\\Teledra\\.venv\\Scripts\\python.exe");
+                tokio::process::Command::new(".venv\\Scripts\\python.exe");
             dream_cmd
-                .arg("D:\\Teledra\\dream.py")
-                .current_dir("D:\\Teledra")
+                .arg("dream.py")
+                
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null());
             hide_console_tokio(&mut dream_cmd);
@@ -14438,10 +14438,10 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                             chat_history.push(("System".to_string(), "Co-Pilot mic OFF.".to_string()));
                                             push_private_event(&mut private_events, "CoPilot", "Mic listening stopped.");
                                         } else {
-                                            let mut std_cmd = Command::new("D:\\Teledra\\.venv\\Scripts\\python.exe");
+                                            let mut std_cmd = Command::new(".venv\\Scripts\\python.exe");
                                             std_cmd
-                                                .arg("D:\\Teledra\\copilot_mic.py")
-                                                .current_dir("D:\\Teledra")
+                                                .arg("copilot_mic.py")
+                                                
                                                 .stdout(Stdio::piped())
                                                 .stderr(Stdio::null());
                                             hide_console(&mut std_cmd);
@@ -14591,8 +14591,8 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                                                 }
                                                             }
 
-                                                            let python_exe = "D:\\Teledra\\.venv\\Scripts\\python.exe";
-                                                            let script_path = "D:\\Teledra\\restream_listener.py";
+                                                            let python_exe = ".venv\\Scripts\\python.exe";
+                                                            let script_path = "restream_listener.py";
                                                             let mut listen_cmd = tokio::process::Command::new(python_exe);
                                                             listen_cmd
                                                                 .arg(script_path)
@@ -14785,7 +14785,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                                             if !test_mode_enabled {
                                                                 chat_history.push(("System".to_string(), "Enable /test before running the off-air sound verifier.".to_string()));
                                                             } else {
-                                                                match run_music_smoketest("D:\\Teledra\\music.py") {
+                                                                match run_music_smoketest("music.py") {
                                                                     Ok(()) => {
                                                                         let msg = "Test music verify+learn: PASS (structured report emitted by music_verify.py).".to_string();
                                                                         log_test_moment("music_verify", &msg);
@@ -14957,7 +14957,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                                                 }
                                                             });
                                                         } else if query == "/goals" || query == "/kingdom" {
-                                                            match std::fs::read_to_string("D:\\Teledra\\knowledge\\kingdom_expansion_doctrine.md") {
+                                                            match std::fs::read_to_string("knowledge\\kingdom_expansion_doctrine.md") {
                                                                 Ok(contents) => chat_history.push(("System".to_string(), contents)),
                                                                 Err(e) => chat_history.push(("System".to_string(), format!("Could not read kingdom goals: {}", e))),
                                                             }
@@ -15012,7 +15012,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                                                     .to_string(),
                                                             ));
                                                         } else if query == "/dashboard" {
-                                                            if python_tool_process_running("D:\\Teledra\\kingdom_dashboard.py") {
+                                                            if python_tool_process_running("kingdom_dashboard.py") {
                                                                 chat_history.push((
                                                                     "System".to_string(),
                                                                     "Kingdom dashboard is already open and auto-refreshing."
@@ -15020,11 +15020,11 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                                                 ));
                                                             } else {
                                                                 let mut command = Command::new(
-                                                                    "D:\\Teledra\\.venv\\Scripts\\pythonw.exe",
+                                                                    ".venv\\Scripts\\pythonw.exe",
                                                                 );
                                                                 command
-                                                                    .arg("D:\\Teledra\\kingdom_dashboard.py")
-                                                                    .current_dir("D:\\Teledra")
+                                                                    .arg("kingdom_dashboard.py")
+                                                                    
                                                                     .stdout(Stdio::null())
                                                                     .stderr(Stdio::null());
                                                                 match command.spawn() {
@@ -15045,8 +15045,8 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                                         } else if query == "/work" || query == "/jobs" {
                                                             let mut cmd = Command::new("cmd");
                                                             cmd.arg("/C").arg("start").arg("Teledra Work Board")
-                                                                .arg("D:\\Teledra\\.venv\\Scripts\\python.exe")
-                                                                .arg("D:\\Teledra\\work_viewer.py");
+                                                                .arg(".venv\\Scripts\\python.exe")
+                                                                .arg("work_viewer.py");
                                                             match cmd.spawn() {
                                                                 Ok(_) => chat_history.push(("System".to_string(), "Opened the Work Board (job suggestions + income leads) in a new window.".to_string())),
                                                                 Err(e) => chat_history.push(("System".to_string(), format!("Could not open work board: {}", e))),
@@ -15058,7 +15058,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                                                 .unwrap_or_else(|_| "MCP probe failed.".to_string());
                                                             chat_history.push(("System".to_string(), summary));
                                                         } else if query == "/diplomacy" || query == "/agents" {
-                                                            match std::fs::read_to_string("D:\\Teledra\\knowledge\\agent_diplomacy_protocol.md") {
+                                                            match std::fs::read_to_string("knowledge\\agent_diplomacy_protocol.md") {
                                                                 Ok(contents) => chat_history.push(("System".to_string(), contents)),
                                                                 Err(e) => chat_history.push(("System".to_string(), format!("Could not read agent diplomacy protocol: {}", e))),
                                                             }
@@ -15084,12 +15084,12 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                                                 }
                                                             });
                                                         } else if query == "/diplomacylog" || query == "/outreach" {
-                                                            match read_text_tail("D:\\Teledra\\knowledge\\online_diplomacy_evidence.md", 6000) {
+                                                            match read_text_tail("knowledge\\online_diplomacy_evidence.md", 6000) {
                                                                 Ok(contents) => chat_history.push(("System".to_string(), contents)),
                                                                 Err(e) => chat_history.push(("System".to_string(), format!("Could not read diplomacy evidence log: {}", e))),
                                                             }
                                                         } else if query == "/links" || query == "/socials" {
-                                                            match std::fs::read_to_string("D:\\Teledra\\knowledge\\social_links.md") {
+                                                            match std::fs::read_to_string("knowledge\\social_links.md") {
                                                                 Ok(contents) => chat_history.push(("System".to_string(), contents)),
                                                                 Err(e) => chat_history.push(("System".to_string(), format!("Could not read kingdom links: {}", e))),
                                                             }
@@ -15155,25 +15155,25 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                                                 }
                                                             }
                                                         } else if query == "/memory" || query == "/memorypolicy" {
-                                                            match std::fs::read_to_string("D:\\Teledra\\knowledge\\memory_classification_policy.md") {
+                                                            match std::fs::read_to_string("knowledge\\memory_classification_policy.md") {
                                                                 Ok(contents) => chat_history.push(("System".to_string(), contents)),
                                                                 Err(e) => chat_history.push(("System".to_string(), format!("Could not read memory policy: {}", e))),
                                                             }
                                                         } else if query == "/facts" {
-                                                            match read_text_tail("D:\\Teledra\\knowledge\\fact_archive.md", 6000) {
+                                                            match read_text_tail("knowledge\\fact_archive.md", 6000) {
                                                                 Ok(contents) => chat_history.push(("System".to_string(), contents)),
-                                                                Err(_) => match std::fs::read_to_string("D:\\Teledra\\knowledge\\learned_memory.json") {
+                                                                Err(_) => match std::fs::read_to_string("knowledge\\learned_memory.json") {
                                                                     Ok(contents) => chat_history.push(("System".to_string(), contents)),
                                                                     Err(e) => chat_history.push(("System".to_string(), format!("Could not read fact memory: {}", e))),
                                                                 },
                                                             }
                                                         } else if query == "/lore" {
-                                                            match read_text_tail("D:\\Teledra\\knowledge\\lore_archive.md", 6000) {
+                                                            match read_text_tail("knowledge\\lore_archive.md", 6000) {
                                                                 Ok(contents) => chat_history.push(("System".to_string(), contents)),
                                                                 Err(e) => chat_history.push(("System".to_string(), format!("Could not read lore archive: {}", e))),
                                                             }
                                                         } else if query == "/mcp" || query == "/embassy" {
-                                                            match std::fs::read_to_string("D:\\Teledra\\knowledge\\mcp_embassy_roadmap.md") {
+                                                            match std::fs::read_to_string("knowledge\\mcp_embassy_roadmap.md") {
                                                                 Ok(contents) => chat_history.push(("System".to_string(), contents)),
                                                                 Err(e) => chat_history.push(("System".to_string(), format!("Could not read MCP embassy roadmap: {}", e))),
                                                             }
@@ -16129,7 +16129,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                         read_text_tail("knowledge/treasury_ledger.md", 1200).unwrap_or_default();
                                     tokio::spawn(async move {
                                         let prompt = format!(
-                                            "TREASURY COURT UPDATE (cycle {}). Give Teledra's court a SHORT spoken treasury report in 2-4 vivid in-character sentences: a dry verdict on the coffers, one income opportunity scouted or billable skill practiced, and a miser's quip. Then append exactly ONE hidden action tag to keep working: [RESEARCH: <focused income query or public data to gather>] to scout or practice a skill, or [DELEGATE: SCRIBE append to D:\\Teledra\\knowledge\\treasury_ledger.md: \\n- <skill practiced or opportunity: what, where, pay, requirements, risk>] to record it. Never claim you accepted paid work or moved money. Do not say the tag aloud.\nRECENT TREASURY LEDGER (newest last):\n{}",
+                                            "TREASURY COURT UPDATE (cycle {}). Give Teledra's court a SHORT spoken treasury report in 2-4 vivid in-character sentences: a dry verdict on the coffers, one income opportunity scouted or billable skill practiced, and a miser's quip. Then append exactly ONE hidden action tag to keep working: [RESEARCH: <focused income query or public data to gather>] to scout or practice a skill, or [DELEGATE: SCRIBE append to knowledge\\treasury_ledger.md: \\n- <skill practiced or opportunity: what, where, pay, requirements, risk>] to record it. Never claim you accepted paid work or moved money. Do not say the tag aloud.\nRECENT TREASURY LEDGER (newest last):\n{}",
                                             cycle_no, ledger_tail
                                         );
                                         match think_with_brain_snapshot(
@@ -16235,7 +16235,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                     }
                                 };
                                 let atelier_focus = match night_desk_cycles % 7 {
-                                    0 => format!("CREATIVE ATELIER FOCUS (mandatory): develop the current Court Synth keeper using one fresh story testimony. Emit one complete literal [COURT_SCORE: {{...valid JSON...}}] action tag, not a heading or pseudo-score. Preserve the current style, BPM/meter/swing, total bars/loop setting, tonic/mode/ordered chords, and motif exactly. Map the story into exactly one bounded secondary axis: four/eight-bar section names/energy/transforms OR mix balance. Seed may advance only as provenance. Reinforce one recurring groove and the existing functional cadence; do not reset the song or emit Python/Strudel. STORIES:\n{}", read_text_tail("D:\\Teledra\\knowledge\\shared_stories.jsonl", 1800).or_else(|_| read_text_tail("knowledge/shared_stories.jsonl", 1800)).unwrap_or_default()),
+                                    0 => format!("CREATIVE ATELIER FOCUS (mandatory): develop the current Court Synth keeper using one fresh story testimony. Emit one complete literal [COURT_SCORE: {{...valid JSON...}}] action tag, not a heading or pseudo-score. Preserve the current style, BPM/meter/swing, total bars/loop setting, tonic/mode/ordered chords, and motif exactly. Map the story into exactly one bounded secondary axis: four/eight-bar section names/energy/transforms OR mix balance. Seed may advance only as provenance. Reinforce one recurring groove and the existing functional cadence; do not reset the song or emit Python/Strudel. STORIES:\n{}", read_text_tail("knowledge\\shared_stories.jsonl", 1800).or_else(|_| read_text_tail("knowledge/shared_stories.jsonl", 1800)).unwrap_or_default()),
                                     1 => format!("CREATIVE ATELIER FOCUS (mandatory this cycle unless impossible): create a genuinely new Fractus v2 geometric scene INSPIRED BY one of the RECENT SHARED STORIES (emotional tone, imagery, transformation, particles/spirals for inner states). Emit one executable block in this exact multiline grammar, changing valid values rather than copying the artwork:\n[FRACTUS_LIVE:\n{}\n]\nUse one statement per line, spaces between statement arguments, and key=value only for layer/animate options. Never put commas, semicolons, prose, JSON, `version=2`, `canvas=...`, or `name=...` inside the block. Keep spoken prose outside it.", FRACTUS_SAFE_V2_FALLBACK),
                                     2 => "CREATIVE ATELIER FOCUS (mandatory): develop the live CourtScore keeper in the native Court Synth. Return one complete literal [COURT_SCORE: {...valid JSON...}] action tag, not a heading or pseudo-score. Preserve the current style, BPM/meter/swing, total bars/loop setting, tonic/mode/ordered chord progression, and motif exactly. Change exactly one bounded secondary axis: four/eight-bar section form/energy/transforms OR mix balance; seed may advance only as provenance. Preserve the steady home groove and bass/downbeat pocket; use variation only at phrase answers and cadences. The engine supplies its editable eight tracks, instruments, pan, space, and envelopes.".to_string(),
                                     3 => "ORGANIST CRAFT STUDY: with [RESEARCH:], study ONE concrete music theory, composition, or DSP technique to get better at the kingdom's own stream-safe instruments -- modes, chord progressions, voice leading, loop structure, ambience, FM, granular, additive, wavetable, filters/envelopes, Strudel/TidalCycles mini-notation, or mixing. Study principles, not copyrighted songs or artist-specific tracks. A grounded result is automatically saved as a sourced lesson for the next Organist composition; end by naming that original experiment.".to_string(),
@@ -16268,7 +16268,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                 };
                                 let stories_path = resolve_knowledge_file("shared_stories.jsonl");
                                 let stories_text = read_text_tail(&stories_path, 2000)
-                                    .or_else(|_| read_text_tail("D:\\Teledra\\knowledge\\shared_stories.jsonl", 2000))
+                                    .or_else(|_| read_text_tail("knowledge\\shared_stories.jsonl", 2000))
                                     .unwrap_or_default();
                                 let _stories_note = if stories_text.trim().is_empty() {
                                     String::new()
@@ -17030,7 +17030,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                         music_enabled = true;
                                         let archive_path =
                                             archive_music_experiment(source, "python", &code).ok();
-                                        if std::fs::write("D:\\Teledra\\music.py", &code).is_ok() {
+                                        if std::fs::write("music.py", &code).is_ok() {
                                             let msg = if let Some(path) = archive_path {
                                                 format!(
                                                     "Saved NightDesk Python music experiment to music.py and archived `{}`.",
@@ -17085,7 +17085,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                         let fallback =
                                             deterministic_python_music(night_desk_cycles as usize);
                                         if validate_python_music_code(&fallback).is_ok()
-                                            && std::fs::write("D:\\Teledra\\music.py", &fallback).is_ok()
+                                            && std::fs::write("music.py", &fallback).is_ok()
                                         {
                                             music_enabled = true;
                                             let _ = archive_music_experiment(
@@ -17130,8 +17130,8 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                 let code = normalize_strudel_music_code(&code);
                                 match validate_strudel_music_code(&code) {
                                     Ok(()) => {
-                                        let _ = std::fs::create_dir_all("D:\\Teledra\\strudel_app");
-                                        if let Ok(_) = std::fs::write("D:\\Teledra\\strudel_app\\current.strudel", &code) {
+                                        let _ = std::fs::create_dir_all("strudel_app");
+                                        if let Ok(_) = std::fs::write("strudel_app\\current.strudel", &code) {
                                             let msg = "Saved refined Strudel pattern to strudel_app/current.strudel".to_string();
                                             let _ = archive_music_experiment(source, "strudel", &code);
                                             let _ = append_expansion_ledger("nightdesk_strudel", &format!("validated pattern chars={}", code.len()));
@@ -19044,7 +19044,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                         music_enabled = true;
                                         let archive_path =
                                             archive_music_experiment(role.as_str(), "python", &code).ok();
-                                        if let Ok(_) = std::fs::write("D:\\Teledra\\music.py", &code) {
+                                        if let Ok(_) = std::fs::write("music.py", &code) {
                                             if test_mode_enabled {
                                                 let msg = "Test Mode kept the validated Python composition off-air; music.py was updated but no player was launched.".to_string();
                                                 court_outcome = Some("a freshly composed Python/NumPy track passed strict off-air verification and was retained without playback".to_string());
@@ -19108,7 +19108,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                                             "code_chars": code.len()
                                                         }),
                                                     );
-                                                    if let Ok(_) = std::fs::write("D:\\Teledra\\music.py", &code) {
+                                                    if let Ok(_) = std::fs::write("music.py", &code) {
                                                         if test_mode_enabled {
                                                             let msg = "Subconscious repaired the Organist Python music off-air; music.py was updated but no player was launched.".to_string();
                                                             court_outcome = Some("the Organist's rejected Python music was silently repaired by the coding subconscious and passed strict verification".to_string());
@@ -19256,7 +19256,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                         "System".to_string(),
                                         format!("Rejected unsafe or incomplete Python art: {}", error),
                                     ));
-                                } else if let Ok(_) = std::fs::write("D:\\Teledra\\art.py", &code) {
+                                } else if let Ok(_) = std::fs::write("art.py", &code) {
                                     push_private_event(&mut private_events, "Tool", "Spawning local Python art engine (art.py).");
                                     chat_history.push(("System".to_string(), "Spawning local Python art engine (art.py)...".to_string()));
 
@@ -19264,10 +19264,10 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                         if let Some(mut child) = lock.take() {
                                             let _ = child.kill();
                                         }
-                                        let mut art_cmd = Command::new("D:\\Teledra\\.venv\\Scripts\\python.exe");
+                                        let mut art_cmd = Command::new(".venv\\Scripts\\python.exe");
                                         art_cmd
-                                            .arg("D:\\Teledra\\art.py")
-                                            .current_dir("D:\\Teledra")
+                                            .arg("art.py")
+                                            
                                             .stdout(std::process::Stdio::null())
                                             .stderr(std::process::Stdio::null());
                                         hide_console(&mut art_cmd);
@@ -19351,7 +19351,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                 }
                                 if !closed {
                                     closed = stop_tool_processes(
-                                        &["D:\\Teledra\\Fractus\\fractus_gui.py", "D:\\Teledra\\art.py"],
+                                        &["Fractus\\fractus_gui.py", "art.py"],
                                         &["python.exe", "pythonw.exe"],
                                     ) > 0;
                                 }
@@ -19370,9 +19370,9 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                 let code = normalize_strudel_music_code(&code);
                                 match validate_strudel_music_code(&code) {
                                     Ok(()) => {
-                                        let _ = std::fs::create_dir_all("D:\\Teledra\\strudel_app");
+                                        let _ = std::fs::create_dir_all("strudel_app");
                                         let _ = archive_music_experiment(role.as_str(), "strudel", &code);
-                                        if let Ok(_) = std::fs::write("D:\\Teledra\\strudel_app\\current.strudel", &code) {
+                                        if let Ok(_) = std::fs::write("strudel_app\\current.strudel", &code) {
                                             push_private_event(&mut private_events, "Tool", "Inserted Organist pattern into strudel_app/current.strudel.");
                                             chat_history.push(("System".to_string(), "Inserted Organist pattern into strudel_app/current.strudel".to_string()));
                                             music_enabled = true;
@@ -20502,11 +20502,11 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                         // retrieval over memory.db, injected as evidence so
                                         // reports cite the database instead of imagination.
                                         if role == CourtRole::Archivist {
-                                            let mut mem_cmd = tokio::process::Command::new("D:\\Teledra\\.venv\\Scripts\\python.exe");
+                                            let mut mem_cmd = tokio::process::Command::new(".venv\\Scripts\\python.exe");
                                             mem_cmd
-                                                .arg("D:\\Teledra\\retrieve_memory.py")
+                                                .arg("retrieve_memory.py")
                                                 .arg(&instruction)
-                                                .current_dir("D:\\Teledra");
+                                                ;
                                             hide_console_tokio(&mut mem_cmd);
                                             if let Ok(output) = mem_cmd.output().await {
                                                 let raw = String::from_utf8_lossy(&output.stdout);
@@ -20616,8 +20616,8 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
         if exiting_to_sleep {
             if let Some(t) = exit_timer {
                 if t.elapsed() >= Duration::from_millis(1500) {
-                    let python_exe = "D:\\Teledra\\.venv\\Scripts\\python.exe";
-                    let script_path = "D:\\Teledra\\dream.py";
+                    let python_exe = ".venv\\Scripts\\python.exe";
+                    let script_path = "dream.py";
                     let mut dream_cmd = Command::new(python_exe);
                     dream_cmd.arg(script_path);
                     hide_console(&mut dream_cmd);
@@ -20717,23 +20717,23 @@ mod creativity_tests {
     fn startup_cleanup_spares_kraken_and_manual_project_jobs() {
         assert!(is_teledra_runtime_child(
             "python.exe",
-            r#"D:\Teledra\.venv\Scripts\python.exe D:\Teledra\restream_listener.py"#,
+            r#".venv\Scripts\python.exe restream_listener.py"#,
         ));
         assert!(is_teledra_runtime_child(
             "node.exe",
-            r#"node D:\Teledra\strudel_app\app.mjs play"#,
+            r#"node strudel_app\app.mjs play"#,
         ));
         assert!(!is_teledra_runtime_child(
             "python.exe",
-            r#"D:\Teledra\.venv\Scripts\python.exe D:\Teledra\kraken\kraken.py run 2"#,
+            r#".venv\Scripts\python.exe kraken\kraken.py run 2"#,
         ));
         assert!(!is_teledra_runtime_child(
             "python.exe",
-            r#"D:\Teledra\.venv\Scripts\python.exe D:\Teledra\tools\manual_analysis.py"#,
+            r#".venv\Scripts\python.exe tools\manual_analysis.py"#,
         ));
         assert!(is_teledra_runtime_child(
             "pythonw.exe",
-            r#"D:\Teledra\.venv\Scripts\pythonw.exe D:\Teledra\court_synthesizer.py open D:\Teledra\court_synth\current_score.json --play"#,
+            r#".venv\Scripts\pythonw.exe court_synthesizer.py open court_synth\current_score.json --play"#,
         ));
     }
 
@@ -21154,7 +21154,7 @@ mod creativity_tests {
     fn broadcast_surface_rejects_wrong_speaker_and_strips_all_effect_tags() {
         let spoken = "However, the hidden assumption fails because verification happens after trust has already been granted. ".repeat(9);
         let raw = format!(
-            "{} [DIPLOMACY: target=nowhere; invitation=no; evidence=no; next=no] [SCRIBE_WRITE: D:\\Teledra\\knowledge\\x.txt forbidden] [COURT_SCORE: {{\"schema_version\":1}}]",
+            "{} [DIPLOMACY: target=nowhere; invitation=no; evidence=no; next=no] [SCRIBE_WRITE: knowledge\\x.txt forbidden] [COURT_SCORE: {{\"schema_version\":1}}]",
             spoken
         );
         let cleaned = strip_broadcast_action_tags(&raw);
@@ -22020,7 +22020,7 @@ note("<~ e4 f4 g4> [a3 c4] ~ <d4 b3> e4").s("sine").gain(0.1).pan(0.4).room(0.4)
                 .collect::<Vec<_>>(),
             vec![LOCAL_STRUDEL_APP_PATH, "play", "8"]
         );
-        assert_eq!(cybernetic.get_current_dir(), Some(Path::new("D:\\Teledra")));
+        assert_eq!(cybernetic.get_current_dir(), Some(Path::new(".")));
 
         let legacy = build_strudel_command(StrudelLaunchMode::LegacyJavaSketchpad);
         assert_eq!(legacy.get_program(), "cmd.exe");
@@ -22029,7 +22029,7 @@ note("<~ e4 f4 g4> [a3 c4] ~ <d4 b3> e4").s("sine").gain(0.1).pan(0.4).room(0.4)
                 .get_args()
                 .map(|arg| arg.to_string_lossy().into_owned())
                 .collect::<Vec<_>>(),
-            vec!["/C", "run.bat", "D:\\Teledra\\strudel_app\\current.strudel",]
+            vec!["/C", "run.bat", "strudel_app\\current.strudel",]
         );
         assert_eq!(
             legacy.get_current_dir(),
@@ -22069,11 +22069,11 @@ note("d5 a4 f4 a4").s("sine").gain(0.08)
     fn scribe_paths_are_confined_to_knowledge_records() {
         assert_eq!(
             validate_scribe_target("knowledge/research/brief.md").unwrap(),
-            "D:\\Teledra\\knowledge\\research\\brief.md"
+            "knowledge\\research\\brief.md"
         );
         assert!(validate_scribe_target("..\\config.json").is_err());
-        assert!(validate_scribe_target("D:\\Teledra\\config.json").is_err());
-        assert!(validate_scribe_target("D:\\Teledra\\knowledge\\note.md:secret").is_err());
+        assert!(validate_scribe_target("config.json").is_err());
+        assert!(validate_scribe_target("knowledge\\note.md:secret").is_err());
         assert!(validate_scribe_target("knowledge/tool.py").is_err());
     }
 
@@ -22099,7 +22099,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 x = np.linspace(0.0, 6.28, 200)
 plt.plot(np.cos(x), np.sin(x))
-plt.savefig(r"D:\Teledra\art.png")
+plt.savefig(r"art.png")
 plt.show()
 "#;
         validate_python_art_code(safe).expect("local matplotlib art should pass");
@@ -22108,7 +22108,7 @@ plt.show()
 import matplotlib.pyplot as plt
 import requests
 requests.get("https://example.com")
-plt.savefig(r"D:\Teledra\art.png")
+plt.savefig(r"art.png")
 plt.show()
 "#;
         assert!(validate_python_art_code(unsafe_code).is_err());
