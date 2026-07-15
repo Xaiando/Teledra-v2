@@ -6,22 +6,29 @@ To build and run Teledra natively, the following files and directories must exis
 ## Python Environment
 - `.venv/Scripts/python.exe`: Standard Python virtual environment.
 
+## Configuration
+- `config.qwen.json`: Local Ollama Qwen model configuration.
+
 ## TTS & Audio Assets
-- `voice_archive/`: A directory containing the reference voices for LuxTTS.
+- `assets/`: A directory containing the reference voices for LuxTTS.
   - Required files include:
-    - `queen_ref_clean.wav`
-    - `artist_ref_clean.wav`
-    - `organist_ref_clean.wav`
-    - `alchemist_ref_clean.wav`
-    - `archivist_ref_clean.wav`
-    - `scribe_ref_clean.wav`
-    - `diplomat_ref_clean.wav`
-    - `orator_ref_clean.wav`
-    - `treasurer_ref_clean.wav`
+    - `assets/queen_ref_clean.wav`
+    - `assets/cenedra_ref_sarcastic.wav`
+    - `assets/cenedra_ref_analytical.wav`
+    - `assets/cenedra_ref_custom.wav`
+    - `assets/organist_ref_clean.wav`
+    - `assets/archivist_ref_clean.wav`
+    - `assets/alchemist_ref_clean.wav`
+    - `assets/orator_ref_clean.wav`
+    - `assets/scribe_ref_clean.wav`
+    - `assets/artist_ref_clean.wav`
+    - `assets/diplomat_ref_clean.wav`
+    - `assets/treasurer_ref_clean.wav`
+    - `assets/wizard_ref_clean.wav`
 - `LuxTTS/`: Base folder for local LuxTTS models (or loaded via Hugging Face cache).
 
 ## Sidecars & Tooling
 - `generate_voice.py`: PCM stream protocol generator script.
 - `somatic_cortex_stream.py`: Screen vision and microphone integration sidecar.
 
-If any of these assets or dependencies are missing, `main.rs` will halt execution explicitly upon startup.
+If any of these assets or dependencies are missing, `main.rs` will fail explicitly upon startup if run in strict mode.

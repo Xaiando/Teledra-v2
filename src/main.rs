@@ -12735,56 +12735,101 @@ fn run_phase_a_self_test() -> Result<serde_json::Value, String> {
     result
 }
 
-fn validate_environment() {
-    let required_paths = [
+fn resolve_teledra_root() -> Result<std::path::PathBuf, String> {
+    let root = std::env::var_os("TELEDRA_ROOT")
+        .map(std::path::PathBuf::from)
+        .unwrap_or(std::env::current_dir().map_err(|e| e.to_string())?);
+
+    let root = root
+        .canonicalize()
+        .map_err(|e| format!("invalid TELEDRA_ROOT {}: {e}", root.display()))?;
+
+    std::env::set_current_dir(&root)
+        .map_err(|e| format!("could not enter Teledra root {}: {e}", root.display()))?;
+
+    Ok(root)
+}
+
+fn validate_environment(strict_mode: bool) {
+    let core_paths = [
+        ".venv/Scripts/python.exe",
+    ];
+    let strict_paths = [
         "generate_voice.py",
         "somatic_cortex_stream.py",
-        ".venv/Scripts/python.exe",
-        "voice_archive",
+        "assets/queen_ref_clean.wav",
+        "assets/cenedra_ref_sarcastic.wav",
+        "assets/cenedra_ref_analytical.wav",
+        "assets/cenedra_ref_custom.wav",
+        "assets/organist_ref_clean.wav",
+        "assets/archivist_ref_clean.wav",
+        "assets/alchemist_ref_clean.wav",
+        "assets/orator_ref_clean.wav",
+        "assets/scribe_ref_clean.wav",
+        "assets/artist_ref_clean.wav",
+        "assets/diplomat_ref_clean.wav",
+        "assets/treasurer_ref_clean.wav",
+        "assets/wizard_ref_clean.wav",
     ];
-    for path in &required_paths {
+
+    let mut missing_fatal = Vec::new();
+    let mut missing_strict = Vec::new();
+
+    for path in &core_paths {
         if !std::path::Path::new(path).exists() {
-            panic!(
-                "\n[FATAL] Missing required asset or script: {}\n\
-                 The repository checkout is incomplete. Please ensure you have cloned the \
-                 assets, generated the python virtual environment (.venv), and placed them in the \
-                 project root as defined by ASSETS_MANIFEST.md.\n",
-                path
-            );
+            missing_fatal.push(*path);
         }
+    }
+
+    for path in &strict_paths {
+        if !std::path::Path::new(path).exists() {
+            missing_strict.push(*path);
+        }
+    }
+
+    if !missing_fatal.is_empty() {
+        eprintln!("[FATAL] Missing required core asset or script: {:?}", missing_fatal);
+        eprintln!("The repository checkout is incomplete. Please ensure you have cloned the \
+                   assets and generated the python virtual environment (.venv) in the project root.");
+        std::process::exit(1);
+    }
+
+    if strict_mode && !missing_strict.is_empty() {
+        eprintln!("[FATAL] Strict mode requested, but full environment missing: {:?}", missing_strict);
+        eprintln!("Check ASSETS_MANIFEST.md for the complete list of required sidecars and voice assets.");
+        std::process::exit(1);
+    } else if !missing_strict.is_empty() {
+        println!("[startup] Missing optional assets (somatic/voice/vision). Starting in degraded/minimal mode.");
+        println!("[startup] Missing: {:?}", missing_strict);
     }
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Establish project root correctly
-    let workspace_root = std::env::var("TELEDRA_ROOT").unwrap_or_else(|_| {
-        if let Ok(exe) = std::env::current_exe() {
-            if let Some(dir) = exe.parent().and_then(|p| {
-                if p.ends_with("release") || p.ends_with("debug") {
-                    p.parent().and_then(|pp| pp.parent())
-                } else {
-                    Some(p)
-                }
-            }) {
-                return dir.to_string_lossy().into_owned();
-            }
+    let args: Vec<String> = std::env::args().collect();
+    let strict_mode = args.iter().any(|arg| arg == "--strict");
+    let minimal_mode = args.iter().any(|arg| arg == "--minimal");
+
+    if !strict_mode && !minimal_mode {
+        println!("[startup] No mode flag provided. Use --minimal or --strict. Defaulting to minimal for safety.");
+    }
+
+    let workspace_root = match resolve_teledra_root() {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("[FATAL] {}", e);
+            std::process::exit(1);
         }
-        std::env::current_dir()
-            .map(|p| p.to_string_lossy().into_owned())
-            .unwrap_or_else(|_| ".".to_string())
-    });
-
-    if std::env::set_current_dir(&workspace_root).is_ok() {
-        println!("[startup] CWD set to {}", workspace_root);
-    } else {
-        println!("[startup] Warning: Could not set CWD to project root.");
-    }
+    };
+    
+    println!("[startup] CWD and root set to {}", workspace_root.display());
+    
+    let root_str = workspace_root.to_string_lossy().into_owned();
     unsafe {
-        std::env::set_var("TELEDRA_ROOT", &workspace_root);
+        std::env::set_var("TELEDRA_ROOT", &root_str);
     }
 
-    validate_environment();
+    validate_environment(strict_mode);
 
     println!("[startup] Build identity: {}", BUILD_IDENTITY);
 
@@ -21591,7 +21636,7 @@ mod creativity_tests {
         assert!(prompt.contains("pass 2/4"));
         assert!(prompt.contains("groove_and_pulse"));
         assert!(prompt.contains("live Court Synth project may now be a different song"));
-        assert!(prompt.contains("change `seed` and/or `sections`"));
+        assert!(prompt.contains("generate a new random `seed` AND you MUST change `sections`"));
         assert!(prompt.contains("preserve `mix` and `track_mix` byte-for-byte"));
         assert!(prompt.contains("Do not claim playback, installation, or success"));
 

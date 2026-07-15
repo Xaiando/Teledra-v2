@@ -570,14 +570,10 @@ impl VoiceEngine {
         active_playback: Arc<Mutex<Option<PlaybackController>>>,
         on_progress: impl Fn(String) + Send + Sync + 'static,
     ) -> Result<(), String> {
-        let workspace_root = std::env::var("TELEDRA_ROOT").unwrap_or_else(|_| {
-            std::env::current_dir()
-                .map(|p| p.to_string_lossy().into_owned())
-                .unwrap_or_else(|_| ".".to_string())
-        });
-        let python_exe = format!("{}\\.venv\\Scripts\\python.exe", workspace_root);
-        let script_path = format!("{}\\generate_voice.py", workspace_root);
-
+        let workspace_root = std::env::var("TELEDRA_ROOT").unwrap_or_else(|_| ".".to_string());
+        let root_path = std::path::PathBuf::from(&workspace_root);
+        let python_exe = root_path.join(".venv").join("Scripts").join("python.exe");
+        let script_path = root_path.join("generate_voice.py");
         let use_resident = std::env::var("TELEDRA_TTS_RESIDENT")
             .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
             .unwrap_or(false);
