@@ -173,6 +173,35 @@ mod tests {
         );
     }
 
+    /// A sidecar resolves its own assets by joining onto the directory of the
+    /// script path we hand it. Windows hands `\\?\` paths to the filesystem
+    /// unparsed, so `\\?\D:\Teledra` + `assets/queen.wav` cannot be opened even
+    /// though the file is there -- and Rust's `exists()` still reports the
+    /// capability available, so the failure only ever surfaced as a crash in a
+    /// child process.
+    #[test]
+    fn roots_are_free_of_the_windows_extended_length_prefix() {
+        let context = test_runtime_context();
+        let root = context.paths.root.to_string_lossy().into_owned();
+        assert!(
+            !root.starts_with(r"\\?\"),
+            "the resolved root must not carry an extended-length prefix: {root}"
+        );
+
+        let command = sync_python_sidecar_command(&context, SidecarKind::Voice)
+            .expect("voice is available in the test environment");
+        let script = command
+            .get_args()
+            .next()
+            .expect("the script is the first argument")
+            .to_string_lossy()
+            .into_owned();
+        assert!(
+            !script.starts_with(r"\\?\"),
+            "script paths handed to sidecars must be plain: {script}"
+        );
+    }
+
     /// Every command is rooted explicitly rather than inheriting the process
     /// working directory, and carries an absolute script path.
     #[test]

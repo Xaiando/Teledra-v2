@@ -12831,7 +12831,15 @@ fn run_phase_a_self_test(ctx: &crate::sidecar::RuntimeContext) -> Result<serde_j
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum StartupMode {
+    /// Text-only: the TUI, a model endpoint, local persistence. Every optional
+    /// sidecar stays down even when its dependencies are present.
     Minimal,
+    /// The default. Each optional lane is enabled if, and only if, its
+    /// dependencies are actually on the host; anything missing is reported and
+    /// disabled rather than blocking startup.
+    Standard,
+    /// Standard, plus a refusal to start unless everything requested is
+    /// verified present.
     Strict,
 }
 
@@ -13002,6 +13010,25 @@ impl EnvironmentReport {
 }
 
 impl AppPaths {
+    /// Strips Windows' extended-length prefix from a canonicalized path.
+    ///
+    /// `canonicalize()` returns `\\?\D:\Teledra`. Extended-length paths are
+    /// handed to the filesystem unparsed, so a forward slash inside one is a
+    /// literal character rather than a separator: a sidecar that joins
+    /// `"assets/queen_ref_clean.wav"` onto that root silently fails to find a
+    /// file that is plainly on disk, while Rust's own `exists()` still sees it
+    /// and happily reports the capability available.
+    fn without_extended_length_prefix(path: std::path::PathBuf) -> std::path::PathBuf {
+        const PREFIX: &str = r"\\?\";
+        let text = path.to_string_lossy().into_owned();
+        match text.strip_prefix(PREFIX) {
+            // A true UNC path (\\?\UNC\server\share) means something different
+            // without its prefix, so leave it alone.
+            Some(stripped) if !stripped.starts_with("UNC\\") => std::path::PathBuf::from(stripped),
+            _ => path,
+        }
+    }
+
     pub fn resolve() -> Result<Self, String> {
         let root = std::env::var_os("TELEDRA_ROOT")
             .map(std::path::PathBuf::from)
@@ -13010,6 +13037,7 @@ impl AppPaths {
         let root = root
             .canonicalize()
             .map_err(|e| format!("invalid TELEDRA_ROOT {}: {e}", root.display()))?;
+        let root = Self::without_extended_length_prefix(root);
 
         let python = root.join(".venv").join("Scripts").join("python.exe");
         let python_opt = if python.exists() { Some(python) } else { None };
@@ -13062,10 +13090,15 @@ fn parse_cli() -> Result<StartupOptions, String> {
         return Err("Cannot specify both --minimal and --strict".to_string());
     }
 
+    // Standard is the default: --minimal is a deliberate restriction, so making
+    // it the fallback silently muted voice, art, and music for anyone who just
+    // ran the launcher.
     let mode = if strict {
         StartupMode::Strict
-    } else {
+    } else if minimal {
         StartupMode::Minimal
+    } else {
+        StartupMode::Standard
     };
 
     Ok(StartupOptions {
@@ -13245,7 +13278,11 @@ fn validate_environment(
 
     Ok(EnvironmentReport {
         root: paths.root.to_string_lossy().into_owned(),
-        mode: match mode { StartupMode::Minimal => "Minimal".into(), StartupMode::Strict => "Strict".into() },
+        mode: match mode {
+            StartupMode::Minimal => "Minimal".into(),
+            StartupMode::Standard => "Standard".into(),
+            StartupMode::Strict => "Strict".into(),
+        },
         config: config_res,
         voice,
         somatic,
@@ -22928,6 +22965,35 @@ plt.show()
         session.panelists_in_segment = 0;
         let next_kind = next_broadcast_kind_after_reaction(&session, Instant::now());
         assert_eq!(next_kind, BroadcastTurnKind::Counterpoint);
+    }
+
+    /// The court a bare launcher starts must be the whole court. `--minimal` is
+    /// a restriction the operator asks for; defaulting to it silently muted
+    /// voice, art, and music the moment the capability gate became real.
+    #[test]
+    fn a_bare_launch_is_standard_not_minimal() {
+        let optional_lanes = |mode: &StartupMode| -> Capability {
+            // Mirrors the `optional()` policy in validate_environment: the mode
+            // is the only input under test here.
+            if *mode == StartupMode::Minimal {
+                Capability::Disabled { reason: "Disabled in minimal mode".to_string() }
+            } else {
+                Capability::Available
+            }
+        };
+
+        assert!(
+            optional_lanes(&StartupMode::Standard).is_available(),
+            "a default launch must keep the optional lanes"
+        );
+        assert!(
+            !optional_lanes(&StartupMode::Minimal).is_available(),
+            "--minimal must still restrict"
+        );
+        assert!(
+            optional_lanes(&StartupMode::Strict).is_available(),
+            "strict verifies capabilities, it does not disable them"
+        );
     }
 
     #[test]
