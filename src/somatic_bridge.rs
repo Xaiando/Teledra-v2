@@ -9,7 +9,12 @@ pub struct SomaticState {
     pub face_detected: bool,
     pub hands_detected: bool,
     pub shoulder_asymmetry: Option<f32>,
+    /// A structured error the sidecar reported over stdout as JSON.
     pub error: Option<String>,
+    /// A rolling tail of raw stderr. Kept separate from `error` so it always
+    /// reflects the latest output without overwriting a cleaner structured
+    /// message, and so a first line cannot pin the field forever.
+    pub stderr_tail: Option<String>,
 }
 
 impl SomaticState {
@@ -19,6 +24,7 @@ impl SomaticState {
             hands_detected: false,
             shoulder_asymmetry: None,
             error: None,
+            stderr_tail: None,
         }
     }
 }
@@ -126,9 +132,7 @@ impl SomaticBridge {
                             tail = tail[trim_at..].to_string();
                         }
                         let mut lock = state_stderr.lock().unwrap();
-                        if lock.error.is_none() {
-                            lock.error = Some(tail.clone());
-                        }
+                        lock.stderr_tail = Some(tail.clone());
                     }
                     Ok(None) | Err(_) => break,
                 }

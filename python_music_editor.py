@@ -114,7 +114,7 @@ class PythonMusicEditor:
         self.remember_music_mtime()
         archived_path = self.archive_experiment(code, "editor_save")
         self.status.set("Saved music.py")
-        self.append_log("Saved D:\\Teledra\\music.py")
+        self.append_log(f"Saved {MUSIC_PATH}")
         if archived_path:
             self.append_log(f"Archived experiment: {archived_path}")
 

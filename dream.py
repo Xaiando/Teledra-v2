@@ -6,7 +6,9 @@ import urllib.parse
 from datetime import datetime
 
 # Define paths
-CONFIG_PATH = "config.json"
+# Follow the court's model selection: without this the background dream cycle
+# consolidates memory using a different model than the one actually running.
+CONFIG_PATH = os.environ.get("TELEDRA_CONFIG", "config.json")
 CHAT_LOGS_PATH = "knowledge/chat_logs.jsonl"
 LEARNED_MEMORY_PATH = "knowledge/learned_memory.json"
 SELF_REFLECTIONS_PATH = "knowledge/self_reflections.json"

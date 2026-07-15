@@ -116,6 +116,49 @@ mod tests {
         assert!(sync_python_sidecar_command(&context, SidecarKind::Vision).is_ok());
     }
 
+    /// Executing model-generated Python is an operator decision. A startup mode
+    /// must never grant it, and neither must the mere presence of an
+    /// interpreter -- runpy monkeypatching is containment, not a boundary.
+    #[test]
+    fn workshop_tools_require_explicit_authorization() {
+        let paths = test_runtime_context().paths;
+        let mut environment = crate::EnvironmentReport::all_available_for_tests();
+        environment.workshop_tools = crate::Capability::Disabled {
+            reason: "Not authorized; pass --allow-workshop-tools to enable".to_string(),
+        };
+        environment.workshop_tools_requested = false;
+        let context = RuntimeContext { paths, environment: &environment };
+
+        assert!(
+            sync_python_sidecar_command(
+                &context,
+                SidecarKind::Dynamic(CapabilityId::WorkshopTools, "tools/workshop_runner.py"),
+            )
+            .is_err(),
+            "unauthorized workshop tools must not produce a command"
+        );
+
+        // An unrequested capability is not a strict-mode failure: strict verifies
+        // what was asked for, it does not authorize what wasn't.
+        assert!(
+            !environment
+                .unavailable_capabilities()
+                .iter()
+                .any(|(id, _)| *id == CapabilityId::WorkshopTools),
+            "an unrequested capability must not fail a strict check"
+        );
+
+        // Once requested, it is verified like anything else.
+        environment.workshop_tools_requested = true;
+        assert!(
+            environment
+                .unavailable_capabilities()
+                .iter()
+                .any(|(id, _)| *id == CapabilityId::WorkshopTools),
+            "a requested but unavailable capability must fail a strict check"
+        );
+    }
+
     /// Restream is network/chat ingestion. If it inherited Hearing, enabling a
     /// microphone would silently authorize an external network listener.
     #[test]

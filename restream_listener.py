@@ -4,14 +4,18 @@ import asyncio
 import aiohttp
 
 async def main():
-    if len(sys.argv) < 2:
+    # The token arrives on stdin, never as an argument: a command line is
+    # visible to process listings, crash diagnostics, and parent-process logs
+    # for the whole life of the listener.
+    token = sys.stdin.readline().strip()
+    if not token:
         print(json.dumps({"error": "No token provided"}), file=sys.stderr, flush=True)
-        sys.exit(1)
-        
-    token = sys.argv[1]
+        return 1
+
     url = f"wss://backend.chat.restream.io/ws/embed?token={token}"
-    
-    print(f"Connecting to Restream WebSocket with token: {token[:6]}...", file=sys.stderr, flush=True)
+
+    # Never echo any part of the token, not even a prefix.
+    print("Connecting to Restream chat server...", file=sys.stderr, flush=True)
     
     while True:
         try:
@@ -60,6 +64,6 @@ async def main():
 
 if __name__ == "__main__":
     try:
-        asyncio.run(main())
+        sys.exit(asyncio.run(main()) or 0)
     except KeyboardInterrupt:
         sys.exit(0)

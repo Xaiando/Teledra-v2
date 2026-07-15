@@ -6,12 +6,9 @@ import sqlite3
 DB_PATH = "knowledge/memory.db"
 
 def main():
-    if len(sys.argv) < 2:
-        # Return empty list if no query provided
-        print(json.dumps([]))
-        sys.exit(0)
-
-    query = sys.argv[1].strip()
+    # The query arrives on stdin rather than as an argument: search text can be
+    # personal, and a command line is visible in process listings.
+    query = sys.stdin.readline().strip()
     if not query:
         print(json.dumps([]))
         return

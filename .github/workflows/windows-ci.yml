@@ -24,9 +24,12 @@ jobs:
       run: |
         # Fixed strings, not a regex: an ERE with a nested group here silently
         # degenerates to matching the bare word "Teledra" and flags everything.
+        # The doubled variants matter: a path written in a Rust or Python string
+        # literal is escaped in the source, so searching only for the single-
+        # backslash form walks straight past it.
         # Allowlist: workflows and coordination notes may quote historic paths.
         status=0
-        for pattern in 'D:\Teledra' 'C:\Users\' 'D:/Teledra' 'C:/Users/'; do
+        for pattern in 'D:\Teledra' 'D:\\Teledra' 'C:\Users\' 'C:\\Users\\' 'D:/Teledra' 'C:/Users/'; do
           if git grep -n -I -F -- "$pattern" -- '*.rs' '*.py' '*.ps1' '*.bat' \
               ':!.github/workflows/*' ':!coordination/*' ; then
             echo "::error::Machine-specific absolute path found: $pattern"

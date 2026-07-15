@@ -12838,6 +12838,9 @@ pub enum StartupMode {
 pub struct StartupOptions {
     pub mode: StartupMode,
     pub check_environment: bool,
+    /// Executing model-generated Python is a privilege the operator grants per
+    /// run, never something a startup mode grants on their behalf.
+    pub allow_workshop_tools: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -12892,6 +12895,10 @@ pub struct EnvironmentReport {
     pub mcp: Capability,
     pub treasury_network: Capability,
     pub workshop_tools: Capability,
+    /// Whether the operator asked for WorkshopTools at all. Strict mode verifies
+    /// the capabilities that were requested; it must not silently authorize a
+    /// dangerous optional one just to satisfy its own completeness check.
+    pub workshop_tools_requested: bool,
     pub operator_tools: Capability,
 }
 
@@ -12925,11 +12932,14 @@ impl EnvironmentReport {
     }
 
     /// Every capability that a fully-provisioned host is expected to provide.
-    /// `music_authoring` is excluded: the legacy editor is retired by policy,
-    /// not by a missing dependency, so it must never fail a strict check.
+    ///
+    /// Excluded by policy rather than by dependency:
+    /// - `music_authoring`: the legacy editor is retired.
+    /// - `workshop_tools` unless requested: strict means "everything asked for
+    ///   is verified", not "authorize arbitrary code execution to pass a check".
     pub fn unavailable_capabilities(&self) -> Vec<(crate::sidecar::CapabilityId, String)> {
         use crate::sidecar::CapabilityId as Id;
-        let checked = [
+        let mut checked = vec![
             (Id::Voice, &self.voice),
             (Id::Somatic, &self.somatic),
             (Id::Hearing, &self.hearing),
@@ -12943,9 +12953,11 @@ impl EnvironmentReport {
             (Id::Outreach, &self.outreach),
             (Id::Mcp, &self.mcp),
             (Id::TreasuryNetwork, &self.treasury_network),
-            (Id::WorkshopTools, &self.workshop_tools),
             (Id::OperatorTools, &self.operator_tools),
         ];
+        if self.workshop_tools_requested {
+            checked.push((Id::WorkshopTools, &self.workshop_tools));
+        }
         checked
             .iter()
             .filter_map(|(id, capability)| match capability {
@@ -12983,6 +12995,7 @@ impl EnvironmentReport {
             mcp: Capability::Available,
             treasury_network: Capability::Available,
             workshop_tools: Capability::Available,
+            workshop_tools_requested: true,
             operator_tools: Capability::Available,
         }
     }
@@ -13043,6 +13056,7 @@ fn parse_cli() -> Result<StartupOptions, String> {
     let strict = args.iter().any(|arg| arg == "--strict");
     let minimal = args.iter().any(|arg| arg == "--minimal");
     let check_environment = args.iter().any(|arg| arg == "--check-environment");
+    let allow_workshop_tools = args.iter().any(|arg| arg == "--allow-workshop-tools");
 
     if strict && minimal {
         return Err("Cannot specify both --minimal and --strict".to_string());
@@ -13057,10 +13071,15 @@ fn parse_cli() -> Result<StartupOptions, String> {
     Ok(StartupOptions {
         mode,
         check_environment,
+        allow_workshop_tools,
     })
 }
 
-fn validate_environment(paths: &AppPaths, mode: &StartupMode) -> Result<EnvironmentReport, String> {
+fn validate_environment(
+    paths: &AppPaths,
+    mode: &StartupMode,
+    allow_workshop_tools: bool,
+) -> Result<EnvironmentReport, String> {
     let mut config_res = CheckResult { passed: true, message: "OK".to_string() };
     if !paths.config.exists() {
         let msg = format!("Config file {} not found.", paths.config.display());
@@ -13242,7 +13261,24 @@ fn validate_environment(paths: &AppPaths, mode: &StartupMode) -> Result<Environm
         outreach: optional(Some("outreach_poster.py")),
         mcp: optional(Some("mcp_bridge.py")),
         treasury_network: optional(Some("treasury_scout.py")),
-        workshop_tools: optional(Some("tools/workshop_runner.py")),
+        // tools/workshop_runner.py executes model-generated Python through
+        // runpy. Its monkeypatches are containment, not a security boundary
+        // against adversarial code, so this is never granted by a startup mode
+        // or by the mere presence of an interpreter: the operator must ask.
+        workshop_tools: if !allow_workshop_tools {
+            Capability::Disabled {
+                reason: "Not authorized; pass --allow-workshop-tools to enable".to_string(),
+            }
+        } else {
+            match python_missing.as_ref() {
+                Some(reason) => Capability::Disabled { reason: reason.clone() },
+                None if !paths.root.join("tools/workshop_runner.py").is_file() => {
+                    Capability::Disabled { reason: "tools/workshop_runner.py missing".to_string() }
+                }
+                None => Capability::Available,
+            }
+        },
+        workshop_tools_requested: allow_workshop_tools,
         // Not mode-gated: an explicitly requested, read-only local viewer is
         // permitted even in a minimal profile. It only needs an interpreter.
         operator_tools: match python_missing.as_ref() {
@@ -13257,7 +13293,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let paths = AppPaths::resolve()?;
     paths.enter_root()?;
 
-    let report = validate_environment(&paths, &cli.mode)?;
+    let report = validate_environment(&paths, &cli.mode, cli.allow_workshop_tools)?;
 
     let strict = cli.mode == StartupMode::Strict;
 
@@ -13297,6 +13333,46 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build()?;
 
     runtime.block_on(run(cli, paths, report))
+}
+
+/// Spawns a sidecar, writes one line to its stdin, and collects its output.
+///
+/// For inputs that should not appear in a command line: a credential, or text
+/// personal enough that a process listing shouldn't carry it.
+async fn write_stdin_then_output(
+    command: &mut tokio::process::Command,
+    line: &str,
+) -> std::io::Result<std::process::Output> {
+    use tokio::io::AsyncWriteExt;
+    let mut child = command.spawn()?;
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(format!("{}\n", line).as_bytes()).await?;
+        let _ = stdin.shutdown().await;
+    }
+    child.wait_with_output().await
+}
+
+/// Hands the Restream token to a freshly spawned listener over stdin.
+///
+/// The token is a live credential. An argument is visible in process listings,
+/// crash dumps, and parent-process telemetry for the whole life of the child;
+/// a pipe is readable only by the child itself.
+async fn deliver_restream_token(
+    child: &mut tokio::process::Child,
+    token: &str,
+) -> Result<(), String> {
+    use tokio::io::AsyncWriteExt;
+    let mut stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| "Restream listener stdin was unavailable".to_string())?;
+    stdin
+        .write_all(format!("{}\n", token).as_bytes())
+        .await
+        .map_err(|error| format!("Failed to hand the Restream token to the listener: {error}"))?;
+    // Closing the pipe lets the listener stop waiting for more input.
+    let _ = stdin.shutdown().await;
+    Ok(())
 }
 
 async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) -> Result<(), Box<dyn std::error::Error>> {
@@ -13874,14 +13950,20 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
             }
             Ok(mut listen_cmd) => {
             listen_cmd
-                .arg(&token)
+                .stdin(std::process::Stdio::piped())
                 .stdout(std::process::Stdio::piped())
                 .stderr(std::process::Stdio::piped());
             hide_console_tokio(&mut listen_cmd);
             let child = listen_cmd.spawn();
 
             match child {
-                Ok(mut c) => {
+                Ok(mut c) => match deliver_restream_token(&mut c, &token).await {
+                  Err(error) => {
+                    let _ = c.kill().await;
+                    push_private_event(&mut private_events, "Restream", &error);
+                    chat_history.push(("System".to_string(), error));
+                  }
+                  Ok(()) => {
                     let stdout = c.stdout.take().expect("Failed to open stdout");
                     let stderr = c.stderr.take().expect("Failed to open stderr");
 
@@ -13889,17 +13971,15 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                         *lock = Some(c);
                     }
 
-                    let _ = log_system_activity(&format!(
-                        "Streamer Mode auto-activated with saved token prefix: {}...",
-                        &token[..6.min(token.len())]
-                    ));
+                    // No token bytes in the log: a saved prefix is still
+                    // credential material sitting in a plain-text file.
+                    let _ = log_system_activity(
+                        "Streamer Mode auto-activated with the saved Restream token.",
+                    );
                     push_private_event(
                         &mut private_events,
                         "Restream",
-                        &format!(
-                            "Streamer Mode auto-activated with saved token prefix: {}...",
-                            &token[..6.min(token.len())]
-                        ),
+                        "Streamer Mode auto-activated with the saved Restream token.",
                     );
 
                     let tx_ws = tx.clone();
@@ -13933,7 +14013,8 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                 .await;
                         }
                     });
-                }
+                  }
+                },
                 Err(e) => {
                     let msg = format!("Failed to auto-spawn Restream listener: {}", e);
                     push_private_event(&mut private_events, "Restream", &msg);
@@ -14956,7 +15037,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                                                 continue;
                                                             };
                                                             listen_cmd
-                                                                .arg(&token)
+                                                                .stdin(std::process::Stdio::piped())
                                                                 .stdout(std::process::Stdio::piped())
                                                                 .stderr(std::process::Stdio::piped());
                                                             hide_console_tokio(&mut listen_cmd);
@@ -14964,6 +15045,11 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
 
                                                             match child {
                                                                 Ok(mut c) => {
+                                                                    if let Err(error) = deliver_restream_token(&mut c, &token).await {
+                                                                        let _ = c.kill().await;
+                                                                        chat_history.push(("System".to_string(), error));
+                                                                        continue;
+                                                                    }
                                                                     let stdout = c.stdout.take().expect("Failed to open stdout");
                                                                     let stderr = c.stderr.take().expect("Failed to open stderr");
 
@@ -20918,9 +21004,16 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                                 &crate::sidecar::runtime_context(),
                                                 crate::sidecar::SidecarKind::Memory,
                                             ) {
-                                            mem_cmd.arg(&instruction);
+                                            // Query over stdin, not argv: search text is
+                                            // personal and argv is world-readable.
+                                            mem_cmd.stdin(std::process::Stdio::piped());
                                             hide_console_tokio(&mut mem_cmd);
-                                            if let Ok(output) = mem_cmd.output().await {
+                                            if let Ok(output) = write_stdin_then_output(
+                                                &mut mem_cmd,
+                                                &instruction,
+                                            )
+                                            .await
+                                            {
                                                 let raw = String::from_utf8_lossy(&output.stdout);
                                                 if let Ok(items) = serde_json::from_str::<Vec<String>>(raw.trim()) {
                                                     if !items.is_empty() {
