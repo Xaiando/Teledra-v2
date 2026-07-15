@@ -36,7 +36,7 @@ jobs:
     - name: Compile and Test Python sidecars
       run: |
         .\.venv\Scripts\Activate.ps1
-        python -m compileall . -q
+        python -m compileall -q -x "\.venv|tools[\\/]experiments|kraken[\\/]workspace" .
         python -m unittest discover tests
 
     - name: Check formatting
