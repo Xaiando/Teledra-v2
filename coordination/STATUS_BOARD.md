@@ -2167,3 +2167,45 @@ G r o k :   2 0 2 6 - 0 7 - 1 3   -   I t e r a t i n g   D u c h m a n ' s   M 
 ## 2026-07-13 ~23:45 Claude — Round-1 repair audit + radio contract fixes
 Audited Gemini's emergency repairs. RADIO: landed & solid (overlap validator, handoff strip+reject, push_court_feed, Artist bucket, Queen cadence/persona). Fixed two round-1 defects: LOCKED TOPIC line never interpolated the topic (validator demanded words the prompt never gave — would have caused reject/retry churn every turn), and assignment templating leaked the verbatim theme against the no-re-priming doctrine. Both now use shared `broadcast_topic_keywords()`; invariant: whatever the overlap validator demands, the prompt must have offered. 129/129 tests green, release rebuilt 23:4x — safe to restart the TUI.
 MUSIC + FRACTUS branches were NOT done in round 1. Full spec in coordination/GEMINI_HANDOFF_ROUND2.md: (1) review-lease on awaiting_review holds + review_ready surfacing — the live hold on rev 165 still freezes rotation until the operator votes on it in the workstation; (2) Fractus stderr tail extraction (lessons currently poisoned by head-truncated tracebacks) + varied recovery scenes. — Claude
+
+## 2026-07-15 Claude — PR 1b follow-up: capability gate at the process boundary (COMPLETE)
+Picked up Antigravity's unfinished refactor (tree did not compile: 10 errors — orphaned `.arg()` chains after broker calls, `run_study_cycle(&ctx,` signature, RuntimeContext built from locals that didn't exist). Landed the reviewer's plan in full. 133 Rust + 62 Python tests green; release builds `--locked`.
+
+**Architecture:** `src/sidecar.rs` is the single process boundary. `install_runtime()` (OnceLock, called in `main()` right after `validate_environment`) gives every deep call site a `'static` `runtime_context()` — that's what removed the excuse for bypassing the gate in spawn_blocking closures. All Python now goes through `sync_python_sidecar_command` / `tokio_python_sidecar_command` / `sync_python_inline_command` (`-c`/`-m`). ZERO `Command::new` for Python outside sidecar.rs; the only exemption is `validate_environment`'s import probe, which by definition runs before the runtime exists. Two CI guards enforce it.
+
+**Findings worth knowing:**
+- `SidecarKind::WizardBuild` was a phantom — `wizard_brain.py` lives in `cloud_residents/` and runs on the tower; `/wizard` is an HTTP pull. Removed the kind AND the capability.
+- The env report LIED: with no interpreter, art/dream/mcp/streaming still reported "Available". All optional lanes are Python, so `python_missing` now disables every one of them.
+- **10 of 21 registered sidecars were initially untracked** (dream.py, restream_listener.py, court_synthesizer.py, Fractus/*.py, retrieve_memory.py, browser_agent.py, get_youtube_transcript.py, python_music_editor.py, tools/workshop_runner.py, kingdom_dashboard.py, work_viewer.py). They were committed in `25da3d23`; clean checkouts now contain every registered sidecar.
+- `art.py` is model-authored at runtime (like music.py) → marked `generated_at_runtime`, exempt from that test.
+- The reviewer's own path regex `([A-Za-z]:\(Users|Teledra)|...)` degenerates under `git grep -E` to matching bare "Teledra". CI uses fixed strings instead. It found real hardcoded paths in kraken/kernel/paths.py, kraken_beta/, both research_local/run.py, Teledra_v2_qwen.bat, kraken_taskforce.bat — all now derive from TELEDRA_ROOT / `%~dp0` (Agent Hub via new `TELEDRA_AGENT_HUB_ROOT`, same contract as TELEDRA_HEALTHTOOL_ROOT).
+- Dropped Antigravity's `cargo fmt --all -- --check` CI step: the codebase has never been rustfmt-clean, so it guaranteed red CI. A repo-wide reformat is its own PR (and would collide with in-flight main.rs work).
+- Capabilities added: `WorkshopTools` (runs model-generated code — separable from Art) and `OperatorTools` (`/dashboard`, `/work`; NOT mode-gated — minimal still allows explicitly-requested read-only local viewers).
+- `Capability::Disabled` now surfaces: `VoiceEngine::generate_and_play` returns `SidecarOutcome`, and the art/mic/restream/dashboard sites report a reason instead of silent `Ok(())` (the art site previously fell back to `Command::new("cmd")` — it would have launched a shell when Art was disabled).
+- Requirements regrouped per actual imports (verified): sounddevice/faster-whisper are hearing-only (generate_voice.py imports neither); Pillow is vision-only (somatic imports cv2 only).
+- `somatic_cortex_stream.py`: env resolution + HealthTool import moved into `main()` via `resolve_somatic_environment()`; `import somatic_cortex_stream` is now safe on a host with no HealthTool, and `--check-environment` validates the chain without opening the camera.
+- Strict mode no longer fails fast: it reports every unavailable capability then exits **78** (`EXIT_CONFIG_ERROR`). CI asserts the code AND the reason against a controlled fixture, so it cannot pass on an unrelated crash. — Claude
+
+## 2026-07-16 Claude — PR 1b follow-up: reply to review + two post-review regressions
+Branch `pr1b-capability-gate`, three commits. **Not yet pushed past 25da3d23; operator pushes.** 136 Rust + 66 Python green, release builds `--locked`.
+
+### The three blockers — all fixed (132dbb85)
+1. **Restream token off the command line.** Confirmed as described, and worse than reported: besides argv and the stderr prefix, the *Rust* side wrote the same six characters into `knowledge/system_activity.jsonl` on every auto-activation, so a prefix was persisting to a plain-text file. Token now goes over stdin after spawn (`deliver_restream_token`, used by both launch sites); nothing prints or logs any part of it. `retrieve_memory.py` moved to stdin too (`write_stdin_then_output`).
+2. **`D:\Teledra` display string** — fixed, but the important half was your escaping point: the source literal is `D:\Teledra`, so my fixed-string gate for `D:\Teledra` walked straight past it. The gate had a blind spot for exactly the class it existed to catch. Both spellings now covered.
+3. **`WorkshopTools` as authorization** — `--allow-workshop-tools` only; denied in minimal *and* strict; never implied by an interpreter. Your framing caught a design flaw I would have shipped: if strict demanded every capability, strict would have *forced* arbitrary code execution on to satisfy its own completeness check. Hence `workshop_tools_requested` — strict verifies what was requested and ignores what wasn't. A requested-but-broken one still fails.
+
+Somatic `stderr_tail` split from `error` as you specified. Both non-blocking items done (`dream.py` follows `TELEDRA_CONFIG`; memory query on stdin).
+
+### Two regressions the live run exposed, after your review (29d0cf27)
+The operator restarted on the new binary and got a mute, artless court: every utterance died with `reference wav not found`, and art/music/Fractus all reported "disabled in minimal mode".
+
+1. **`--minimal` was the default.** `parse_cli` fell back to Minimal with no flag, and the launcher passes none. Harmless while nothing enforced the gate; a mute court the moment it was real. Now three modes: Minimal (restrict), **Standard (default: enable a lane iff its deps are present)**, Strict (Standard + refuse to start when something requested is missing).
+2. **`canonicalize()` returns `\?\D:\Teledra`.** Extended-length paths reach the filesystem unparsed, so `/` inside one is a literal character, not a separator. Sidecars resolve assets by joining onto the directory of the script path we hand them, so `generate_voice.py` built `\?\D:\Teledra\assets/queen_ref_clean.wav` and could not open a file plainly on disk. Root is now stripped of the prefix (UNC left intact).
+
+### The part worth your attention
+Rust's `exists()` reads *through* the `\?\` prefix, so `validate_environment` reported `"voice": "Available"` while every utterance crashed in the child. That is the same "the report must not lie" failure this PR set out to remove, arriving through path formatting instead of logic — and PR 1b is what introduced it, since only this change made script paths absolute.
+
+**Neither regression is catchable by the CI contract we designed.** `--check-environment` exits 0 and reports everything Available in both broken states; only spawning a child reveals it. Suggest a smoke step that actually launches one cheap sidecar and asserts it produces output — `somatic_cortex_stream.py --check-environment` is the obvious candidate (it proves the dependency chain without opening the camera), or a trivial `--check-environment` added to `generate_voice.py` that opens its reference wav and exits. Static gates cannot see this class; only a real child can.
+
+### Deliberately not done
+Repo-wide `cargo fmt`. This tree has never been rustfmt-clean, so the gate Antigravity added guaranteed a red pipeline regardless of content; I removed it rather than mask it with `continue-on-error`. Reformatting 1.1MB of `main.rs` is its own PR and would collide with in-flight work. — Claude

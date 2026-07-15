@@ -7,7 +7,12 @@ import re
 
 from kraken.kernel import query_guard
 
-KNOWLEDGE = r"D:\Teledra\knowledge"
+# Resolve from TELEDRA_ROOT, else the checkout this skill lives in
+# (skills/research_local/run.py -> three levels up).
+TELEDRA_ROOT = os.environ.get("TELEDRA_ROOT") or os.path.abspath(
+    os.path.join(os.path.dirname(__file__), os.pardir, os.pardir, os.pardir)
+)
+KNOWLEDGE = os.path.join(TELEDRA_ROOT, "knowledge")
 READ_LIMIT = 6000     # chars per source file
 TOP_FILES = 4
 STOPWORDS = {"the", "a", "an", "and", "or", "of", "to", "in", "on", "for",
@@ -42,7 +47,7 @@ def _score_file(path: str, terms: list[str]) -> tuple[int, int]:
     return (sum(1 for c in counts if c), sum(min(c, 5) for c in counts))
 
 
-CORPUS_DIRS = [KNOWLEDGE, r"D:\Teledra"]  # root holds the design docs
+CORPUS_DIRS = [KNOWLEDGE, TELEDRA_ROOT]  # root holds the design docs
 
 
 def _candidates() -> list[str]:

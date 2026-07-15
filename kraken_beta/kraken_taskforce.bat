@@ -7,10 +7,21 @@ rem  Drive it: type   <skill>: <input>   in Mission Chat, e.g.
 rem      research_local: what does the swarm design require?
 rem  A worker claims it, grinds it, signals the vault path back.
 rem ============================================================
-set HUB_EXE=C:\Users\Kaged\Documents\Agent orchestration\target\debug\agent-hub.exe
-set DESKTOP_EXE=C:\Users\Kaged\Documents\Agent orchestration\target\debug\desktop.exe
-set PY=D:\Teledra\.venv\Scripts\python.exe
-set KRAKEN=D:\Teledra\kraken
+rem -- roots: derived from this script's own location, never a fixed drive ----
+rem    %~dp0 is kraken_beta\, so its parent is the Teledra checkout.
+if not defined TELEDRA_ROOT (
+    for %%I in ("%~dp0..") do set "TELEDRA_ROOT=%%~fI"
+)
+rem    Agent Hub is a separate project: point TELEDRA_AGENT_HUB_ROOT at its
+rem    checkout (same contract as TELEDRA_HEALTHTOOL_ROOT for the somatic lane).
+if not defined TELEDRA_AGENT_HUB_ROOT (
+    echo TELEDRA_AGENT_HUB_ROOT is not set; point it at the Agent Hub checkout.
+    exit /b 1
+)
+set "HUB_EXE=%TELEDRA_AGENT_HUB_ROOT%\target\debug\agent-hub.exe"
+set "DESKTOP_EXE=%TELEDRA_AGENT_HUB_ROOT%\target\debug\desktop.exe"
+set "PY=%TELEDRA_ROOT%\.venv\Scripts\python.exe"
+set "KRAKEN=%TELEDRA_ROOT%\kraken"
 
 rem -- optional arg 1: the work folder the taskforce gets free rein in ----
 rem    usage: kraken_taskforce.bat D:\SomeProject

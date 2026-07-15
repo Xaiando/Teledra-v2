@@ -4,10 +4,16 @@ from __future__ import annotations
 
 import os
 
+# The Teledra checkout this kraken lives in. TELEDRA_ROOT when the court sets
+# it, otherwise the repository two levels above this file.
+TELEDRA_ROOT = os.environ.get("TELEDRA_ROOT") or os.path.abspath(
+    os.path.join(os.path.dirname(__file__), os.pardir, os.pardir)
+)
+
 # Folders prod_digest may read (operator productivity surfaces only).
 DIGEST_EXTRA = (
-    r"D:\Teledra\logs",
-    r"D:\Teledra\reflections",
+    os.path.join(TELEDRA_ROOT, "logs"),
+    os.path.join(TELEDRA_ROOT, "reflections"),
 )
 
 

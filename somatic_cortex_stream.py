@@ -5,19 +5,7 @@ import time
 import cv2
 from pathlib import Path
 
-# Resolve HealthTool root
-healthtool_root = os.environ.get("TELEDRA_HEALTHTOOL_ROOT")
-if healthtool_root:
-    sys.path.insert(0, str(Path(healthtool_root).expanduser().resolve()))
-else:
-    print(json.dumps({"error": "TELEDRA_HEALTHTOOL_ROOT not set"}), flush=True)
-    sys.exit(1)
 
-try:
-    from somatic_cortex import SomaticCortex
-except ImportError as e:
-    print(json.dumps({"error": f"Import error: {str(e)}"}), flush=True)
-    sys.exit(1)
 
 # Adaptive resource policy:
 # - ACTIVE  (~2 fps): a face was seen within the last IDLE_AFTER_S seconds.
@@ -39,15 +27,54 @@ def open_camera():
     return None
 
 
-def main():
-    default_model_dir = Path(healthtool_root) / "Neuralook" / "models" if healthtool_root else ""
+def resolve_somatic_environment():
+    """Resolve the external HealthTool root and model directory.
+
+    Kept out of module scope so `import somatic_cortex_stream` stays safe to run
+    in tests and CI on a host that has no HealthTool installed.
+    """
+    healthtool_raw = os.environ.get("TELEDRA_HEALTHTOOL_ROOT")
+    if not healthtool_raw:
+        raise RuntimeError("TELEDRA_HEALTHTOOL_ROOT is not set")
+    healthtool_root = Path(healthtool_raw).expanduser().resolve()
+    if not healthtool_root.exists():
+        raise RuntimeError(f"TELEDRA_HEALTHTOOL_ROOT does not exist: {healthtool_root}")
+
     model_dir_env = os.environ.get("TELEDRA_SOMATIC_MODEL_DIR")
-    model_dir = str(Path(model_dir_env).expanduser().resolve()) if model_dir_env else str(default_model_dir.resolve())
+    model_dir = (
+        Path(model_dir_env).expanduser().resolve()
+        if model_dir_env
+        else (healthtool_root / "Neuralook" / "models").resolve()
+    )
+    if not model_dir.exists():
+        raise RuntimeError(f"Somatic model directory does not exist: {model_dir}")
+    return healthtool_root, model_dir
+
+
+def main():
+    checking = "--check-environment" in sys.argv
+
     try:
-        cortex = SomaticCortex(model_dir=model_dir)
+        healthtool_root, model_dir = resolve_somatic_environment()
+        sys.path.insert(0, str(healthtool_root))
+        from somatic_cortex import SomaticCortex
+    except Exception as exc:
+        print(json.dumps({"error": str(exc)}), flush=True)
+        return 1
+
+    # Validation must prove the dependency chain without opening the camera.
+    if checking:
+        print(
+            json.dumps({"status": "environment ok", "model_dir": str(model_dir)}),
+            flush=True,
+        )
+        return 0
+
+    try:
+        cortex = SomaticCortex(model_dir=str(model_dir))
     except Exception as e:
         print(json.dumps({"error": f"Failed to initialize SomaticCortex: {str(e)}"}), flush=True)
-        sys.exit(1)
+        return 1
 
     cap = None
     last_face_time = 0.0
@@ -124,4 +151,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

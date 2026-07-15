@@ -569,24 +569,32 @@ impl VoiceEngine {
         self.voice_name = voice_name.to_string();
     }
 
+    /// Returns `Disabled` rather than a silent `Ok(())` when voice is
+    /// unavailable: reporting "nothing happened" as success made a mute court
+    /// look like a working one.
     pub fn generate_and_play(
         &self,
         text: &str,
         active_playback: Arc<Mutex<Option<PlaybackController>>>,
         on_progress: impl Fn(String) + Send + Sync + 'static,
-    ) -> Result<(), String> {
-        if !self.capability.is_available() {
-            return Ok(());
+    ) -> Result<crate::sidecar::SidecarOutcome<()>, String> {
+        if let crate::Capability::Disabled { reason } = &self.capability {
+            return Ok(crate::sidecar::SidecarOutcome::Disabled {
+                reason: reason.clone(),
+            });
         }
 
-        let python_exe = self.paths.python.as_ref().ok_or("Python missing")?;
-        let script_path = &self.paths.voice_script;
         let use_resident = std::env::var("TELEDRA_TTS_RESIDENT")
             .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
             .unwrap_or(false);
 
-        let mut cmd = Command::new(python_exe);
-        cmd.arg(script_path);
+        // Through the broker like every other sidecar, so the gate cannot be
+        // bypassed here even though this engine also holds its own capability.
+        let mut cmd = crate::sidecar::sync_python_sidecar_command(
+            &crate::sidecar::runtime_context(),
+            crate::sidecar::SidecarKind::Voice,
+        )
+        .map_err(|error| error.to_string())?;
         if use_resident {
             // Exercise the warm-resident path in generate_voice.py (--resident mode).
             // The Python side now keeps the LuxTTS model loaded for the life of the process
@@ -776,7 +784,7 @@ impl VoiceEngine {
         };
         drop(ours);
 
-        result
+        result.map(crate::sidecar::SidecarOutcome::Started)
     }
 
     fn play_protocol(

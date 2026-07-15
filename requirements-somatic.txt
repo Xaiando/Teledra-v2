@@ -1,2 +1,5 @@
+# Somatic capability: somatic_cortex_stream.py.
+# Imports cv2 directly, plus the external `somatic_cortex` package resolved from
+# TELEDRA_HEALTHTOOL_ROOT. HealthTool's own transitive needs (mediapipe, Pillow)
+# belong to HealthTool's dependency contract, not to this file.
 opencv-python
-Pillow
