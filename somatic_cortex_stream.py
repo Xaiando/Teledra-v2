@@ -1,10 +1,18 @@
 import sys
+import os
 import json
 import time
 import cv2
+from pathlib import Path
 
-# Import from HealthTool
-sys.path.append(r"C:\Users\Kaged\Documents\Projects\HealthTool")
+# Resolve HealthTool root
+healthtool_root = os.environ.get("TELEDRA_HEALTHTOOL_ROOT")
+if healthtool_root:
+    sys.path.insert(0, str(Path(healthtool_root).expanduser().resolve()))
+else:
+    print(json.dumps({"error": "TELEDRA_HEALTHTOOL_ROOT not set"}), flush=True)
+    sys.exit(1)
+
 try:
     from somatic_cortex import SomaticCortex
 except ImportError as e:
@@ -32,7 +40,9 @@ def open_camera():
 
 
 def main():
-    model_dir = r"C:\Users\Kaged\Documents\Projects\HealthTool\Neuralook\models"
+    default_model_dir = Path(healthtool_root) / "Neuralook" / "models" if healthtool_root else ""
+    model_dir_env = os.environ.get("TELEDRA_SOMATIC_MODEL_DIR")
+    model_dir = str(Path(model_dir_env).expanduser().resolve()) if model_dir_env else str(default_model_dir.resolve())
     try:
         cortex = SomaticCortex(model_dir=model_dir)
     except Exception as e:

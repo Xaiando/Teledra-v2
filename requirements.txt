@@ -1,8 +1,0 @@
-torch
-torchaudio
-transformers
-fastapi
-uvicorn
-opencv-python
-numpy
-pydantic

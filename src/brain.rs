@@ -584,22 +584,14 @@ fn strip_reasoning_and_code_fences(raw: &str) -> String {
 }
 
 impl Brain {
-    pub fn new() -> Self {
+    pub fn new(paths: &crate::AppPaths) -> Self {
         let mut config = BrainConfig::default();
-        // TELEDRA_CONFIG lets a parallel build (e.g. Teledra v2 on qwen2) point at
-        // a different model config without disturbing the live config.json.
-        let config_path =
-            std::env::var("TELEDRA_CONFIG").unwrap_or_else(|_| "config.json".to_string());
-        if let Ok(mut file) = File::open(&config_path) {
+        if let Ok(mut file) = std::fs::File::open(&paths.config) {
             let mut contents = String::new();
             if file.read_to_string(&mut contents).is_ok() {
                 if let Ok(parsed) = serde_json::from_str::<BrainConfig>(&contents) {
                     config = parsed;
                 }
-            }
-        } else if config_path == "config.json" {
-            if let Ok(file) = File::create("config.json") {
-                let _ = serde_json::to_writer_pretty(file, &config);
             }
         }
 

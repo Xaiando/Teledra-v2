@@ -1,1 +1,0 @@
-print("fm_synthesis_pattern = 'FM(p1=440, p2=880, depth=5)'")

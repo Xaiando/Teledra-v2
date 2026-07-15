@@ -1,4 +1,0 @@
-{
-  "skill": "code_forge",
-  "input": "{\"task\": \"Verify and improve the Lost Dutchman Mine exploration game. The beast contract (simulation profile v2) must work: snapshot() must expose actor.x, actor.y, metrics.hunger, metrics.energy, metrics.gold, metrics.money. Canvas renders the desert world after Play, audio starts, gameLoop runs. Preload and improve the current game at workspace/games/duchmans_mine.\", \"filename\": \"index.html\", \"dir\": \"games/duchmans_mine\", \"profile\": \"simulation\", \"session\": \"finite\", \"contract_version\": 2, \"quality\": \"beast\", \"preload_existing\": true}"
-}

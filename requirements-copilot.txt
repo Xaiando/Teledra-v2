@@ -1,0 +1,3 @@
+sounddevice
+faster_whisper
+Pillow

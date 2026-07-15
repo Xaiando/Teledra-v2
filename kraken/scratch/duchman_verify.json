@@ -1,1 +1,0 @@
-{"skill": "code_forge", "input": "{\"task\": \"verify\", \"filename\": \"index.html\", \"dir\": \"games/duchmans_mine\", \"profile\": \"simulation\", \"session\": \"finite\", \"contract_version\": 2, \"verify_only\": true}"}

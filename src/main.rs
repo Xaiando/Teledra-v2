@@ -8802,13 +8802,13 @@ fn spawn_spoken_reply(
     role: CourtRole,
     text: String,
     mode: ForceMode,
-    queen_voice: String,
+    engine: VoiceEngine,
     active_playback: Arc<std::sync::Mutex<Option<voice::PlaybackController>>>,
     tx: mpsc::Sender<AppEvent>,
     send_speech_complete: bool,
     broadcast_session_id: Option<u64>,
 ) {
-    let active_voice = voice_name_for_role(role, &queen_voice).to_string();
+    let active_voice = voice_name_for_role(role, &engine.voice_name).to_string();
     let cleaned_speech = clean_text_for_speech(&text, role);
     let (speech_sentence_limit, speech_char_limit) = speech_limits_for_role(role, mode);
     let reply_for_speech =
@@ -8835,7 +8835,8 @@ fn spawn_spoken_reply(
             return;
         }
 
-        let engine = VoiceEngine::new(&active_voice);
+        let mut engine = engine.clone();
+        engine.set_voice(&active_voice);
         let total_parts = speech_parts.len();
         let _ = tx.blocking_send(AppEvent::SpeechStarted {
             role,
@@ -12735,28 +12736,162 @@ fn run_phase_a_self_test() -> Result<serde_json::Value, String> {
     result
 }
 
-fn resolve_teledra_root() -> Result<std::path::PathBuf, String> {
-    let root = std::env::var_os("TELEDRA_ROOT")
-        .map(std::path::PathBuf::from)
-        .unwrap_or(std::env::current_dir().map_err(|e| e.to_string())?);
-
-    let root = root
-        .canonicalize()
-        .map_err(|e| format!("invalid TELEDRA_ROOT {}: {e}", root.display()))?;
-
-    std::env::set_current_dir(&root)
-        .map_err(|e| format!("could not enter Teledra root {}: {e}", root.display()))?;
-
-    Ok(root)
+#[derive(Clone, Debug, PartialEq)]
+pub enum StartupMode {
+    Minimal,
+    Strict,
 }
 
-fn validate_environment(strict_mode: bool) {
-    let core_paths = [
-        ".venv/Scripts/python.exe",
-    ];
-    let strict_paths = [
-        "generate_voice.py",
-        "somatic_cortex_stream.py",
+pub struct StartupOptions {
+    pub mode: StartupMode,
+    pub check_environment: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct AppPaths {
+    pub root: std::path::PathBuf,
+    pub python: Option<std::path::PathBuf>,
+    pub config: std::path::PathBuf,
+    pub voice_script: std::path::PathBuf,
+    pub somatic_script: std::path::PathBuf,
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+pub enum Capability {
+    Available,
+    Disabled { reason: String },
+}
+
+impl Capability {
+    pub fn is_available(&self) -> bool {
+        matches!(self, Capability::Available)
+    }
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct CheckResult {
+    pub passed: bool,
+    pub message: String,
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct EnvironmentReport {
+    pub root: String,
+    pub mode: String,
+    pub config: CheckResult,
+    pub voice: Capability,
+    pub somatic: Capability,
+    pub vision: Capability,
+    pub copilot_mic: Capability,
+}
+
+impl AppPaths {
+    pub fn resolve() -> Result<Self, String> {
+        let root = std::env::var_os("TELEDRA_ROOT")
+            .map(std::path::PathBuf::from)
+            .unwrap_or(std::env::current_dir().map_err(|e| e.to_string())?);
+
+        let root = root
+            .canonicalize()
+            .map_err(|e| format!("invalid TELEDRA_ROOT {}: {e}", root.display()))?;
+
+        let python = root.join(".venv").join("Scripts").join("python.exe");
+        let python_opt = if python.exists() { Some(python) } else { None };
+        
+        let config_env = std::env::var("TELEDRA_CONFIG").unwrap_or_else(|_| "config.json".to_string());
+        let config = root.join(config_env);
+
+        Ok(AppPaths {
+            voice_script: root.join("generate_voice.py"),
+            somatic_script: root.join("somatic_cortex_stream.py"),
+            config,
+            python: python_opt,
+            root,
+        })
+    }
+
+    pub fn enter_root(&self) -> Result<(), String> {
+        std::env::set_current_dir(&self.root)
+            .map_err(|e| format!("could not enter Teledra root {}: {e}", self.root.display()))
+    }
+}
+
+fn parse_cli() -> Result<StartupOptions, String> {
+    let args: Vec<String> = std::env::args().collect();
+    let strict = args.iter().any(|arg| arg == "--strict");
+    let minimal = args.iter().any(|arg| arg == "--minimal");
+    let check_environment = args.iter().any(|arg| arg == "--check-environment");
+
+    if strict && minimal {
+        return Err("Cannot specify both --minimal and --strict".to_string());
+    }
+
+    let mode = if strict {
+        StartupMode::Strict
+    } else {
+        StartupMode::Minimal
+    };
+
+    Ok(StartupOptions {
+        mode,
+        check_environment,
+    })
+}
+
+fn validate_environment(paths: &AppPaths, mode: &StartupMode) -> Result<EnvironmentReport, String> {
+    let mut config_res = CheckResult { passed: true, message: "OK".to_string() };
+    if !paths.config.exists() {
+        let msg = format!("Config file {} not found.", paths.config.display());
+        if *mode == StartupMode::Strict {
+            return Err(msg);
+        } else {
+            config_res = CheckResult { passed: false, message: msg };
+        }
+    } else {
+        // Read and parse config to check for empty keys on remote hosts
+        if let Ok(contents) = std::fs::read_to_string(&paths.config) {
+            if let Ok(parsed) = serde_json::from_str::<crate::brain::BrainConfig>(&contents) {
+                let is_remote = parsed.api_url.contains("generativelanguage.googleapis.com") || parsed.api_url.contains("googleapis");
+                if is_remote && parsed.api_key.is_empty() {
+                    return Err(format!("TELEDRA_CONFIG '{}' uses a remote endpoint but provides an empty api_key.", paths.config.display()));
+                }
+            } else {
+                return Err(format!("TELEDRA_CONFIG '{}' is malformed JSON.", paths.config.display()));
+            }
+        }
+    }
+
+    if paths.python.is_none() {
+        return Err("Core requirement missing: .venv/Scripts/python.exe not found".to_string());
+    }
+    let python = paths.python.as_ref().unwrap();
+
+    let check_python_script = |script: &std::path::PathBuf| -> bool {
+        script.exists()
+    };
+
+    let check_module = |module: &str| -> bool {
+        std::process::Command::new(python)
+            .args(&["-c", &format!("import {}", module)])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    };
+
+    let check_assets = |assets: &[&str]| -> Option<String> {
+        for asset in assets {
+            if !paths.root.join(asset).exists() {
+                return Some(asset.to_string());
+            }
+        }
+        None
+    };
+
+    // Voice
+    let mut voice = Capability::Available;
+    let voice_assets = [
         "assets/queen_ref_clean.wav",
         "assets/cenedra_ref_sarcastic.wav",
         "assets/cenedra_ref_analytical.wav",
@@ -12770,73 +12905,96 @@ fn validate_environment(strict_mode: bool) {
         "assets/diplomat_ref_clean.wav",
         "assets/treasurer_ref_clean.wav",
         "assets/wizard_ref_clean.wav",
+        "LuxTTS",
     ];
-
-    let mut missing_fatal = Vec::new();
-    let mut missing_strict = Vec::new();
-
-    for path in &core_paths {
-        if !std::path::Path::new(path).exists() {
-            missing_fatal.push(*path);
+    if !check_python_script(&paths.voice_script) {
+        voice = Capability::Disabled { reason: "generate_voice.py missing".into() };
+    } else if let Some(missing) = check_assets(&voice_assets) {
+        voice = Capability::Disabled { reason: format!("Missing voice asset: {}", missing) };
+    }
+    
+    // Somatic
+    let mut somatic = Capability::Available;
+    if !check_python_script(&paths.somatic_script) {
+        somatic = Capability::Disabled { reason: "somatic_cortex_stream.py missing".into() };
+    } else {
+        // Validate external somatic dependencies
+        let ht_root = std::env::var("TELEDRA_HEALTHTOOL_ROOT").unwrap_or_default();
+        if ht_root.is_empty() || !std::path::PathBuf::from(&ht_root).exists() {
+            somatic = Capability::Disabled { reason: "TELEDRA_HEALTHTOOL_ROOT is not set or missing".into() };
+        } else {
+            let model_dir = std::env::var("TELEDRA_SOMATIC_MODEL_DIR").unwrap_or_else(|_| {
+                std::path::PathBuf::from(&ht_root).join("Neuralook").join("models").to_string_lossy().to_string()
+            });
+            if !std::path::PathBuf::from(&model_dir).exists() {
+                somatic = Capability::Disabled { reason: format!("Somatic model dir missing: {}", model_dir) };
+            }
         }
     }
 
-    for path in &strict_paths {
-        if !std::path::Path::new(path).exists() {
-            missing_strict.push(*path);
+    // Vision
+    let mut vision = Capability::Available;
+    if !paths.root.join("copilot_vision.py").exists() {
+        vision = Capability::Disabled { reason: "copilot_vision.py missing".into() };
+    }
+
+    // Copilot Mic
+    let mut copilot_mic = Capability::Available;
+    if !paths.root.join("copilot_mic.py").exists() {
+        copilot_mic = Capability::Disabled { reason: "copilot_mic.py missing".into() };
+    }
+
+    // Court Synth modules check
+    if !check_module("court_synth.feedback") || !check_module("court_synth.workshop") {
+        if *mode == StartupMode::Strict {
+            return Err("Court Synth modules (feedback, workshop) failed to import.".to_string());
         }
     }
 
-    if !missing_fatal.is_empty() {
-        eprintln!("[FATAL] Missing required core asset or script: {:?}", missing_fatal);
-        eprintln!("The repository checkout is incomplete. Please ensure you have cloned the \
-                   assets and generated the python virtual environment (.venv) in the project root.");
-        std::process::exit(1);
+    if *mode == StartupMode::Strict {
+        if let Capability::Disabled { reason } = &voice { return Err(format!("Strict mode voice failure: {}", reason)); }
+        if let Capability::Disabled { reason } = &somatic { return Err(format!("Strict mode somatic failure: {}", reason)); }
+        if let Capability::Disabled { reason } = &vision { return Err(format!("Strict mode vision failure: {}", reason)); }
+        if let Capability::Disabled { reason } = &copilot_mic { return Err(format!("Strict mode copilot mic failure: {}", reason)); }
     }
 
-    if strict_mode && !missing_strict.is_empty() {
-        eprintln!("[FATAL] Strict mode requested, but full environment missing: {:?}", missing_strict);
-        eprintln!("Check ASSETS_MANIFEST.md for the complete list of required sidecars and voice assets.");
-        std::process::exit(1);
-    } else if !missing_strict.is_empty() {
-        println!("[startup] Missing optional assets (somatic/voice/vision). Starting in degraded/minimal mode.");
-        println!("[startup] Missing: {:?}", missing_strict);
-    }
+    Ok(EnvironmentReport {
+        root: paths.root.to_string_lossy().into_owned(),
+        mode: match mode { StartupMode::Minimal => "Minimal".into(), StartupMode::Strict => "Strict".into() },
+        config: config_res,
+        voice,
+        somatic,
+        vision,
+        copilot_mic,
+    })
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let args: Vec<String> = std::env::args().collect();
-    let strict_mode = args.iter().any(|arg| arg == "--strict");
-    let minimal_mode = args.iter().any(|arg| arg == "--minimal");
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let cli = parse_cli()?;
+    let paths = AppPaths::resolve()?;
+    paths.enter_root()?;
 
-    if !strict_mode && !minimal_mode {
-        println!("[startup] No mode flag provided. Use --minimal or --strict. Defaulting to minimal for safety.");
+    let report = validate_environment(&paths, &cli.mode)?;
+
+    if cli.check_environment {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+        return Ok(());
     }
 
-    let workspace_root = match resolve_teledra_root() {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!("[FATAL] {}", e);
-            std::process::exit(1);
-        }
-    };
-    
-    println!("[startup] CWD and root set to {}", workspace_root.display());
-    
-    let root_str = workspace_root.to_string_lossy().into_owned();
-    unsafe {
-        std::env::set_var("TELEDRA_ROOT", &root_str);
-    }
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
 
-    validate_environment(strict_mode);
+    runtime.block_on(run(cli, paths, report))
+}
 
+async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) -> Result<(), Box<dyn std::error::Error>> {
     println!("[startup] Build identity: {}", BUILD_IDENTITY);
 
     if std::env::args().any(|arg| arg == "--phase-a-self-test") {
         match run_phase_a_self_test() {
-            Ok(report) => {
-                println!("{}", serde_json::to_string_pretty(&report)?);
+            Ok(test_report) => {
+                println!("{}", serde_json::to_string_pretty(&test_report)?);
                 return Ok(());
             }
             Err(error) => return Err(error.into()),
@@ -12860,14 +13018,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Core variables
     let _ears = AudioCortex::new();
-    let mut somatic = SomaticBridge::new();
-    let mut voice = VoiceEngine::new("energetic");
-    let brain = Brain::new();
-    // Helpful when you say "I'm using qwen2.5 from a desktop shortcut"
-    let config_path = std::env::var("TELEDRA_CONFIG").unwrap_or_else(|_| "config.json".to_string());
+    let mut somatic = SomaticBridge::new(report.somatic.clone(), &paths);
+    let mut voice = VoiceEngine::new("energetic", report.voice.clone(), &paths);
+    let brain = Brain::new(&paths);
     println!(
         "[startup] Brain config file: {} (Ollama/local qwen2.5 or llama etc. expected for NightDesk)",
-        config_path
+        paths.config.display()
     );
     let mission_store = MissionStore::new(
         "knowledge/active_mission.json",
@@ -12914,7 +13070,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         CourtRole,
         String,
         ForceMode,
-        String,
+        VoiceEngine,
         bool,
         Option<u64>,
     )> = std::collections::VecDeque::new();
@@ -17187,7 +17343,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         CourtRole::Wizard,
                                         spoken_report,
                                         ForceMode::Normal,
-                                        voice.voice_name().to_string(),
+                                        voice.clone(),
                                         Arc::clone(&active_playback),
                                         tx.clone(),
                                         true,
@@ -17198,7 +17354,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         CourtRole::Wizard,
                                         spoken_report,
                                         ForceMode::Normal,
-                                        voice.voice_name().to_string(),
+                                        voice.clone(),
                                         true,
                                         None,
                                     ));
@@ -17888,7 +18044,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     ticket.role,
                                     visible,
                                     ForceMode::Streamer,
-                                    voice.voice_name().to_string(),
+                                    voice.clone(),
                                     Arc::clone(&active_playback),
                                     tx.clone(),
                                     true,
@@ -17899,7 +18055,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     ticket.role,
                                     visible,
                                     ForceMode::Streamer,
-                                    voice.voice_name().to_string(),
+                                    voice.clone(),
                                     true,
                                     Some(ticket.session_id),
                                 ));
@@ -19370,7 +19526,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     role,
                                     final_reply.clone(),
                                     current_mode,
-                                    voice.voice_name().to_string(),
+                                    voice.clone(),
                                     Arc::clone(&active_playback),
                                     tx.clone(),
                                     send_speech_complete,
@@ -19381,7 +19537,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     role,
                                     final_reply.clone(),
                                     current_mode,
-                                    voice.voice_name().to_string(),
+                                    voice.clone(),
                                     send_speech_complete,
                                     None,
                                 ));

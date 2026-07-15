@@ -26,13 +26,17 @@ impl SomaticState {
 pub struct SomaticBridge {
     state: Arc<Mutex<SomaticState>>,
     child: Option<tokio::process::Child>,
+    capability: crate::Capability,
+    paths: crate::AppPaths,
 }
 
 impl SomaticBridge {
-    pub fn new() -> Self {
+    pub fn new(capability: crate::Capability, paths: &crate::AppPaths) -> Self {
         SomaticBridge {
             state: Arc::new(Mutex::new(SomaticState::new())),
             child: None,
+            capability,
+            paths: paths.clone(),
         }
     }
 
@@ -42,16 +46,17 @@ impl SomaticBridge {
     }
 
     pub fn start(&mut self) -> Result<(), String> {
-        // Path to virtual environment python
-        let workspace_root = std::env::var("TELEDRA_ROOT").unwrap_or_else(|_| ".".to_string());
-        let root_path = std::path::PathBuf::from(&workspace_root);
-        let python_exe = root_path.join(".venv").join("Scripts").join("python.exe");
-        let script_path = root_path.join("somatic_cortex_stream.py");
+        if !self.capability.is_available() {
+            return Ok(());
+        }
+
+        let python_exe = self.paths.python.as_ref().ok_or("Python missing")?;
+        let script_path = &self.paths.somatic_script;
 
         let mut cmd = Command::new(python_exe);
         cmd.arg(script_path)
             .stdout(Stdio::piped())
-            .stderr(Stdio::inherit());
+            .stderr(Stdio::piped());
         #[cfg(windows)]
         cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
         let mut child = cmd
@@ -62,6 +67,12 @@ impl SomaticBridge {
             .stdout
             .take()
             .ok_or("Failed to capture python stdout")?;
+        
+        let stderr = child
+            .stderr
+            .take()
+            .ok_or("Failed to capture python stderr")?;
+
         let state_clone = self.state.clone();
 
         tokio::spawn(async move {
@@ -91,6 +102,13 @@ impl SomaticBridge {
                             .map(|s| s.to_string());
                     }
                 }
+            }
+        });
+
+        tokio::spawn(async move {
+            let mut reader = BufReader::new(stderr).lines();
+            while let Ok(Some(_line)) = reader.next_line().await {
+                // Silently consume stderr to avoid polluting the ratatui alternate screen
             }
         });
 

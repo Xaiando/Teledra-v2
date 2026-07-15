@@ -549,14 +549,19 @@ impl Drop for PlaybackController {
     }
 }
 
+#[derive(Clone)]
 pub struct VoiceEngine {
-    voice_name: String,
+    pub voice_name: String,
+    pub capability: crate::Capability,
+    pub paths: crate::AppPaths,
 }
 
 impl VoiceEngine {
-    pub fn new(voice_name: &str) -> Self {
+    pub fn new(voice_name: &str, capability: crate::Capability, paths: &crate::AppPaths) -> Self {
         VoiceEngine {
             voice_name: voice_name.to_string(),
+            capability,
+            paths: paths.clone(),
         }
     }
 
@@ -570,10 +575,12 @@ impl VoiceEngine {
         active_playback: Arc<Mutex<Option<PlaybackController>>>,
         on_progress: impl Fn(String) + Send + Sync + 'static,
     ) -> Result<(), String> {
-        let workspace_root = std::env::var("TELEDRA_ROOT").unwrap_or_else(|_| ".".to_string());
-        let root_path = std::path::PathBuf::from(&workspace_root);
-        let python_exe = root_path.join(".venv").join("Scripts").join("python.exe");
-        let script_path = root_path.join("generate_voice.py");
+        if !self.capability.is_available() {
+            return Ok(());
+        }
+
+        let python_exe = self.paths.python.as_ref().ok_or("Python missing")?;
+        let script_path = &self.paths.voice_script;
         let use_resident = std::env::var("TELEDRA_TTS_RESIDENT")
             .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
             .unwrap_or(false);

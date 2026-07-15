@@ -1,0 +1,4 @@
+-r requirements-core.txt
+-r requirements-tts.txt
+-r requirements-somatic.txt
+-r requirements-copilot.txt

@@ -1,1 +1,0 @@
-print("Analyzing Kagome FeGe structure for magnetic and charge density wave properties.")
