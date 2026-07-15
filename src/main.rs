@@ -7237,6 +7237,25 @@ fn calculate_scroll_to_bottom(
     calculate_scroll_to_bottom_with_spacing(chat_history, panel_width, panel_height, 1)
 }
 
+fn push_labeled_message_lines(
+    lines: &mut Vec<Line<'static>>,
+    label: String,
+    message: &str,
+    label_style: Style,
+    text_style: Style,
+    spacer_lines: u16,
+) {
+    for (index, physical_line) in message.split('\n').enumerate() {
+        let mut spans = Vec::with_capacity(2);
+        if index == 0 {
+            spans.push(Span::styled(label.clone(), label_style));
+        }
+        spans.push(Span::styled(physical_line.to_string(), text_style));
+        lines.push(Line::from(spans));
+    }
+    lines.extend((0..spacer_lines).map(|_| Line::from("")));
+}
+
 fn calculate_scroll_to_bottom_with_spacing(
     entries: &[(String, String)],
     panel_width: u16,
@@ -14572,14 +14591,14 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                     _ => Color::Rgb(147, 51, 234),                  // Default purple
                 };
 
-                chat_lines.push(Line::from(vec![
-                    Span::styled(
-                        prefix,
-                        Style::default().fg(color).add_modifier(Modifier::BOLD),
-                    ),
-                    Span::styled(msg, Style::default().fg(Color::Rgb(0, 255, 66))),
-                ]));
-                chat_lines.push(Line::from(""));
+                push_labeled_message_lines(
+                    &mut chat_lines,
+                    prefix,
+                    msg,
+                    Style::default().fg(color).add_modifier(Modifier::BOLD),
+                    Style::default().fg(Color::Rgb(0, 255, 66)),
+                    1,
+                );
             }
 
             let total_scroll = calculate_scroll_to_bottom(
@@ -14648,13 +14667,14 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                     "Broadcast" => Color::Rgb(210, 255, 80),
                     _ => Color::Rgb(180, 180, 180),
                 };
-                private_lines.push(Line::from(vec![
-                    Span::styled(
-                        format!("[{}] ", source),
-                        Style::default().fg(color).add_modifier(Modifier::BOLD),
-                    ),
-                    Span::styled(msg, Style::default().fg(Color::Rgb(170, 170, 170))),
-                ]));
+                push_labeled_message_lines(
+                    &mut private_lines,
+                    format!("[{}] ", source),
+                    msg,
+                    Style::default().fg(color).add_modifier(Modifier::BOLD),
+                    Style::default().fg(Color::Rgb(170, 170, 170)),
+                    0,
+                );
             }
 
             let private_total_scroll = calculate_scroll_to_bottom_with_spacing(
@@ -21764,6 +21784,23 @@ mod creativity_tests {
         )];
         let scroll = calculate_scroll_to_bottom_with_spacing(&entries, 24, 4, 0);
         assert!(scroll >= 1);
+    }
+
+    #[test]
+    fn multiline_entries_render_as_the_physical_rows_used_by_scroll_math() {
+        let mut lines = Vec::new();
+        push_labeled_message_lines(
+            &mut lines,
+            "[Broadcast] ".to_string(),
+            "Opening\nEvidence\nClosing",
+            Style::default(),
+            Style::default(),
+            1,
+        );
+
+        assert_eq!(lines.len(), 4, "three message rows plus one spacer");
+        assert_eq!(lines[0].spans.len(), 2, "the first row carries the label");
+        assert_eq!(lines[1].spans.len(), 1, "continuation rows do not repeat it");
     }
 
     #[test]
