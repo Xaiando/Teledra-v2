@@ -1,0 +1,1 @@
+print("Bilingualism can contribute to a larger cognitive reserve, which may help delay the onset of dementia symptoms. This research suggests an interesting connection between language proficiency and mental health.")
