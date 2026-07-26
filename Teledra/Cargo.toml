@@ -1,0 +1,17 @@
+[package]
+name = "teledra"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+teledra-agents = { path = "../Agents" }
+teledra-brain = { path = "Brain" }
+teledra-court = { path = "../Court" }
+tokio.workspace = true
+
+[[bin]]
+name = "teledra"
+path = "src/main.rs"
+

@@ -1,0 +1,140 @@
+use std::collections::HashMap;
+
+use teledra_agents::AgentId;
+use teledra_brain::Message;
+
+const COURT_POLICY: &str = include_str!("../prompt.md");
+const DEFAULT_HISTORY_LIMIT: usize = 12;
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Turn {
+    pub user: String,
+    pub assistant: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct PreparedTurn {
+    pub messages: Vec<Message>,
+    pub temperature: f32,
+}
+
+#[derive(Debug)]
+pub struct Court {
+    active: AgentId,
+    histories: HashMap<AgentId, Vec<Turn>>,
+    history_limit: usize,
+}
+
+impl Default for Court {
+    fn default() -> Self {
+        Self::new(DEFAULT_HISTORY_LIMIT)
+    }
+}
+
+impl Court {
+    pub fn new(history_limit: usize) -> Self {
+        Self {
+            active: AgentId::default(),
+            histories: HashMap::new(),
+            history_limit: history_limit.max(1),
+        }
+    }
+
+    pub fn active(&self) -> AgentId {
+        self.active
+    }
+
+    pub fn select(&mut self, agent: AgentId) {
+        self.active = agent;
+    }
+
+    pub fn clear_active_history(&mut self) {
+        self.histories.remove(&self.active);
+    }
+
+    pub fn active_history(&self) -> &[Turn] {
+        self.histories
+            .get(&self.active)
+            .map(Vec::as_slice)
+            .unwrap_or_default()
+    }
+
+    pub fn prepare_turn(&self, user: &str) -> PreparedTurn {
+        let system = format!(
+            "{}\n\nYour current court identity:\n{}",
+            COURT_POLICY.trim(),
+            self.active.profile().trim()
+        );
+        let mut messages = Vec::with_capacity(2 + self.active_history().len() * 2);
+        messages.push(Message::system(system));
+        for turn in self.active_history() {
+            messages.push(Message::user(turn.user.clone()));
+            messages.push(Message::assistant(turn.assistant.clone()));
+        }
+        messages.push(Message::user(user.trim()));
+
+        PreparedTurn {
+            messages,
+            temperature: temperature_for(self.active),
+        }
+    }
+
+    pub fn record_exchange(&mut self, user: impl Into<String>, assistant: impl Into<String>) {
+        let history = self.histories.entry(self.active).or_default();
+        history.push(Turn {
+            user: user.into(),
+            assistant: assistant.into(),
+        });
+        if history.len() > self.history_limit {
+            let excess = history.len() - self.history_limit;
+            history.drain(..excess);
+        }
+    }
+}
+
+fn temperature_for(agent: AgentId) -> f32 {
+    match agent {
+        AgentId::Queen => 0.78,
+        AgentId::Artist | AgentId::Organist => 0.84,
+        AgentId::Alchemist | AgentId::Diplomat | AgentId::Orator => 0.7,
+        AgentId::Archivist | AgentId::Scribe | AgentId::Treasurer => 0.5,
+        AgentId::Malthus | AgentId::Wizard => 0.62,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use teledra_brain::Role;
+
+    #[test]
+    fn histories_are_isolated_by_court_member() {
+        let mut court = Court::default();
+        court.record_exchange("queen question", "queen answer");
+        court.select(AgentId::Scribe);
+        assert!(court.active_history().is_empty());
+        court.record_exchange("scribe question", "scribe answer");
+        court.select(AgentId::Queen);
+        assert_eq!(court.active_history()[0].user, "queen question");
+    }
+
+    #[test]
+    fn history_is_bounded_to_recent_complete_exchanges() {
+        let mut court = Court::new(2);
+        for index in 0..3 {
+            court.record_exchange(format!("u{index}"), format!("a{index}"));
+        }
+        assert_eq!(court.active_history().len(), 2);
+        assert_eq!(court.active_history()[0].user, "u1");
+    }
+
+    #[test]
+    fn prepared_turn_has_policy_history_and_current_user() {
+        let mut court = Court::default();
+        court.record_exchange("earlier", "response");
+        let prepared = court.prepare_turn("now");
+        assert_eq!(prepared.messages.len(), 4);
+        assert_eq!(prepared.messages[0].role, Role::System);
+        assert_eq!(prepared.messages[3], Message::user("now"));
+    }
+}

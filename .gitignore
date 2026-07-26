@@ -1,0 +1,7 @@
+/target/
+**/target/
+.teledra/
+*.log
+*.tmp
+.env
+
