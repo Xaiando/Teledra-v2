@@ -17,7 +17,7 @@
 | `Teledra/Brain` | Qwen request/response boundary | `src/brain.rs` | Working core |
 | `Agents` | Court identities and prompts | role prompts in `src/brain.rs` | Working core |
 | `Court` | Sessions, turns, court policy | court routing in `src/main.rs` | Working core |
-| `Teledra` | Native application shell and composition root | TUI/runtime in `src/main.rs` | Working core |
+| `Teledra` | Native asynchronous TUI and composition root | TUI/runtime in `src/main.rs` | Working core |
 | `TTS` | Speech queue, voices, playback | `src/voice.rs`, `generate_voice.py` | Not migrated |
 | `Music` | Scores, rendering, feedback workflow | `court_synth/`, music sections of `src/main.rs` | Not migrated |
 | `Fractus` | Visual scene DSL and renderer boundary | `Fractus/` | Not migrated |
@@ -45,4 +45,3 @@
 - Hard-coded absolute paths.
 - Implicit cross-subsystem file writes.
 - Copying caches, run output, databases, binaries, or abandoned experiments.
-

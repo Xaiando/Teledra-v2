@@ -49,25 +49,34 @@ impl Court {
     }
 
     pub fn clear_active_history(&mut self) {
-        self.histories.remove(&self.active);
+        self.clear_history(self.active);
     }
 
     pub fn active_history(&self) -> &[Turn] {
+        self.history(self.active)
+    }
+
+    pub fn history(&self, agent: AgentId) -> &[Turn] {
         self.histories
-            .get(&self.active)
+            .get(&agent)
             .map(Vec::as_slice)
             .unwrap_or_default()
     }
 
     pub fn prepare_turn(&self, user: &str) -> PreparedTurn {
+        self.prepare_turn_for(self.active, user)
+    }
+
+    pub fn prepare_turn_for(&self, agent: AgentId, user: &str) -> PreparedTurn {
         let system = format!(
             "{}\n\nYour current court identity:\n{}",
             COURT_POLICY.trim(),
-            self.active.profile().trim()
+            agent.profile().trim()
         );
-        let mut messages = Vec::with_capacity(2 + self.active_history().len() * 2);
+        let history = self.history(agent);
+        let mut messages = Vec::with_capacity(2 + history.len() * 2);
         messages.push(Message::system(system));
-        for turn in self.active_history() {
+        for turn in history {
             messages.push(Message::user(turn.user.clone()));
             messages.push(Message::assistant(turn.assistant.clone()));
         }
@@ -75,12 +84,21 @@ impl Court {
 
         PreparedTurn {
             messages,
-            temperature: temperature_for(self.active),
+            temperature: temperature_for(agent),
         }
     }
 
     pub fn record_exchange(&mut self, user: impl Into<String>, assistant: impl Into<String>) {
-        let history = self.histories.entry(self.active).or_default();
+        self.record_exchange_for(self.active, user, assistant);
+    }
+
+    pub fn record_exchange_for(
+        &mut self,
+        agent: AgentId,
+        user: impl Into<String>,
+        assistant: impl Into<String>,
+    ) {
+        let history = self.histories.entry(agent).or_default();
         history.push(Turn {
             user: user.into(),
             assistant: assistant.into(),
@@ -89,6 +107,10 @@ impl Court {
             let excess = history.len() - self.history_limit;
             history.drain(..excess);
         }
+    }
+
+    pub fn clear_history(&mut self, agent: AgentId) {
+        self.histories.remove(&agent);
     }
 }
 
@@ -116,6 +138,15 @@ mod tests {
         court.record_exchange("scribe question", "scribe answer");
         court.select(AgentId::Queen);
         assert_eq!(court.active_history()[0].user, "queen question");
+    }
+
+    #[test]
+    fn asynchronous_reply_can_be_recorded_for_its_originating_member() {
+        let mut court = Court::default();
+        court.select(AgentId::Scribe);
+        court.record_exchange_for(AgentId::Queen, "question", "answer");
+        assert!(court.active_history().is_empty());
+        assert_eq!(court.history(AgentId::Queen)[0].assistant, "answer");
     }
 
     #[test]

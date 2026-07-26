@@ -1,10 +1,16 @@
-use std::env;
-use std::io::{self, Write};
-use std::process::ExitCode;
+mod app;
+mod terminal;
+mod ui;
 
-use teledra_agents::AgentId;
-use teledra_brain::{Brain, BrainConfig, QWEN_MODEL};
+use std::env;
+use std::process::ExitCode;
+use std::time::Duration;
+
+use app::{App, AppAction, ModelReply};
+use crossterm::event;
+use teledra_brain::{Brain, BrainConfig};
 use teledra_court::Court;
+use tokio::sync::mpsc;
 
 #[tokio::main]
 async fn main() -> ExitCode {
@@ -29,104 +35,50 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     let brain = Brain::new(BrainConfig::default())?;
     let health = brain.check().await?;
-    println!("Teledra V2 | {} | {}", health.model, health.endpoint);
-
     if arguments.iter().any(|argument| argument == "--check") {
+        println!("Teledra V2 | {} | {}", health.model, health.endpoint);
         println!("Qwen-only brain check passed.");
         return Ok(());
     }
 
-    println!("Active court member: {}", court.active().title());
-    println!("Type /help for commands.\n");
+    let mut app = App::new(court, health);
+    let mut terminal = terminal::TerminalSession::enter()?;
+    let (reply_tx, mut reply_rx) = mpsc::unbounded_channel::<ModelReply>();
 
-    let stdin = io::stdin();
     loop {
-        print!("you> ");
-        io::stdout().flush()?;
+        while let Ok(reply) = reply_rx.try_recv() {
+            app.finish_turn(reply);
+        }
+        app.tick();
+        terminal.draw(|frame| ui::render(frame, &app))?;
 
-        let mut input = String::new();
-        if stdin.read_line(&mut input)? == 0 {
-            println!();
-            break;
-        }
-        let input = input.trim();
-        if input.is_empty() {
-            continue;
-        }
-        if handle_command(input, &mut court, &brain).await? {
-            break;
-        }
-        if input.starts_with('/') {
-            continue;
-        }
-
-        let prepared = court.prepare_turn(input);
-        match brain
-            .complete(&prepared.messages, prepared.temperature)
-            .await
-        {
-            Ok(answer) => {
-                println!("{}> {}\n", court.active(), answer);
-                court.record_exchange(input, answer);
-            }
-            Err(error) => {
-                eprintln!("Qwen request failed: {error}\n");
-            }
-        }
-    }
-    Ok(())
-}
-
-async fn handle_command(
-    input: &str,
-    court: &mut Court,
-    brain: &Brain,
-) -> Result<bool, Box<dyn std::error::Error>> {
-    let mut parts = input.split_whitespace();
-    let command = parts.next().unwrap_or_default();
-    match command {
-        "/quit" | "/exit" => return Ok(true),
-        "/help" => {
-            println!(
-                "/roles        list court members\n\
-                 /role NAME     enter one member's role-local session\n\
-                 /clear         clear the active member's history\n\
-                 /health        verify Ollama and {QWEN_MODEL}\n\
-                 /quit          leave the court\n"
-            );
-        }
-        "/roles" => {
-            for agent in AgentId::ALL {
-                let marker = if agent == court.active() { "*" } else { " " };
-                println!("{marker} {:<10} {}", agent.slug(), agent.title());
-            }
-            println!();
-        }
-        "/role" => {
-            let Some(name) = parts.next() else {
-                eprintln!("Usage: /role NAME\n");
-                return Ok(false);
-            };
-            match name.parse::<AgentId>() {
-                Ok(agent) => {
-                    court.select(agent);
-                    println!("Entered the session of {}.\n", agent.title());
+        if event::poll(Duration::from_millis(70))? {
+            let event = event::read()?;
+            match app.handle_event(event) {
+                AppAction::Continue => {}
+                AppAction::Quit => break,
+                AppAction::Submit => {
+                    let Some(request) = app.begin_turn() else {
+                        continue;
+                    };
+                    let request_brain = brain.clone();
+                    let request_tx = reply_tx.clone();
+                    tokio::spawn(async move {
+                        let result = request_brain
+                            .complete(&request.messages, request.temperature)
+                            .await
+                            .map_err(|error| error.to_string());
+                        let _ = request_tx.send(ModelReply {
+                            id: request.id,
+                            agent: request.agent,
+                            user: request.user,
+                            result,
+                        });
+                    });
                 }
-                Err(error) => eprintln!("{error}. Use /roles to list valid names.\n"),
             }
         }
-        "/clear" => {
-            court.clear_active_history();
-            println!("Cleared {}'s session history.\n", court.active().title());
-        }
-        "/health" => match brain.check().await {
-            Ok(health) => println!("{} is ready at {}.\n", health.model, health.endpoint),
-            Err(error) => eprintln!("Brain check failed: {error}\n"),
-        },
-        _ if input.starts_with('/') => {
-            eprintln!("Unknown command. Type /help.\n");
-        }
-        _ => {}
     }
-    Ok(false)
+
+    Ok(())
 }

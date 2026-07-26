@@ -2,13 +2,16 @@
 
 **Last updated:** 2026-07-27 by Codex
 
-## Codex — Qwen-only clean core
+## Codex — Qwen-only court TUI rewrite
 
-**State:** implemented and verified
+**State:** implemented, verified, release-built, and running
 
 - Initialized the V2 repository without modifying `D:\Teledra`.
 - Established Rust workspace boundaries for Brain, Agents, Court, and Teledra.
-- Implemented the first runnable slice against Ollama `qwen2.5:7b`.
+- Replaced the initial CLI proof with a newly written responsive Rust TUI.
 - All other subsystem folders remain clean migration boundaries.
-- Workspace tests and strict Clippy checks pass.
-- Live Ollama health and Queen-session completion checks pass.
+- The roster exposes eleven independent role-local court chambers.
+- Qwen turns run asynchronously and are recorded against their originating role.
+- Twelve workspace tests, strict Clippy, release build, Qwen health, and a
+  terminal-buffer render check pass.
+- The release TUI is live for operator observation.

@@ -13,7 +13,8 @@ a clear owner, a small contract, and tests.
   `qwen2.5:7b`.
 - `Agents`: independently editable court-member profiles.
 - `Court`: role selection and bounded, role-local conversation history.
-- `Teledra`: a native terminal court shell.
+- `Teledra`: a native Rust TUI with a visible roster, independent court
+  chambers, asynchronous Qwen turns, status reporting, scrolling, and help.
 
 The remaining top-level folders are explicit migration boundaries. Their
 readmes describe what belongs there and what must not leak across the boundary.
@@ -35,14 +36,14 @@ $cargo = "$env:USERPROFILE\.cargo\bin\cargo.exe"
 & $cargo run -p teledra
 ```
 
-Useful commands inside the court:
+Useful controls inside the court:
 
 ```text
-/roles
-/role queen
-/clear
-/health
-/quit
+Enter             send
+Tab / Shift+Tab   change court member
+PageUp / PageDown scroll
+F1                help
+Ctrl+Q            exit
 ```
 
 To use a non-default Ollama address, set `TELEDRA_OLLAMA_URL`. The model name is
