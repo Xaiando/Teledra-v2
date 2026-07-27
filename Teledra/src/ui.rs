@@ -62,13 +62,58 @@ fn render_header(frame: &mut Frame<'_>, area: Rect, app: &App) {
     frame.render_widget(header, area);
 }
 
+/// Widest the left column is allowed to grow, and the narrowest terminal that
+/// still earns one: below this the conversation needs every column it can get.
+const CHROME_WIDTH: u16 = 28;
+const CHROME_MINIMUM_TERMINAL: u16 = 72;
+
 fn render_court(frame: &mut Frame<'_>, area: Rect, app: &App) {
+    if area.width < CHROME_MINIMUM_TERMINAL {
+        // A narrow terminal spends its width on the court's words.
+        render_conversation(frame, area, app);
+        return;
+    }
+
     let columns = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Length(25), Constraint::Min(30)])
+        .constraints([Constraint::Length(CHROME_WIDTH), Constraint::Min(30)])
         .split(area);
-    render_roster(frame, columns[0], app);
+    render_chrome(frame, columns[0], app);
     render_conversation(frame, columns[1], app);
+}
+
+/// The left column: the court's likeness above, its roster below.
+fn render_chrome(frame: &mut Frame<'_>, area: Rect, app: &App) {
+    // The roster is the fixed obligation; the portrait takes what is left, and
+    // is skipped entirely when that would be too little to recognise.
+    let roster_height = AgentId::ALL.len() as u16;
+    let portrait_height = area.height.saturating_sub(roster_height);
+
+    if app.portrait().is_none() || portrait_height < 6 {
+        render_roster(frame, area, app);
+        return;
+    }
+
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(portrait_height),
+            Constraint::Length(roster_height),
+        ])
+        .split(area);
+    render_portrait(frame, rows[0], app);
+    render_roster(frame, rows[1], app);
+}
+
+fn render_portrait(frame: &mut Frame<'_>, area: Rect, app: &App) {
+    let Some(portrait) = app.portrait() else {
+        return;
+    };
+    let lines = portrait.lines(area.width, area.height);
+    if lines.is_empty() {
+        return;
+    }
+    frame.render_widget(Paragraph::new(Text::from(lines)), area);
 }
 
 fn render_roster(frame: &mut Frame<'_>, area: Rect, app: &App) {
@@ -342,5 +387,95 @@ mod tests {
         assert!(rendered.contains("TELEDRA V2"));
         assert!(rendered.contains("queen"));
         assert!(rendered.contains("Address Teledra"));
+    }
+}
+
+#[cfg(test)]
+mod visual_proof {
+    use ratatui::{Terminal, backend::TestBackend};
+    use teledra_brain::{BrainHealth, QWEN_MODEL};
+    use teledra_court::Court;
+
+    use super::*;
+    use crate::portrait::Portrait;
+
+    /// Renders the court at a realistic terminal size and writes it out as an
+    /// image, so the composition can be judged by eye rather than asserted at.
+    /// Ignored by default; run explicitly when the layout changes.
+    #[test]
+    #[ignore]
+    fn write_layout_png() {
+        const COLUMNS: u16 = 120;
+        const ROWS: u16 = 38;
+        // A terminal cell is about twice as tall as it is wide.
+        const CELL_W: u32 = 8;
+        const CELL_H: u32 = 16;
+
+        let backend = TestBackend::new(COLUMNS, ROWS);
+        let mut terminal = Terminal::new(backend).expect("test terminal");
+        let mut court = Court::default();
+        court.record_exchange(
+            "What stirs in the court tonight?",
+            "Strange science, and a portrait that finally has a face. Ha!",
+        );
+        let app = App::new(
+            court,
+            BrainHealth {
+                endpoint: "http://localhost:11434".to_owned(),
+                model: QWEN_MODEL,
+            },
+        )
+        .with_portrait(Some(Portrait::embedded()));
+
+        terminal
+            .draw(|frame| render(frame, &app))
+            .expect("the court should render");
+
+        let buffer = terminal.backend().buffer();
+        let mut canvas =
+            image::RgbImage::new(u32::from(COLUMNS) * CELL_W, u32::from(ROWS) * CELL_H);
+        for row in 0..ROWS {
+            for column in 0..COLUMNS {
+                let cell = &buffer[(column, row)];
+                let symbol = cell.symbol();
+                let fg = to_rgb(cell.style().fg, [220, 220, 226]);
+                let bg = to_rgb(cell.style().bg, [16, 17, 24]);
+                for y in 0..CELL_H {
+                    for x in 0..CELL_W {
+                        // Half blocks paint their lower half with the
+                        // foreground; anything else is approximated by ink
+                        // coverage so text remains legible in the dump.
+                        let colour = if symbol == "\u{2584}" {
+                            if y >= CELL_H / 2 { fg } else { bg }
+                        } else if symbol == " " {
+                            bg
+                        } else if (CELL_H / 4..CELL_H * 3 / 4).contains(&y)
+                            && (CELL_W / 4..CELL_W * 3 / 4).contains(&x)
+                        {
+                            fg
+                        } else {
+                            bg
+                        };
+                        canvas.put_pixel(
+                            u32::from(column) * CELL_W + x,
+                            u32::from(row) * CELL_H + y,
+                            image::Rgb(colour),
+                        );
+                    }
+                }
+            }
+        }
+        let out = std::env::temp_dir().join("teledra_v2_layout.png");
+        canvas.save(&out).expect("layout image should save");
+        println!("LAYOUT_PNG={}", out.display());
+    }
+
+    fn to_rgb(colour: Option<ratatui::style::Color>, fallback: [u8; 3]) -> [u8; 3] {
+        match colour {
+            Some(ratatui::style::Color::Rgb(r, g, b)) => [r, g, b],
+            Some(ratatui::style::Color::Black) => [0, 0, 0],
+            Some(ratatui::style::Color::DarkGray) => [90, 92, 100],
+            _ => fallback,
+        }
     }
 }

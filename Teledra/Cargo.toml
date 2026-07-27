@@ -7,6 +7,9 @@ rust-version.workspace = true
 
 [dependencies]
 crossterm = "0.28"
+# Only the decoders the court portrait actually needs; the default feature set
+# pulls in every format the crate supports.
+image = { version = "0.25", default-features = false, features = ["png"] }
 ratatui = "0.29"
 teledra-agents = { path = "../Agents" }
 teledra-brain = { path = "Brain" }

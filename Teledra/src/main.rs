@@ -1,4 +1,5 @@
 mod app;
+mod portrait;
 mod terminal;
 mod ui;
 
@@ -41,7 +42,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
-    let mut app = App::new(court, health);
+    let mut app = App::new(court, health).with_portrait(Some(portrait::Portrait::load()));
     let mut terminal = terminal::TerminalSession::enter()?;
     let (reply_tx, mut reply_rx) = mpsc::unbounded_channel::<ModelReply>();
 

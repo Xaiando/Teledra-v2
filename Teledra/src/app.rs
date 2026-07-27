@@ -3,6 +3,8 @@ use teledra_agents::AgentId;
 use teledra_brain::{BrainHealth, Message};
 use teledra_court::{Court, Turn};
 
+use crate::portrait::Portrait;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AppAction {
     Continue,
@@ -45,6 +47,7 @@ pub struct App {
     scroll: u16,
     frame: usize,
     next_request_id: u64,
+    portrait: Option<Portrait>,
 }
 
 impl App {
@@ -59,7 +62,19 @@ impl App {
             scroll: 0,
             frame: 0,
             next_request_id: 1,
+            portrait: None,
         }
+    }
+
+    /// Attaches the court likeness. Loading is the caller's business so that
+    /// tests never touch the filesystem.
+    pub fn with_portrait(mut self, portrait: Option<Portrait>) -> Self {
+        self.portrait = portrait;
+        self
+    }
+
+    pub fn portrait(&self) -> Option<&Portrait> {
+        self.portrait.as_ref()
     }
 
     pub fn active_agent(&self) -> AgentId {
