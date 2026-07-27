@@ -36,6 +36,21 @@
 6. Swarm, Kraken, Frankenswarm, and Tower only after their contracts can be
    described without importing the old monolith.
 
+## Decisions
+
+Recorded so a later slice does not quietly undo them.
+
+- **Fixed assets are compiled in, not resolved from disk.** The court portrait
+  lives in the binary via `include_bytes!`. V1 resolved art from disk and paid
+  three times: `assets/` was never committed, a canonicalised `\\?\` root broke
+  every lookup because Windows hands extended-length paths to the filesystem
+  unparsed, and the startup check reported art present that no child could
+  open. A file override is still honoured; an unreadable one falls back to the
+  embedded copy, so the load cannot fail. Runtime-authored artifacts are data
+  and stay out of the binary — this applies only to fixed, build-time assets.
+- **`cargo fmt` and `clippy` stay clean from the first commit.** V1 was never
+  fmt-clean, which made the check unusable there and let it be switched off.
+
 ## Explicitly rejected legacy patterns
 
 - A monolithic application file that owns UI, prompts, persistence, tools,
