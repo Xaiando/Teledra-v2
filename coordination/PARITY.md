@@ -70,6 +70,23 @@ shortcut repointed at V2:
 5. A Fractus scene renders.
 6. Closing the court leaves no orphaned worker processes.
 
+## Launching
+
+Two shortcuts, deliberately:
+
+| Shortcut | Runs | Role |
+| --- | --- | --- |
+| `Teledra v2 (qwen2).lnk` | `D:TeledraTeledra_v2_qwen.bat` | The working court. Untouched. |
+| `Teledra V2 (rewrite).lnk` | `D:Teledra V2Teledra.bat` | This rewrite. For testing. |
+
+The names collide badly: "v2" in the older one means the qwen2 model, not this
+rewrite. Worth renaming the original to something like `Teledra (live).lnk`
+once the gate passes and the confusion stops being useful.
+
+The original is not repointed until the checklist above passes. It is the
+fallback, and repointing it early would mean losing a working court mid-stream
+to gain one that cannot yet play audio.
+
 ## Cleaning up, afterwards
 
 Only once the above passes:
