@@ -76,8 +76,8 @@ Two shortcuts, deliberately:
 
 | Shortcut | Runs | Role |
 | --- | --- | --- |
-| `Teledra v2 (qwen2).lnk` | `D:TeledraTeledra_v2_qwen.bat` | The working court. Untouched. |
-| `Teledra V2 (rewrite).lnk` | `D:Teledra V2Teledra.bat` | This rewrite. For testing. |
+| `Teledra v2 (qwen2).lnk` | `D:\Teledra\Teledra_v2_qwen.bat` | The working court. Untouched. |
+| `Teledra V2 (rewrite).lnk` | `D:\Teledra V2\Teledra.bat` | This rewrite. For testing. |
 
 The names collide badly: "v2" in the older one means the qwen2 model, not this
 rewrite. Worth renaming the original to something like `Teledra (live).lnk`
