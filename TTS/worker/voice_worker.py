@@ -40,18 +40,19 @@ import sys
 SAMPLE_RATE = 48_000
 GAP_SECONDS = 0.16
 READY = "READY"
+MODEL = "YatharthS/LuxTTS"
 
 # Where each voice's reference recording lives, relative to this file.
 REFERENCES = {
-    "queen": "../assets/queen_ref_clean.wav",
-    "organist": "../assets/organist_ref_clean.wav",
-    "alchemist": "../assets/alchemist_ref_clean.wav",
-    "archivist": "../assets/archivist_ref_clean.wav",
-    "orator": "../assets/orator_ref_clean.wav",
-    "scribe": "../assets/scribe_ref_clean.wav",
-    "artist": "../assets/artist_ref_clean.wav",
-    "diplomat": "../assets/diplomat_ref_clean.wav",
-    "treasurer": "../assets/treasurer_ref_clean.wav",
+    "queen": "../../assets/queen_ref_clean.wav",
+    "organist": "../../assets/organist_ref_clean.wav",
+    "alchemist": "../../assets/alchemist_ref_clean.wav",
+    "archivist": "../../assets/archivist_ref_clean.wav",
+    "orator": "../../assets/orator_ref_clean.wav",
+    "scribe": "../../assets/scribe_ref_clean.wav",
+    "artist": "../../assets/artist_ref_clean.wav",
+    "diplomat": "../../assets/diplomat_ref_clean.wav",
+    "treasurer": "../../assets/treasurer_ref_clean.wav",
 }
 FALLBACK_VOICE = "queen"
 
@@ -130,6 +131,36 @@ def into_sentences(text: str, minimum_words: int = 5) -> list[str]:
     return grouped
 
 
+def find_luxtts() -> None:
+    """Makes the speech library importable.
+
+    LuxTTS is a third-party package with its own `pyproject.toml`, so the
+    right answer is for it to be installed in the environment. V1 instead
+    vendored a copy into the repository, which is why this needs a fallback at
+    all. `TELEDRA_LUXTTS` may point at a source checkout; otherwise a sibling
+    directory is tried, and an installed package needs neither.
+    """
+    try:
+        import zipvoice  # noqa: F401
+
+        return
+    except ImportError:
+        pass
+
+    here = os.path.dirname(os.path.abspath(__file__))
+    candidates = [
+        os.environ.get("TELEDRA_LUXTTS", ""),
+        os.path.normpath(os.path.join(here, "..", "..", "LuxTTS")),
+        os.path.normpath(os.path.join(here, "..", "..", "..", "Teledra", "LuxTTS")),
+    ]
+    for candidate in candidates:
+        if candidate and os.path.isdir(candidate):
+            note(f"using the LuxTTS source at {candidate}")
+            sys.path.insert(0, candidate)
+            return
+    note("WARNING: LuxTTS was not found; set TELEDRA_LUXTTS to its location")
+
+
 class Voice:
     """The model, plus one cached reference encoding per voice."""
 
@@ -138,13 +169,20 @@ class Voice:
         self._prompts: dict[str, object] = {}
         # Importing torch prints to stdout; that would corrupt the audio.
         with contextlib.redirect_stdout(sys.stderr):
-            sys.path.append(os.path.join(base, "..", "LuxTTS"))
+            find_luxtts()
             import torch
-            from luxtts import LuxTTS
+            from zipvoice.luxvoice import LuxTTS
 
             device = "cuda" if torch.cuda.is_available() else "cpu"
             note(f"loading the voice model on {device}")
-            self._engine = LuxTTS("YatharthS/LuxTTS", device=device)
+            try:
+                self._engine = LuxTTS(MODEL, device=device)
+            except Exception as error:  # noqa: BLE001
+                if device == "cpu":
+                    raise
+                # A busy or too-small GPU is a bad night, not a broken court.
+                note(f"WARNING: {device} failed ({error}); falling back to CPU")
+                self._engine = LuxTTS(MODEL, device="cpu", threads=2)
 
     def prompt_for(self, voice: str):
         """The encoded reference for a voice, computed at most once.
@@ -163,6 +201,24 @@ class Voice:
             prompt = self._engine.encode_prompt(path)
         self._prompts[voice] = prompt
         return prompt
+
+    def warm_up(self, voice: str) -> None:
+        """Pays the first-synthesis cost before anyone is listening.
+
+        Encodes the reference and runs one short inference, discarding the
+        audio. Measured, this moves roughly five seconds off the first line
+        the court speaks.
+        """
+        import numpy as np
+
+        prompt = self.prompt_for(voice)
+        if prompt is None:
+            return
+        note("warming the voice")
+        with contextlib.redirect_stdout(sys.stderr):
+            wave = self._engine.generate_speech("Ready.   ", prompt)
+        # Touch the result so nothing is optimised away, then drop it.
+        _ = np.asarray(wave, dtype=np.float32).size
 
     def speak(self, voice: str, text: str, out: AudioOut) -> None:
         import numpy as np
@@ -197,6 +253,17 @@ def main() -> int:
         return 1
 
     out = AudioOut(sys.stdout.buffer)
+
+    # The first synthesis of a session costs several seconds more than the
+    # rest — the reference is encoded and the inference path is compiled. Spend
+    # that here, before announcing readiness, so the first line the audience
+    # actually hears is as prompt as every line after it. READY then means
+    # "ready to speak quickly", not merely "loaded".
+    try:
+        voice.warm_up(FALLBACK_VOICE)
+    except Exception as error:  # noqa: BLE001
+        note(f"WARNING: could not warm the voice: {error}")
+
     note(READY)
 
     for line in sys.stdin:
