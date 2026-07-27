@@ -4,6 +4,7 @@ members = [
     "Court",
     "Teledra",
     "Teledra/Brain",
+    "TTS",
 ]
 resolver = "3"
 
