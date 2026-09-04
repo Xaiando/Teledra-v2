@@ -1,0 +1,12 @@
+[package]
+name = "teledra-music"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+rodio = "0.17"
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true

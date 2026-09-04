@@ -1,6 +1,9 @@
 use std::fmt;
 use std::str::FromStr;
 
+pub const OFFICIAL_LINKS: &str = include_str!("../social_links.md");
+pub const KINGDOM_GOALS: &str = include_str!("../kingdom_goals.md");
+
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub enum AgentId {
     #[default]
@@ -79,6 +82,13 @@ impl AgentId {
             Self::Wizard => include_str!("../profiles/wizard.md"),
         }
     }
+
+    pub const fn supplemental_context(self) -> &'static str {
+        match self {
+            Self::Queen | Self::Orator | Self::Diplomat => OFFICIAL_LINKS,
+            _ => "",
+        }
+    }
 }
 
 impl fmt::Display for AgentId {
@@ -125,5 +135,11 @@ mod tests {
     #[test]
     fn parsing_is_case_insensitive_and_trimmed() {
         assert_eq!("  QuEeN ".parse(), Ok(AgentId::Queen));
+    }
+
+    #[test]
+    fn kingdom_goals_remain_a_concrete_operator_contract() {
+        assert!(KINGDOM_GOALS.contains("Produce artifacts"));
+        assert!(KINGDOM_GOALS.contains("operator approval"));
     }
 }

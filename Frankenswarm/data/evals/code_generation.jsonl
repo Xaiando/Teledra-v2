@@ -1,0 +1,1 @@
+{"id":"code_01","prompt":"Write a Python function to compute the Fibonacci sequence.","expected_output":"def fibonacci","scoring_method":"regex"}

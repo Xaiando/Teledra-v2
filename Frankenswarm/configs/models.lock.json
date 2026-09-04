@@ -1,0 +1,53 @@
+{
+  "generated_at": "2026-08-28T10:27:59.456551600+00:00",
+  "models": {
+    "base": {
+      "repo_id": "allenai/Olmo-3-1025-7B",
+      "revision": "a81bae42db3975be1671e27b9c9a56da1a9f980f",
+      "license": "apache-2.0",
+      "required": true,
+      "stage": "phase_0",
+      "arm": "science"
+    },
+    "code": {
+      "repo_id": "allenai/Olmo-3-7B-RL-Zero-Code",
+      "revision": "a961af69d75f9c52b3ae4db7b1664d890229b7ca",
+      "license": "apache-2.0",
+      "required": true,
+      "stage": "phase_0",
+      "arm": "science"
+    },
+    "general": {
+      "repo_id": "allenai/Olmo-3-7B-RL-Zero-General",
+      "revision": "24e5814cb36944d3eb36a49679d02c2b3bb46195",
+      "license": "apache-2.0",
+      "required": true,
+      "stage": "phase_0",
+      "arm": "science"
+    },
+    "instruct": {
+      "repo_id": "allenai/Olmo-3-7B-Instruct",
+      "revision": "6e5971d9eba42665f5bd5a0fcf047f299ce1dccc",
+      "license": "apache-2.0",
+      "required": true,
+      "stage": "phase_1",
+      "arm": "production"
+    },
+    "instruction_following": {
+      "repo_id": "allenai/Olmo-3-7B-RL-Zero-IF",
+      "revision": "3cae007c5324a9a06ee6780f03b848bc7b8fd440",
+      "license": "apache-2.0",
+      "required": true,
+      "stage": "phase_0",
+      "arm": "science"
+    },
+    "rl_zero_mix": {
+      "repo_id": "allenai/Olmo-3-7B-RL-Zero-Mix",
+      "revision": "73b2b1a50d94aec859e22c9b4a524416b5a3a739",
+      "license": "apache-2.0",
+      "required": true,
+      "stage": "phase_1",
+      "arm": "science"
+    }
+  }
+}

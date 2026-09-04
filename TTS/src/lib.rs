@@ -21,11 +21,13 @@
 //!    between spoken lines is zero rather than merely smaller.
 
 pub mod pcm;
+pub mod runtime;
 pub mod voice;
 pub mod worker;
 
 pub use pcm::{Audio, PcmError};
-pub use voice::{Voice, VoiceName};
+pub use runtime::{SpeechRuntime, SpeechRuntimeError, output_devices};
+pub use voice::{DEFAULT_QUEEN_VOICE_MODE, QUEEN_VOICE_MODES, Voice, VoiceName, queen_voice_mode};
 pub use worker::{SynthesisError, Synthesizer};
 
 use std::collections::VecDeque;

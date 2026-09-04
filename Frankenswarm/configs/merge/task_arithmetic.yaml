@@ -1,0 +1,13 @@
+merge_method: task_arithmetic
+base_model: allenai/Olmo-3-1025-7B
+models:
+  - model: allenai/Olmo-3-7B-RL-Zero-Code
+    parameters: {weight: 0.40}
+  - model: allenai/Olmo-3-7B-RL-Zero-IF
+    parameters: {weight: 0.30}
+  - model: allenai/Olmo-3-7B-RL-Zero-General
+    parameters: {weight: 0.30}
+parameters: {lambda: 1.0}
+tokenizer: {source: base}
+chat_template: auto
+dtype: bfloat16

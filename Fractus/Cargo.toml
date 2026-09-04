@@ -1,0 +1,12 @@
+[package]
+name = "teledra-fractus"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+image = { version = "0.25", default-features = false, features = ["png", "gif"] }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true

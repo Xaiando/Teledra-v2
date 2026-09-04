@@ -1,0 +1,10 @@
+merge_method: ramplus_tl
+base_model: allenai/Olmo-3-1025-7B
+models:
+  - model: allenai/Olmo-3-7B-RL-Zero-Code
+  - model: allenai/Olmo-3-7B-RL-Zero-IF
+  - model: allenai/Olmo-3-7B-RL-Zero-General
+parameters: {epsilon: 1.0e-5, r: 0.1, alpha: 0.2}
+tokenizer: {source: base}
+chat_template: auto
+dtype: bfloat16

@@ -1,0 +1,13 @@
+merge_method: ties
+base_model: allenai/Olmo-3-1025-7B
+models:
+  - model: allenai/Olmo-3-7B-RL-Zero-Code
+    parameters: {weight: 0.40, density: 0.50}
+  - model: allenai/Olmo-3-7B-RL-Zero-IF
+    parameters: {weight: 0.30, density: 0.50}
+  - model: allenai/Olmo-3-7B-RL-Zero-General
+    parameters: {weight: 0.30, density: 0.50}
+parameters: {normalize: true}
+tokenizer: {source: base}
+chat_template: auto
+dtype: bfloat16

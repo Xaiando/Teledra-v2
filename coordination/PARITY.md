@@ -1,97 +1,71 @@
 # Parity gate
 
-The desktop shortcut **`Teledra v2 (qwen2).lnk`** defines what V2 has to
-replace. It resolves to:
+The replacement launcher is `D:\Teledra V2\Teledra.bat`. The installed desktop
+shortcut `C:\Users\Kaged\Desktop\Teledra V2.lnk` points to that launcher and
+does not alter the V1 shortcut or tree.
 
+## Implemented root-court surface
+
+This is the replacement gate for the sovereign court launched from the
+repository root. Standalone Kraken and FrankenSwarm code surfaces are also
+migrated; generated experiments remain data rather than maintained
+capabilities, and external/heavy acceptance tracks are explicit in
+`PARITY_GAPS.md`.
+
+| Original capability | V2 owner |
+| --- | --- |
+| Qwen court, shared Teledra channel, delegated roles, autonomy, modes | `Agents`, `Court`, `Teledra/Brain`, `Teledra` |
+| Original wide TUI composition and two input fields | `Teledra/src/ui.rs`, `Teledra/src/app.rs` |
+| Simultaneous vertical OBS TUI via `/Vertical` | `Teledra/src/session.rs`, `Teledra/src/ui.rs` |
+| Warm multi-voice TTS and named output device | `TTS` |
+| Court Synth score, startup playback, hot-reload Organist DAW, keep/reject evidence | `Music`, `Teledra/src/runtime/daw.rs` |
+| Static/living art and phase-animated Fractus Studio | `Fractus`, `Teledra/src/runtime/fractus.rs` |
+| Cross-session memory, recall, dream consolidation | `Memory` |
+| Web research and YouTube transcript ingestion | `Research`, `Sidecars` |
+| Restream chat, microphone, desktop/OCR, somatic signals | `Sidecars` |
+| Diplomacy approval, treasury feeds, approved MCP servers | `Teledra/src/runtime`, `Sidecars` |
+| Durable missions, court-panel composition, standalone merge laboratory/taskforce, workspace verification, residents | `Swarm`, `Frankenswarm`, `Kraken`, `Tower` |
+| Original off-air stream test harness commands | `Teledra/src/app.rs`, `Teledra/src/runtime/commands.rs` |
+
+Every optional root-court capability reports unavailable state without taking
+down the core court. Strict startup is available when a fully provisioned
+stream setup is desired.
+
+## Automated gate
+
+From `D:\Teledra V2`:
+
+```powershell
+cargo fmt --all -- --check
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+cargo run -p teledra -- --check-environment
 ```
-target      D:\Teledra\Teledra_v2_qwen.bat
-working dir D:\Teledra
-```
 
-which sets `TELEDRA_CONFIG=config.qwen.json`, runs a release-freshness check,
-and starts `target\release\teledra.exe`.
+The current machine must have the Visual Studio C++ Build Tools workload; the
+MSBuild-only installation does not provide `link.exe` or the MSVC CRT import
+libraries required by Rust's Windows target.
 
-Everything that shortcut reaches is in the rewrite. Nothing in `D:\Teledra` is
-deleted until the operator has confirmed V2 does the job; V1 stays runnable as
-the reference and the fallback.
+## Live gate
 
-## Scope
+In one session:
 
-Agreed: **core court, TTS, Music, Fractus.** Out: Kraken, Swarm,
-Frankenswarm, Tower.
+1. Start V2 from its own launcher and confirm the portrait, all panels, chat,
+   and YouTube field render correctly.
+2. Address Teledra and verify direct speech reaches the Queen while delegated
+   court replies remain visible in the shared neural channel.
+3. Confirm the right reference voice, selected OBS audio device, and continuous
+   back-to-back playback.
+4. Type `/Vertical`; capture the dedicated 54x48 portrait console in a 9:16
+   OBS scene while continuing to operate the wide court.
+5. Confirm Organist Studio and music start automatically. Run `/Art` and
+   `/FractusLive`; verify the single Fractus Studio window hot-reloads the PNG
+   and animated GIF, and that both artifacts have manifests.
+6. Exercise configured stream chat, microphone, vision, research, YouTube,
+   outreach approval, treasury, and MCP integrations.
+7. Run the off-air `/Test` commands, a durable `/Mission`, `/Verify`, and
+   `/Tower`.
+8. Exit both views and verify no Python, MCP, music, or voice child remains.
 
-## In scope, landed
-
-| Capability | Where | Notes |
-| --- | --- | --- |
-| Qwen-only brain | `Teledra/Brain` | Model is a fixed invariant, not config |
-| Court identities | `Agents` | |
-| Role-local sessions | `Court` | Separate history per member |
-| Native TUI | `Teledra/src/ui.rs` | |
-| Court portrait | `Teledra/src/portrait.rs` | Embedded; no disk lookup to break |
-| Speech queue + warm voice | `TTS` | Removes V1's ~12 s/line dead air |
-
-## In scope, remaining
-
-| Capability | V1 reference | Blocking the gate? |
-| --- | --- | --- |
-| Audio playback + device choice | `src/voice.rs` | **Yes** — TTS reaches no speaker yet |
-| Voice reference recordings | `assets/*_ref_clean.wav` | **Yes** — untracked in V1 git; must be copied from disk |
-| Court speaks its own turns | `src/main.rs` | **Yes** — queue is not wired to the court |
-| Music: score, render, feedback | `court_synth/`, `court_synthesizer.py` | Yes |
-| Fractus: scene DSL, render, verify | `Fractus/` | Yes |
-| Autonomous court cadence | `src/main.rs` | Yes — without it the court only answers when spoken to |
-
-## Needs a ruling before the gate can close
-
-"Core court" does not obviously settle these. They are reachable from the
-shortcut today; each is in or out, and the answer changes the remaining work.
-
-| Capability | V1 reference | Question |
-| --- | --- | --- |
-| Stream chat ingestion | `restream_listener.py` | The audience's only way to talk to the court. In? |
-| Memory + dream consolidation | `retrieve_memory.py`, `dream.py` | Does the court remember across sessions? |
-| Research | `browser_agent.py`, `get_youtube_transcript.py` | Drives the Scribe and study cycles |
-| Outreach / Diplomacy | `outreach_poster.py` | Diplomat's actual effect |
-| Treasury | `treasury_scout.py` | Treasurer's actual effect |
-| MCP embassies | `mcp_bridge.py` | |
-| Mic / vision / somatic | `copilot_mic.py`, `copilot_vision.py`, `somatic_cortex_stream.py` | Co-pilot mode; likely out |
-
-## Confirming it works
-
-The gate is a live run, not a green test suite. In one sitting, from the
-shortcut repointed at V2:
-
-1. The court starts, shows its portrait, and answers a typed question.
-2. It speaks that answer aloud, in the right voice.
-3. Several turns run back to back with **no audible gap** between them —
-   this is the measured regression V2 exists to fix, so it is checked by ear.
-4. Music plays and can be changed.
-5. A Fractus scene renders.
-6. Closing the court leaves no orphaned worker processes.
-
-## Launching
-
-Two shortcuts, deliberately:
-
-| Shortcut | Runs | Role |
-| --- | --- | --- |
-| `Teledra v2 (qwen2).lnk` | `D:\Teledra\Teledra_v2_qwen.bat` | The working court. Untouched. |
-| `Teledra V2 (rewrite).lnk` | `D:\Teledra V2\Teledra.bat` | This rewrite. For testing. |
-
-The names collide badly: "v2" in the older one means the qwen2 model, not this
-rewrite. Worth renaming the original to something like `Teledra (live).lnk`
-once the gate passes and the confusion stops being useful.
-
-The original is not repointed until the checklist above passes. It is the
-fallback, and repointing it early would mean losing a working court mid-stream
-to gain one that cannot yet play audio.
-
-## Cleaning up, afterwards
-
-Only once the above passes:
-
-- Repoint the shortcut to `D:\Teledra V2\Teledra.bat`.
-- Keep `D:\Teledra` intact but dormant for one full stream as a fallback.
-- Then remove V1 surface, subsystem by subsystem, never faster than V2
-  replaces it.
+Only then repoint the original shortcut. Keep `D:\Teledra` dormant for one
+full stream as a rollback before considering any cleanup.

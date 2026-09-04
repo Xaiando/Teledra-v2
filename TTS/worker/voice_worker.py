@@ -222,6 +222,7 @@ class Voice:
 
     def speak(self, voice: str, text: str, out: AudioOut) -> None:
         import numpy as np
+        import torch
 
         prompt = self.prompt_for(voice)
         out.begin()
@@ -233,15 +234,28 @@ class Voice:
 
         gap = np.zeros(int(SAMPLE_RATE * GAP_SECONDS), dtype=np.float32)
         sentences = into_sentences(text) or [text]
-        for index, sentence in enumerate(sentences):
-            spoken = sentence if sentence[-1:] in ".!?\"" else f"{sentence}."
-            with contextlib.redirect_stdout(sys.stderr):
-                wave = self._engine.generate_speech(f"{spoken}   ", prompt)
-            samples = np.asarray(wave, dtype=np.float32).reshape(-1)
-            out.frame(samples)
-            if index + 1 < len(sentences):
-                out.frame(gap)
-        out.end()
+        try:
+            for index, sentence in enumerate(sentences):
+                spoken = sentence if sentence[-1:] in ".!?\"" else f"{sentence}."
+                with contextlib.redirect_stdout(sys.stderr):
+                    try:
+                        wave = self._engine.generate_speech(f"{spoken}   ", prompt)
+                    except Exception as gen_err:
+                        if "out of memory" in str(gen_err).lower() and torch.cuda.is_available():
+                            note("WARNING: CUDA OOM during speech generation; clearing cache and retrying")
+                            torch.cuda.empty_cache()
+                            wave = self._engine.generate_speech(f"{spoken}   ", prompt)
+                        else:
+                            raise gen_err
+                samples = np.asarray(wave, dtype=np.float32).reshape(-1)
+                out.frame(samples)
+                if index + 1 < len(sentences):
+                    out.frame(gap)
+        finally:
+            out.end()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
 
 
 def main() -> int:

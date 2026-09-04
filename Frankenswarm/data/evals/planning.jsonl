@@ -1,0 +1,1 @@
+{"id":"plan_01","prompt":"What comes first: compile or execute?","expected_output":"compile","scoring_method":"regex"}

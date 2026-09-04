@@ -1,0 +1,1 @@
+{"id":"struct_01","prompt":"Return JSON with a single key 'score' set to 100.","expected_output":"{\"score\": 100}","scoring_method":"exact_match"}

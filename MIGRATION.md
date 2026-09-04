@@ -3,60 +3,49 @@
 ## Rules
 
 1. `D:\Teledra` remains untouched and is used only as behavioral reference.
-2. V2 supports exactly `qwen2.5:7b`. There is no provider abstraction, remote
-   API key, alternate chat model, or separate code model.
-3. State, generated artifacts, caches, and experiment output are data, not
-   source code. They are not migrated into the repository.
-4. A feature moves only with a boundary, tests, and a documented owner.
-5. The native terminal remains usable after every migration slice.
+2. V2 supports exactly local Ollama `qwen2.5:7b`.
+3. Runtime state and generated artifacts live outside the source tree.
+4. Every capability has one small owner, bounded contracts, and tests.
+5. Slow, networked, or device work stays off the terminal thread.
+6. Child processes are continuously drained, timed out, killed, and reaped.
+   Reaping is enforced by the kernel, not by destructors: every child inherits a
+   job object that terminates it when the court exits, including on a crash or a
+   closed console window, where destructors never run.
 
-## Ownership map
+## Ownership and status
 
-| V2 folder | Owns | V1 reference areas | Status |
-| --- | --- | --- | --- |
-| `Teledra/Brain` | Qwen request/response boundary | `src/brain.rs` | Working core |
-| `Agents` | Court identities and prompts | role prompts in `src/brain.rs` | Working core |
-| `Court` | Sessions, turns, court policy | court routing in `src/main.rs` | Working core |
-| `Teledra` | Native asynchronous TUI and composition root | TUI/runtime in `src/main.rs` | Working core |
-| `TTS` | Speech queue, voices, playback | `src/voice.rs`, `generate_voice.py` | Not migrated |
-| `Music` | Scores, rendering, feedback workflow | `court_synth/`, music sections of `src/main.rs` | Not migrated |
-| `Fractus` | Visual scene DSL and renderer boundary | `Fractus/` | Not migrated |
-| `Swarm` | General bounded task execution | `swarm/` | Not migrated |
-| `Frankenswarm` | Experimental swarm composition | `Frankenswarm/` | Not migrated |
-| `Kraken` | Code/game verification harness | `kraken/` | Not migrated |
-| `Tower` | Isolated residents and remote reports | `tower/`, `cloud_residents/` | Not migrated |
+| Folder | Owns | Migration state |
+| --- | --- | --- |
+| `Teledra/Brain` | Fixed-model Ollama boundary | Implemented; bounded response and CJK cleanup |
+| `Agents` | Role profiles | Implemented as independent Markdown files |
+| `Court` | Sessions and typed court actions | Implemented |
+| `Teledra` | Wide/vertical TUIs and event coordination | Implemented; V1-wide and dedicated 54x48 portrait live proofs pass |
+| `TTS` | Warm synthesis and playback | Implemented; CUDA worker warm-start reaches READY |
+| `Music` | Score/render/playback/feedback and Organist DAW | Implemented; persisted score restores and verified synth/DAW start at boot |
+| `Fractus` | Static/live verified visuals and animated gallery | Implemented; one supervised Studio hot-reloads PNG/GIF scenes |
+| `Memory` | Recall and dream consolidation | Implemented natively |
+| `Research` | Public research and provenance | Implemented natively |
+| `Sidecars` | Optional external/device bridges | Implemented as supervised adapters |
+| `Swarm` | Durable missions/tasks | Implemented natively |
+| `Frankenswarm` | Court-panel composition plus immutable model locking, donor autopsy, merge tournament, evaluation, local server plan, SQLite blackboard/runtime, and sandbox | Implemented; current OLMo campaign is correctly blocked by a real token-ID incompatibility and unprovisioned heavy tooling |
+| `Kraken` | Workspace verification plus standalone queue, skills, daemon, Hub workers, transactional forge, research/productivity, PixelFork, and behavioral game graduation | Implemented; legacy production inventory browser result reproduced live |
+| `Tower` | Resident report inbox | Implemented natively |
 
-## Planned slices
+## Deliberately rejected legacy patterns
 
-1. Qwen-only conversation core and role-local court sessions.
-2. Durable court transcript and explicit event contracts.
-3. TTS as an optional consumer of completed court utterances.
-4. Music as an independent score/render service with immutable feedback events.
-5. Fractus visuals behind the same event boundary.
-6. Swarm, Kraken, Frankenswarm, and Tower only after their contracts can be
-   described without importing the old monolith.
+- A monolithic application file owning UI, prompts, persistence, tools, audio,
+  and processes. `main.rs` coordinates; feature changes live under
+  `Teledra/src/runtime/` or their own crates.
+- Model selection, remote chat providers, or API-key routing.
+- Imports of executable code or mutable runtime state from `D:\Teledra`.
+  Read-only fallback to the operator's existing Moltbook, outreach, MCP, and
+  Restream credential files is supported until an equivalent V2 config exists.
+- Model-authored arbitrary paths, shell commands, or automatic external posts.
+- Unbounded response bodies, transcripts, PCM, image dimensions, task retries,
+  process output, or conversation histories.
+- Runtime-generated source mixed with maintained source.
+- Copying V1 caches, databases, binaries, or abandoned experiment output.
 
-## Decisions
-
-Recorded so a later slice does not quietly undo them.
-
-- **Fixed assets are compiled in, not resolved from disk.** The court portrait
-  lives in the binary via `include_bytes!`. V1 resolved art from disk and paid
-  three times: `assets/` was never committed, a canonicalised `\\?\` root broke
-  every lookup because Windows hands extended-length paths to the filesystem
-  unparsed, and the startup check reported art present that no child could
-  open. A file override is still honoured; an unreadable one falls back to the
-  embedded copy, so the load cannot fail. Runtime-authored artifacts are data
-  and stay out of the binary — this applies only to fixed, build-time assets.
-- **`cargo fmt` and `clippy` stay clean from the first commit.** V1 was never
-  fmt-clean, which made the check unusable there and let it be switched off.
-
-## Explicitly rejected legacy patterns
-
-- A monolithic application file that owns UI, prompts, persistence, tools,
-  music, and process supervision.
-- Model selection in configuration.
-- Runtime-generated source files mixed with maintained source.
-- Hard-coded absolute paths.
-- Implicit cross-subsystem file writes.
-- Copying caches, run output, databases, binaries, or abandoned experiments.
+`C:\Users\Kaged\Desktop\Teledra V2.lnk` launches the V2 release independently.
+The V1 tree and its shortcut remain untouched as a rollback until the full OBS
+live gate in `coordination/PARITY.md` has passed.

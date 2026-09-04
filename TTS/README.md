@@ -1,71 +1,42 @@
 # TTS
 
-Owns voice profiles, synthesis, queueing, playback, and audio-device
-selection. It consumes completed visible utterances; it does not edit court
-text or call Qwen. **Status: core landed, playback not yet wired.**
+Owns voice profiles, the bounded PCM protocol, one session-long warm LuxTTS
+worker, synthesis queueing, Rodio playback, interruption, named output-device
+routing, and child cleanup. It consumes final visible court utterances and
+never calls or edits Qwen output.
 
-## The problem this subsystem exists to solve
+V1 paid the model load and reference transcription for every utterance. V2
+loads once, warms once, caches each reference prompt, and appends rendered
+audio to one playback sink. Clean prompt durations prevent a reference's final
+word from leaking into generated segments. Synthesis and playback run away
+from the TUI.
 
-V1 started a fresh synthesiser for every line. Measured on the operator's
-machine:
+Prompt duration follows each complete reference instead of using the old fixed
+five-second crop or an eight-second ceiling. A local word-timestamp audit pins
+the end of every Queen mode inside its encoded prompt: custom +0.410 s, clean
++0.299 s, sarcastic +0.266 s, and analytical +0.223 s of clean margin after the
+last transcribed word. The clean reference's "magnificently" finishes at 5.52 s;
+its prompt continues through the final word to 6.72 s, preventing the leaked
+"gnificent" continuation.
 
-| | wall clock | audio produced | dead air |
-| --- | --- | --- | --- |
-| V1, process per line | 15.6 s | 3.5 s | **12.1 s, every line** |
-| V2 startup | 13.6 s | — | once per session |
-| V2, any line after that | 0.24–0.48 s | 1.8–3.0 s | **0.00 s** |
-
-Of V1's 15.6 s, **10.4 s was loading the model** — paid again on every single
-line. On stream that is twelve seconds of nobody talking between sentences.
-
-Warm, synthesis runs four to eight times faster than playback, so the audio is
-always ready before it is wanted. Three things buy that:
-
-1. **The model loads once**, not once per line.
-2. **Each voice's reference encoding is cached.** Encoding transcribes the
-   reference recording, which never changes; V1 redid it every utterance.
-3. **The first synthesis happens before `READY`.** It costs several seconds
-   more than the rest, so the worker spends them during startup while nobody
-   is listening. Measured, this took the first spoken line from 6.83 s to
-   0.46 s. `READY` therefore means "ready to speak quickly", not just
-   "loaded".
-
-A cold voice speaking for the first time mid-session still renders in about
-half a second, so the court can bring anyone in without a pause.
-
-## Shape
-
-| File | Owns |
+| File | Owner |
 | --- | --- |
-| `src/pcm.rs` | The audio wire format, and refusing malformed streams |
-| `src/voice.rs` | Which voice each member speaks in, and its gain |
-| `src/worker.rs` | The warm worker process and the `Synthesizer` trait |
-| `src/lib.rs` | `SpeechQueue` — ordering and render-ahead |
-| `worker/voice_worker.py` | The model host: loads once, serves many |
+| `src/pcm.rs` | Strict sample-rate, frame, duration, and finite-sample bounds |
+| `src/voice.rs` | Voice names and gain |
+| `src/worker.rs` | Warm child protocol, startup/synthesis timeouts, reaping |
+| `src/runtime.rs` | Background queue, Rodio stream/sink, interruption, device selection |
+| `worker/voice_worker.py` | LuxTTS model host and per-voice prompt cache |
 
-## Two hazards, both learned the hard way
+The nine reference WAV files live in the root `assets/` folder. Install
+`zipvoice.luxvoice.LuxTTS` in `TELEDRA_PYTHON`, or point `TELEDRA_LUXTTS` at a
+source checkout. There is intentionally no fallback into the old repository.
 
-**Drain the worker's output, always.** Audio streams to stdout as it is
-rendered. A reader that stops consuming fills the operating system's pipe
-buffer at around 64 KB and the worker blocks mid-utterance, indistinguishable
-from a hang. This was hit while measuring the numbers above. Every read path
-consumes a whole utterance or fails.
+Set `TELEDRA_AUDIO_DEVICE` to a full or partial output-device name for an OBS
+monitor or mix. `TELEDRA_TTS_SPEED` accepts `0.55` through `1.10` and defaults
+to the natural court pace of `0.75`; a lower value speaks more slowly. Set
+`TELEDRA_DISABLE_TTS=1` for a silent session. Playback gains preserve the V1
+court mix, including the Archivist's 2.45x lift, and remain peak-limited.
 
-**A dead worker must never read as silence.** A crashed model produces a
-truncated stream, and `pcm.rs` reports that as an error rather than an empty
-utterance, so the court can say why it went quiet instead of just going quiet.
-
-## Still to do
-
-- Playback and audio-device selection (nothing here reaches a speaker yet).
-- Wire `SpeechQueue` into the court so accepted utterances are spoken.
-- An end-to-end check that measures real dead air and fails if it regresses.
-
-## Dependencies
-
-The speech library (`zipvoice.luxvoice.LuxTTS`) is third-party and is *not*
-vendored here — V1 kept a copy in its repository, which is why the worker
-still has a fallback search. Install it into the environment, or point
-`TELEDRA_LUXTTS` at a source checkout.
-
-Reference recordings live in `assets/` at the repository root, one per voice.
+Shutdown stops queued audio immediately. A worker that ignores shutdown is
+terminated by its exact recorded process ID, including its child tree, and
+then reaped before Teledra returns.

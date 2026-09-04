@@ -9,6 +9,9 @@ rust-version.workspace = true
 teledra-agents = { path = "../Agents" }
 teledra-brain = { path = "../Teledra/Brain" }
 
+[dev-dependencies]
+serde_json.workspace = true
+
 [lib]
 path = "src/lib.rs"
 

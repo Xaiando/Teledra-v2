@@ -1,0 +1,1 @@
+{"id":"debug_01","prompt":"Fix this Python syntax error: def foo() print(bar)","expected_output":"def foo():","scoring_method":"contains"}

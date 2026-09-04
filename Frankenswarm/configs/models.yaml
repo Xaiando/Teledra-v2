@@ -1,0 +1,37 @@
+models:
+  base:
+    repo_id: allenai/Olmo-3-1025-7B
+    required: true
+    stage: phase_0
+    arm: science
+  code:
+    repo_id: allenai/Olmo-3-7B-RL-Zero-Code
+    required: true
+    stage: phase_0
+    arm: science
+  instruction_following:
+    repo_id: allenai/Olmo-3-7B-RL-Zero-IF
+    required: true
+    stage: phase_0
+    arm: science
+  general:
+    repo_id: allenai/Olmo-3-7B-RL-Zero-General
+    required: true
+    stage: phase_0
+    arm: science
+  rl_zero_mix:
+    repo_id: allenai/Olmo-3-7B-RL-Zero-Mix
+    required: true
+    stage: phase_1
+    arm: science
+  instruct:
+    repo_id: allenai/Olmo-3-7B-Instruct
+    required: true
+    stage: phase_1
+    arm: production
+  rl_zero_math:
+    repo_id: allenai/Olmo-3-7B-RL-Zero-Math
+    required: false
+    enabled: false
+    stage: post_first_tournament
+    arm: science

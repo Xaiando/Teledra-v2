@@ -1,0 +1,1349 @@
+//! Bounded Fractus scene DSL, raster renderer, and render verification.
+
+use std::collections::HashMap;
+use std::fs::File;
+use std::io::BufWriter;
+use std::path::{Path, PathBuf};
+
+use image::codecs::gif::{GifEncoder, Repeat};
+use image::{Delay, DynamicImage, Frame, Rgb, RgbImage};
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
+
+const MAX_DIMENSION: u32 = 2_048;
+const MAX_ITERATIONS: u32 = 2_000;
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SceneKind {
+    Mandelbrot,
+    Julia,
+    Multibrot,
+    BurningShip,
+    Tricorn,
+    Newton,
+    Mandala,
+    LotusMandala,
+    StarMandala,
+    FlowerOfLife,
+    RadialWeave,
+    Kaleidoscope,
+    Phyllotaxis,
+    WovenWeb,
+    Guilloche,
+    Lissajous,
+    Moire,
+    OrbitalLace,
+    Spirograph,
+    Harmonograph,
+    RoseCurve,
+    StringArt,
+    Sierpinski,
+    KochSnowflake,
+    FractalTree,
+    DragonCurve,
+    BarnsleyFern,
+    LSystem,
+    Truchet,
+    HexWeave,
+    OpArt,
+    CellularAutomata,
+    ReactionDiffusion,
+    Particles,
+    FlowField,
+    StrangeAttractor,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BlendMode {
+    Normal,
+    Add,
+    Screen,
+    Multiply,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SceneLayer {
+    pub kind: SceneKind,
+    pub alpha: f32,
+    pub blend: BlendMode,
+    pub palette: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Scene {
+    pub version: u8,
+    pub kind: SceneKind,
+    pub width: u32,
+    pub height: u32,
+    pub iterations: u32,
+    pub seed: u64,
+    pub palette: String,
+    #[serde(default)]
+    pub layers: Vec<SceneLayer>,
+    /// Layer names the Artist asked for that this renderer does not know.
+    ///
+    /// Recorded on the scene so the manifest shows what was requested and not
+    /// drawn, instead of the difference disappearing between the request and
+    /// the picture.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unknown_layers: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct RenderManifest {
+    pub scene: Scene,
+    pub image: PathBuf,
+    pub non_black_pixels: u64,
+    pub verified: bool,
+}
+
+#[derive(Debug, Error)]
+pub enum FractusError {
+    #[error("invalid Fractus scene: {0}")]
+    Invalid(String),
+    #[error("Fractus render failed: {0}")]
+    Image(#[from] image::ImageError),
+    #[error("Fractus manifest failed: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("Fractus manifest JSON failed: {0}")]
+    Json(#[from] serde_json::Error),
+}
+
+impl Default for Scene {
+    fn default() -> Self {
+        Self {
+            version: 2,
+            kind: SceneKind::Particles,
+            width: 900,
+            height: 1_200,
+            iterations: 420,
+            seed: 0x07e1_ed2a,
+            palette: "emerald".to_owned(),
+            layers: Vec::new(),
+            unknown_layers: Vec::new(),
+        }
+    }
+}
+
+impl Scene {
+    pub fn parse(dsl: &str) -> Result<Self, FractusError> {
+        let mut fields = HashMap::new();
+        for raw in dsl.lines() {
+            let line = raw.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            if let Some(version) = line.strip_prefix("version ") {
+                fields.insert("version".to_owned(), version.trim().to_owned());
+                continue;
+            }
+            let (key, value) = line
+                .split_once(['=', ':'])
+                .ok_or_else(|| FractusError::Invalid(format!("unknown DSL line '{line}'")))?;
+            fields.insert(key.trim().to_ascii_lowercase(), value.trim().to_owned());
+        }
+        let mut scene = Self::default();
+        if let Some(value) = fields.get("version") {
+            scene.version = parse(value, "version")?;
+        }
+        if let Some(value) = fields.get("type").or_else(|| fields.get("kind")) {
+            scene.kind = match value.to_ascii_lowercase().replace('-', "_").as_str() {
+                "mandelbrot" | "fractal" => SceneKind::Mandelbrot,
+                "julia" => SceneKind::Julia,
+                "multibrot" => SceneKind::Multibrot,
+                "burning_ship" => SceneKind::BurningShip,
+                "tricorn" => SceneKind::Tricorn,
+                "newton" => SceneKind::Newton,
+                "mandala" => SceneKind::Mandala,
+                "lotus_mandala" | "fractal_flower" => SceneKind::LotusMandala,
+                "star_mandala" => SceneKind::StarMandala,
+                "flower_of_life" => SceneKind::FlowerOfLife,
+                "radial_weave" => SceneKind::RadialWeave,
+                "kaleidoscope" => SceneKind::Kaleidoscope,
+                "phyllotaxis" => SceneKind::Phyllotaxis,
+                "woven_web" => SceneKind::WovenWeb,
+                "guilloche" => SceneKind::Guilloche,
+                "lissajous" => SceneKind::Lissajous,
+                "moire" => SceneKind::Moire,
+                "orbital_lace" => SceneKind::OrbitalLace,
+                "spirograph" => SceneKind::Spirograph,
+                "harmonograph" => SceneKind::Harmonograph,
+                "rose_curve" => SceneKind::RoseCurve,
+                "string_art" => SceneKind::StringArt,
+                "sierpinski" | "sierpinski_triangle" => SceneKind::Sierpinski,
+                "koch" | "koch_snowflake" => SceneKind::KochSnowflake,
+                "fractal_tree" => SceneKind::FractalTree,
+                "dragon_curve" => SceneKind::DragonCurve,
+                "barnsley_fern" => SceneKind::BarnsleyFern,
+                "l_system" | "lsystem" | "lindenmayer" => SceneKind::LSystem,
+                "truchet" => SceneKind::Truchet,
+                "hex_weave" => SceneKind::HexWeave,
+                "op_art" => SceneKind::OpArt,
+                "cellular" | "cellular_automaton" | "cellular_automata" => {
+                    SceneKind::CellularAutomata
+                }
+                "reaction_diffusion" => SceneKind::ReactionDiffusion,
+                "particles" | "particle" => SceneKind::Particles,
+                "flow" | "flow_field" | "flowfield" => SceneKind::FlowField,
+                "strange_attractor" | "lorenz" => SceneKind::StrangeAttractor,
+                _ => {
+                    return Err(FractusError::Invalid(format!(
+                        "unknown scene type '{value}'"
+                    )));
+                }
+            };
+        }
+        if let Some(value) = fields.get("width") {
+            scene.width = parse(value, "width")?;
+        }
+        if let Some(value) = fields.get("height") {
+            scene.height = parse(value, "height")?;
+        }
+        if let Some(value) = fields.get("iterations") {
+            scene.iterations = parse(value, "iterations")?;
+        }
+        if let Some(value) = fields.get("seed") {
+            scene.seed = parse(value, "seed")?;
+        }
+        if let Some(value) = fields.get("palette") {
+            if !is_known_palette(value) {
+                return Err(FractusError::Invalid(format!(
+                    "unknown palette '{}'; choose one of {}",
+                    value.chars().take(60).collect::<String>(),
+                    PALETTE_NAMES.join(", ")
+                )));
+            }
+            scene.palette = value.trim().to_ascii_lowercase();
+        }
+        if let Some(value) = fields.get("layers") {
+            let (layers, skipped) = parse_layers(value, &scene.palette)?;
+            // Without an explicit type the base took the default, so a request
+            // for a kaleidoscope over a spirograph still rendered particles
+            // underneath everything. The first layer is the subject; it should
+            // be what the scene is.
+            if !fields.contains_key("type")
+                && !fields.contains_key("kind")
+                && let Some(first) = layers.first()
+            {
+                scene.kind = first.kind;
+            }
+            scene.layers = layers;
+            scene.unknown_layers = skipped;
+        }
+        scene.validate()?;
+        Ok(scene)
+    }
+
+    pub fn validate(&self) -> Result<(), FractusError> {
+        if self.version != 2 {
+            return Err(FractusError::Invalid(
+                "only DSL version 2 is supported".to_owned(),
+            ));
+        }
+        if self.width < 64
+            || self.height < 64
+            || self.width > MAX_DIMENSION
+            || self.height > MAX_DIMENSION
+        {
+            return Err(FractusError::Invalid(format!(
+                "dimensions must be 64..={MAX_DIMENSION}"
+            )));
+        }
+        if self.iterations == 0 || self.iterations > MAX_ITERATIONS {
+            return Err(FractusError::Invalid(format!(
+                "iterations must be 1..={MAX_ITERATIONS}"
+            )));
+        }
+        if self.layers.len() > 8 {
+            return Err(FractusError::Invalid(
+                "a scene supports at most eight compositing layers".to_owned(),
+            ));
+        }
+        for layer in &self.layers {
+            if !layer.alpha.is_finite() || !(0.0..=1.0).contains(&layer.alpha) {
+                return Err(FractusError::Invalid(
+                    "layer alpha must be finite and between 0 and 1".to_owned(),
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    pub fn render(&self, output: &Path) -> Result<RenderManifest, FractusError> {
+        self.validate()?;
+        let image = self.render_frame(0.0);
+        image.save(output)?;
+        verify(self.clone(), output.to_path_buf(), &image)
+    }
+
+    /// Renders a bounded, looping live preview suitable for projection or OBS.
+    pub fn render_gif(
+        &self,
+        output: &Path,
+        frame_count: u16,
+    ) -> Result<RenderManifest, FractusError> {
+        self.validate()?;
+        if !(2..=120).contains(&frame_count) {
+            return Err(FractusError::Invalid(
+                "live frame count must be 2..=120".to_owned(),
+            ));
+        }
+        let first = self.render_frame(0.0);
+        let manifest = verify(self.clone(), output.to_path_buf(), &first)?;
+        let file = BufWriter::new(File::create(output)?);
+        let mut encoder = GifEncoder::new(file);
+        encoder.set_repeat(Repeat::Infinite)?;
+        for index in 0..frame_count {
+            let phase = index as f32 / frame_count as f32 * std::f32::consts::TAU;
+            let rgb = if index == 0 {
+                first.clone()
+            } else {
+                self.render_frame(phase)
+            };
+            let rgba = DynamicImage::ImageRgb8(rgb).into_rgba8();
+            encoder.encode_frame(Frame::from_parts(
+                rgba,
+                0,
+                0,
+                Delay::from_numer_denom_ms(80, 1),
+            ))?;
+        }
+        Ok(manifest)
+    }
+
+    fn render_frame(&self, phase: f32) -> RgbImage {
+        let mut image = RgbImage::new(self.width, self.height);
+        self.render_single(&mut image, phase);
+        for layer in &self.layers {
+            let mut overlay = RgbImage::new(self.width, self.height);
+            let mut scene = self.clone();
+            scene.kind = layer.kind;
+            scene.palette = layer.palette.clone();
+            scene.layers.clear();
+            scene.render_single(&mut overlay, phase);
+            composite(&mut image, &overlay, layer.alpha, layer.blend);
+        }
+        image
+    }
+
+    fn render_single(&self, image: &mut RgbImage, phase: f32) {
+        match self.kind {
+            SceneKind::Mandelbrot
+            | SceneKind::Julia
+            | SceneKind::Multibrot
+            | SceneKind::BurningShip
+            | SceneKind::Tricorn => render_escape(self, image, phase),
+            SceneKind::Newton => render_newton(self, image, phase),
+            SceneKind::Mandala
+            | SceneKind::LotusMandala
+            | SceneKind::StarMandala
+            | SceneKind::FlowerOfLife
+            | SceneKind::RadialWeave
+            | SceneKind::Kaleidoscope
+            | SceneKind::Phyllotaxis => render_radial(self, image, phase),
+            SceneKind::WovenWeb
+            | SceneKind::Guilloche
+            | SceneKind::Lissajous
+            | SceneKind::Moire
+            | SceneKind::OrbitalLace
+            | SceneKind::Spirograph
+            | SceneKind::Harmonograph
+            | SceneKind::RoseCurve
+            | SceneKind::StringArt => render_curves(self, image, phase),
+            SceneKind::Sierpinski
+            | SceneKind::KochSnowflake
+            | SceneKind::FractalTree
+            | SceneKind::DragonCurve
+            | SceneKind::BarnsleyFern
+            | SceneKind::LSystem => render_recursive(self, image, phase),
+            SceneKind::Truchet | SceneKind::HexWeave | SceneKind::OpArt => {
+                render_tiles(self, image, phase)
+            }
+            SceneKind::CellularAutomata | SceneKind::ReactionDiffusion => {
+                render_cells(self, image, phase)
+            }
+            SceneKind::Particles => render_particles(self, image, phase),
+            SceneKind::FlowField => render_flow(self, image, phase),
+            SceneKind::StrangeAttractor => render_attractor(self, image, phase),
+        }
+    }
+}
+
+pub fn write_manifest(path: &Path, manifest: &RenderManifest) -> Result<(), FractusError> {
+    std::fs::write(path, serde_json::to_vec_pretty(manifest)?)?;
+    Ok(())
+}
+
+fn parse<T>(value: &str, name: &str) -> Result<T, FractusError>
+where
+    T: std::str::FromStr,
+{
+    value
+        .parse()
+        .map_err(|_| FractusError::Invalid(format!("{name} is not a valid number")))
+}
+
+/// Parses a layer stack, keeping the layers that are valid.
+///
+/// The Artist invents family names. Rejecting the whole stack because one of
+/// them is unknown discards the layers that were correct, and the renderer then
+/// falls back to its default scene — so a request for a kaleidoscope over a
+/// spirograph produced the same emerald particles as every other request. The
+/// names that do not resolve are reported instead, and the rest still render.
+fn parse_layers(
+    value: &str,
+    default_palette: &str,
+) -> Result<(Vec<SceneLayer>, Vec<String>), FractusError> {
+    let mut layers = Vec::new();
+    let mut skipped = Vec::new();
+    for layer in value.split(';').filter(|layer| !layer.trim().is_empty()) {
+        match parse_layer(layer, default_palette) {
+            Ok(parsed) => layers.push(parsed),
+            Err(_) => {
+                let name = layer.split('@').next().unwrap_or(layer).trim();
+                if !name.is_empty() {
+                    skipped.push(name.to_owned());
+                }
+            }
+        }
+    }
+    if layers.is_empty() && !skipped.is_empty() {
+        return Err(FractusError::Invalid(format!(
+            "no usable layers in '{}'",
+            skipped.join(", ")
+        )));
+    }
+    Ok((layers, skipped))
+}
+
+fn parse_layer(layer: &str, default_palette: &str) -> Result<SceneLayer, FractusError> {
+    {
+        let parts = layer.split('@').map(str::trim).collect::<Vec<_>>();
+        let kind = Scene::parse(&format!(
+            "version 2\ntype={}",
+            parts.first().copied().unwrap_or_default()
+        ))?
+        .kind;
+        // The Artist writes alphas like "3" and "4". Clamping keeps the layer
+        // it asked for; refusing the number discarded the whole stack and left
+        // the default scene in its place.
+        let alpha = parts
+            .get(1)
+            .copied()
+            .unwrap_or("0.5")
+            .parse::<f32>()
+            .map_err(|_| FractusError::Invalid("layer alpha is not a number".to_owned()))?
+            .clamp(0.05, 1.0);
+        let blend = match parts
+            .get(2)
+            .copied()
+            .unwrap_or("screen")
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "normal" => BlendMode::Normal,
+            "add" | "plus" => BlendMode::Add,
+            "screen" => BlendMode::Screen,
+            "multiply" => BlendMode::Multiply,
+            value => {
+                return Err(FractusError::Invalid(format!(
+                    "unknown layer blend '{value}'"
+                )));
+            }
+        };
+        Ok(SceneLayer {
+            kind,
+            alpha,
+            blend,
+            palette: parts
+                .get(3)
+                .copied()
+                .filter(|name| is_known_palette(name))
+                .unwrap_or(default_palette)
+                .trim()
+                .to_ascii_lowercase(),
+        })
+    }
+}
+
+fn composite(base: &mut RgbImage, overlay: &RgbImage, alpha: f32, blend: BlendMode) {
+    for (base_pixel, overlay_pixel) in base.pixels_mut().zip(overlay.pixels()) {
+        for channel in 0..3 {
+            let bottom = base_pixel[channel] as f32 / 255.0;
+            let top = overlay_pixel[channel] as f32 / 255.0;
+            let blended = match blend {
+                BlendMode::Normal => top,
+                BlendMode::Add => (bottom + top).min(1.0),
+                BlendMode::Screen => 1.0 - (1.0 - bottom) * (1.0 - top),
+                BlendMode::Multiply => bottom * top,
+            };
+            base_pixel[channel] = ((bottom * (1.0 - alpha) + blended * alpha) * 255.0) as u8;
+        }
+    }
+}
+
+fn verify(scene: Scene, path: PathBuf, image: &RgbImage) -> Result<RenderManifest, FractusError> {
+    let non_black_pixels = image
+        .pixels()
+        .filter(|pixel| pixel.0.iter().any(|channel| *channel > 4))
+        .count() as u64;
+    let minimum = u64::from(image.width()) * u64::from(image.height()) / 200;
+    if non_black_pixels < minimum {
+        return Err(FractusError::Invalid(
+            "render verification found an effectively blank image".to_owned(),
+        ));
+    }
+    Ok(RenderManifest {
+        scene,
+        image: path,
+        non_black_pixels,
+        verified: true,
+    })
+}
+
+fn render_escape(scene: &Scene, image: &mut RgbImage, phase: f32) {
+    let palette = palette(&scene.palette);
+    let zoom = 1.0 + phase.sin() as f64 * 0.08;
+    let drift_x = phase.cos() as f64 * 0.035;
+    let drift_y = phase.sin() as f64 * 0.025;
+    for y in 0..scene.height {
+        for x in 0..scene.width {
+            let cx = (x as f64 / scene.width as f64 * 3.2 - 2.25) / zoom + drift_x;
+            let cy = (y as f64 / scene.height as f64 * 2.5 - 1.25) / zoom + drift_y;
+            let (mut zx, mut zy, constant_x, constant_y) = match scene.kind {
+                SceneKind::Julia => (
+                    cx,
+                    cy,
+                    -0.7 + phase.cos() as f64 * 0.08,
+                    0.27015 + phase.sin() as f64 * 0.08,
+                ),
+                _ => (0.0, 0.0, cx, cy),
+            };
+            let mut count = 0;
+            while zx * zx + zy * zy <= 4.0 && count < scene.iterations {
+                (zx, zy) = match scene.kind {
+                    SceneKind::Multibrot => (
+                        zx * zx * zx - 3.0 * zx * zy * zy + constant_x,
+                        3.0 * zx * zx * zy - zy * zy * zy + constant_y,
+                    ),
+                    SceneKind::BurningShip => {
+                        let (absolute_x, absolute_y) = (zx.abs(), zy.abs());
+                        (
+                            absolute_x * absolute_x - absolute_y * absolute_y + constant_x,
+                            2.0 * absolute_x * absolute_y + constant_y,
+                        )
+                    }
+                    SceneKind::Tricorn => {
+                        (zx * zx - zy * zy + constant_x, -2.0 * zx * zy + constant_y)
+                    }
+                    _ => (zx * zx - zy * zy + constant_x, 2.0 * zx * zy + constant_y),
+                };
+                count += 1;
+            }
+            if count < scene.iterations {
+                image.put_pixel(x, y, shade(palette, count as f32 / scene.iterations as f32));
+            }
+        }
+    }
+}
+
+fn render_newton(scene: &Scene, image: &mut RgbImage, phase: f32) {
+    let palette = palette(&scene.palette);
+    let scale = 3.6_f64;
+    for y in 0..scene.height {
+        for x in 0..scene.width {
+            let mut real = (x as f64 / scene.width as f64 - 0.5) * scale;
+            let mut imaginary = (y as f64 / scene.height as f64 - 0.5) * scale;
+            let mut count = 0;
+            for iteration in 0..scene.iterations.min(180) {
+                let real2 = real * real;
+                let imaginary2 = imaginary * imaginary;
+                let denominator = 3.0 * (real2 + imaginary2).powi(2);
+                if denominator < 1e-14 {
+                    break;
+                }
+                let function_real = real * (real2 - 3.0 * imaginary2) - 1.0;
+                let function_imaginary = imaginary * (3.0 * real2 - imaginary2);
+                let derivative_real = 3.0 * (real2 - imaginary2);
+                let derivative_imaginary = 6.0 * real * imaginary;
+                real -= (function_real * derivative_real
+                    + function_imaginary * derivative_imaginary)
+                    / denominator;
+                imaginary -= (function_imaginary * derivative_real
+                    - function_real * derivative_imaginary)
+                    / denominator;
+                count = iteration;
+                if function_real * function_real + function_imaginary * function_imaginary < 1e-10 {
+                    break;
+                }
+            }
+            let angle = (imaginary.atan2(real) as f32 + phase).rem_euclid(std::f32::consts::TAU);
+            let root = (angle / std::f32::consts::TAU * 3.0).floor() / 3.0;
+            let intensity = 1.0 - count as f32 / scene.iterations.min(180) as f32 * 0.7;
+            image.put_pixel(x, y, shade(palette, (root + intensity * 0.55).fract()));
+        }
+    }
+}
+
+fn render_radial(scene: &Scene, image: &mut RgbImage, phase: f32) {
+    let palette = palette(&scene.palette);
+    if matches!(scene.kind, SceneKind::Phyllotaxis) {
+        let points = scene.iterations.saturating_mul(20).min(40_000);
+        for point in 0..points {
+            let angle = point as f32 * 137.507_77_f32.to_radians() + phase;
+            let radius =
+                (point as f32 / points as f32).sqrt() * scene.width.min(scene.height) as f32 * 0.47;
+            let x = scene.width as f32 * 0.5 + angle.cos() * radius;
+            let y = scene.height as f32 * 0.5 + angle.sin() * radius;
+            draw_glow(
+                image,
+                x as i32,
+                y as i32,
+                2,
+                shade(palette, point as f32 / points as f32),
+            );
+        }
+        return;
+    }
+    let (symmetry, rings, twist, lace) = match scene.kind {
+        SceneKind::LotusMandala => (16.0, 7.0, 0.18, 0.8),
+        SceneKind::StarMandala => (12.0, 10.0, 0.5, 1.3),
+        SceneKind::FlowerOfLife => (6.0, 8.0, 0.0, 1.0),
+        SceneKind::RadialWeave => (18.0, 11.0, 1.1, 1.35),
+        SceneKind::Kaleidoscope => (14.0, 9.0, -0.55, 1.1),
+        _ => (12.0, 8.0, 0.35, 0.55),
+    };
+    let half_width = scene.width as f32 * 0.5;
+    let half_height = scene.height as f32 * 0.5;
+    let maximum = half_width.min(half_height);
+    for y in 0..scene.height {
+        for x in 0..scene.width {
+            let dx = (x as f32 - half_width) / maximum;
+            let dy = (y as f32 - half_height) / maximum;
+            let radius = (dx * dx + dy * dy).sqrt();
+            if radius > 1.0 {
+                continue;
+            }
+            let angle = dy.atan2(dx) + phase;
+            let petals = (angle * symmetry + radius * twist * 12.0).sin().abs();
+            let ring = (radius * rings * std::f32::consts::PI + petals * lace)
+                .sin()
+                .abs();
+            let line = (1.0 - (ring - 0.5).abs() * 8.0).max(0.0);
+            if line > 0.04 {
+                image.put_pixel(x, y, shade(palette, (radius * 0.6 + petals * 0.4) * line));
+            }
+        }
+    }
+}
+
+fn render_curves(scene: &Scene, image: &mut RgbImage, phase: f32) {
+    let palette = palette(&scene.palette);
+    if matches!(scene.kind, SceneKind::Moire) {
+        for y in 0..scene.height {
+            for x in 0..scene.width {
+                let nx = x as f32 / scene.width as f32 * 2.0 - 1.0;
+                let ny = y as f32 / scene.height as f32 * 2.0 - 1.0;
+                let first = ((nx + ny * 0.16 + phase * 0.05) * 45.0).sin();
+                let second = ((nx * phase.cos() - ny * phase.sin()) * 46.5).sin();
+                let value = (first + second).abs() * 0.5;
+                if value > 0.72 {
+                    image.put_pixel(x, y, shade(palette, value));
+                }
+            }
+        }
+        return;
+    }
+    let samples = scene.iterations.saturating_mul(12).clamp(1_200, 24_000);
+    let scale = scene.width.min(scene.height) as f32 * 0.43;
+    let center_x = scene.width as f32 * 0.5;
+    let center_y = scene.height as f32 * 0.5;
+    let mut previous = None;
+    for sample in 0..samples {
+        let t = sample as f32 / samples as f32 * std::f32::consts::TAU * 8.0 + phase;
+        let (mut x, mut y) = match scene.kind {
+            SceneKind::Guilloche | SceneKind::Spirograph => {
+                let ratio = if matches!(scene.kind, SceneKind::Guilloche) {
+                    6.2
+                } else {
+                    5.4
+                };
+                let offset = if matches!(scene.kind, SceneKind::Guilloche) {
+                    0.42
+                } else {
+                    0.62
+                };
+                let radius = 1.0 - offset;
+                (
+                    radius * t.cos() + offset * (t * ratio).cos(),
+                    radius * t.sin() - offset * (t * ratio).sin(),
+                )
+            }
+            SceneKind::Harmonograph => {
+                let decay = (-0.018 * t).exp();
+                ((3.01 * t).sin() * decay, (2.0 * t + 1.2).sin() * decay)
+            }
+            SceneKind::RoseCurve => {
+                let radius = (7.0 * t).cos();
+                (radius * t.cos(), radius * t.sin())
+            }
+            SceneKind::StringArt => {
+                let alternate = (sample * 37 % samples) as f32 / samples as f32;
+                ((t).cos(), (alternate * std::f32::consts::TAU).sin())
+            }
+            SceneKind::OrbitalLace => {
+                let radius = 0.62 + (7.0 * t).sin() * 0.28;
+                (
+                    radius * (t + (3.0 * t).sin() * 0.12).cos(),
+                    radius * (t + (5.0 * t).cos() * 0.12).sin(),
+                )
+            }
+            SceneKind::WovenWeb => (
+                (5.0 * t).sin() * 0.82 + (12.0 * t).sin() * 0.16,
+                (7.0 * t).sin() * 0.82 + (9.0 * t).cos() * 0.16,
+            ),
+            _ => ((5.0 * t).sin(), (8.0 * t + 0.7).sin()),
+        };
+        let maximum = x.abs().max(y.abs()).max(1.0);
+        x /= maximum;
+        y /= maximum;
+        let point = (center_x + x * scale, center_y + y * scale);
+        if let Some((old_x, old_y)) = previous {
+            draw_line(
+                image,
+                old_x,
+                old_y,
+                point.0,
+                point.1,
+                shade(palette, sample as f32 / samples as f32),
+            );
+        }
+        previous = Some(point);
+    }
+}
+
+fn render_recursive(scene: &Scene, image: &mut RgbImage, phase: f32) {
+    let palette = palette(&scene.palette);
+    match scene.kind {
+        SceneKind::FractalTree | SceneKind::LSystem => {
+            let depth = 9;
+            draw_branch(
+                image,
+                scene.width as f32 * 0.5,
+                scene.height as f32 * 0.94,
+                scene.height as f32 * 0.22,
+                -std::f32::consts::FRAC_PI_2 + phase * 0.03,
+                depth,
+                palette,
+            );
+        }
+        SceneKind::KochSnowflake => {
+            let margin = scene.width.min(scene.height) as f32 * 0.12;
+            let radius = scene.width.min(scene.height) as f32 * 0.4;
+            let center = (scene.width as f32 * 0.5, scene.height as f32 * 0.52);
+            let points = (0..3)
+                .map(|index| {
+                    let angle = phase * 0.03 - std::f32::consts::FRAC_PI_2
+                        + index as f32 * std::f32::consts::TAU / 3.0;
+                    (
+                        center.0 + angle.cos() * radius,
+                        center.1 + angle.sin() * radius,
+                    )
+                })
+                .collect::<Vec<_>>();
+            let depth = if margin > 0.0 { 5 } else { 4 };
+            for index in 0..3 {
+                draw_koch(
+                    image,
+                    points[index],
+                    points[(index + 1) % 3],
+                    depth,
+                    shade(palette, index as f32 / 3.0),
+                );
+            }
+        }
+        _ => {
+            let mut state = scene.seed.max(1);
+            let points = scene.iterations.saturating_mul(120).clamp(20_000, 240_000);
+            let (mut x, mut y) = (0.0_f32, 0.0_f32);
+            for index in 0..points {
+                let random_value = random(&mut state);
+                (x, y) = match scene.kind {
+                    SceneKind::BarnsleyFern => {
+                        if random_value < 0.01 {
+                            (0.0, 0.16 * y)
+                        } else if random_value < 0.86 {
+                            (0.85 * x + 0.04 * y, -0.04 * x + 0.85 * y + 1.6)
+                        } else if random_value < 0.93 {
+                            (0.2 * x - 0.26 * y, 0.23 * x + 0.22 * y + 1.6)
+                        } else {
+                            (-0.15 * x + 0.28 * y, 0.26 * x + 0.24 * y + 0.44)
+                        }
+                    }
+                    SceneKind::DragonCurve => {
+                        if random_value < 0.5 {
+                            (0.5 * (x - y), 0.5 * (x + y))
+                        } else {
+                            (0.5 * (x + y) + 1.0, 0.5 * (-x + y))
+                        }
+                    }
+                    _ => {
+                        let vertex = (random_value * 3.0).floor() as usize;
+                        let vertices = [(-1.0, 0.9), (1.0, 0.9), (0.0, -0.9)];
+                        (
+                            (x + vertices[vertex].0) * 0.5,
+                            (y + vertices[vertex].1) * 0.5,
+                        )
+                    }
+                };
+                let (px, py) = if matches!(scene.kind, SceneKind::BarnsleyFern) {
+                    (
+                        scene.width as f32 * (0.5 + x / 5.5),
+                        scene.height as f32 * (0.96 - y / 11.0),
+                    )
+                } else if matches!(scene.kind, SceneKind::DragonCurve) {
+                    (
+                        scene.width as f32 * (0.18 + x / 3.0),
+                        scene.height as f32 * (0.18 + y / 2.5),
+                    )
+                } else {
+                    (
+                        scene.width as f32 * (0.5 + x * 0.44),
+                        scene.height as f32 * (0.52 + y * 0.44),
+                    )
+                };
+                if index > 20 {
+                    draw_glow(
+                        image,
+                        px as i32,
+                        py as i32,
+                        1,
+                        shade(palette, index as f32 / points as f32),
+                    );
+                }
+            }
+        }
+    }
+}
+
+fn draw_branch(
+    image: &mut RgbImage,
+    x: f32,
+    y: f32,
+    length: f32,
+    angle: f32,
+    depth: u8,
+    colours: ([u8; 3], [u8; 3]),
+) {
+    if depth == 0 || length < 2.0 {
+        return;
+    }
+    let end_x = x + angle.cos() * length;
+    let end_y = y + angle.sin() * length;
+    draw_line(
+        image,
+        x,
+        y,
+        end_x,
+        end_y,
+        shade(colours, 1.0 - depth as f32 / 10.0),
+    );
+    draw_branch(
+        image,
+        end_x,
+        end_y,
+        length * 0.72,
+        angle - 0.43,
+        depth - 1,
+        colours,
+    );
+    draw_branch(
+        image,
+        end_x,
+        end_y,
+        length * 0.72,
+        angle + 0.49,
+        depth - 1,
+        colours,
+    );
+}
+
+fn draw_koch(image: &mut RgbImage, start: (f32, f32), end: (f32, f32), depth: u8, colour: Rgb<u8>) {
+    if depth == 0 {
+        draw_line(image, start.0, start.1, end.0, end.1, colour);
+        return;
+    }
+    let one = ((start.0 * 2.0 + end.0) / 3.0, (start.1 * 2.0 + end.1) / 3.0);
+    let two = ((start.0 + end.0 * 2.0) / 3.0, (start.1 + end.1 * 2.0) / 3.0);
+    let dx = two.0 - one.0;
+    let dy = two.1 - one.1;
+    let peak = (
+        one.0 + dx * 0.5 - dy * 0.866_025_4,
+        one.1 + dy * 0.5 + dx * 0.866_025_4,
+    );
+    draw_koch(image, start, one, depth - 1, colour);
+    draw_koch(image, one, peak, depth - 1, colour);
+    draw_koch(image, peak, two, depth - 1, colour);
+    draw_koch(image, two, end, depth - 1, colour);
+}
+
+fn render_tiles(scene: &Scene, image: &mut RgbImage, phase: f32) {
+    let palette = palette(&scene.palette);
+    match scene.kind {
+        SceneKind::OpArt => {
+            for y in 0..scene.height {
+                for x in 0..scene.width {
+                    let nx = x as f32 / scene.width as f32 * 2.0 - 1.0;
+                    let ny = y as f32 / scene.height as f32 * 2.0 - 1.0;
+                    let wave = ((nx * 24.0 + (ny * 7.0 + phase).sin() * 5.0).sin()
+                        + (ny * 20.0).cos())
+                        * 0.5;
+                    if wave.abs() > 0.65 {
+                        image.put_pixel(x, y, shade(palette, (wave + 1.0) * 0.5));
+                    }
+                }
+            }
+        }
+        SceneKind::HexWeave => {
+            let radius = (scene.width.min(scene.height) / 28).max(8) as f32;
+            let vertical = radius * 1.5;
+            let horizontal = radius * 1.732;
+            let rows = (scene.height as f32 / vertical) as usize + 2;
+            let columns = (scene.width as f32 / horizontal) as usize + 2;
+            for row in 0..rows {
+                for column in 0..columns {
+                    let cx = column as f32 * horizontal
+                        + if row % 2 == 0 { 0.0 } else { horizontal * 0.5 };
+                    let cy = row as f32 * vertical;
+                    let mut prior: Option<(f32, f32)> = None;
+                    for edge in 0..=6 {
+                        let angle = edge as f32 * std::f32::consts::TAU / 6.0 + phase * 0.02;
+                        let point = (cx + angle.cos() * radius, cy + angle.sin() * radius);
+                        if let Some(previous) = prior {
+                            draw_line(
+                                image,
+                                previous.0,
+                                previous.1,
+                                point.0,
+                                point.1,
+                                shade(palette, row as f32 / rows as f32),
+                            );
+                        }
+                        prior = Some(point);
+                    }
+                }
+            }
+        }
+        _ => {
+            let tiles = 18_u32;
+            let width = scene.width as f32 / tiles as f32;
+            let height = scene.height as f32 / tiles as f32;
+            let mut state = scene.seed.max(1);
+            for row in 0..tiles {
+                for column in 0..tiles {
+                    let left = column as f32 * width;
+                    let top = row as f32 * height;
+                    let colour = shade(palette, (row + column) as f32 / (tiles * 2) as f32);
+                    if random(&mut state) > 0.5 {
+                        draw_line(image, left, top, left + width, top + height, colour);
+                    } else {
+                        draw_line(image, left + width, top, left, top + height, colour);
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn render_cells(scene: &Scene, image: &mut RgbImage, phase: f32) {
+    let palette = palette(&scene.palette);
+    if matches!(scene.kind, SceneKind::ReactionDiffusion) {
+        for y in 0..scene.height {
+            for x in 0..scene.width {
+                let nx = x as f32 / scene.width as f32 * 10.0 - 5.0;
+                let ny = y as f32 / scene.height as f32 * 10.0 - 5.0;
+                let field = ((nx * nx + ny * ny).sqrt() * 5.5
+                    + (nx * 2.1 + phase).sin()
+                    + (ny * 1.7 - phase).cos())
+                .sin();
+                if field > 0.15 {
+                    image.put_pixel(x, y, shade(palette, (field + 1.0) * 0.5));
+                }
+            }
+        }
+        return;
+    }
+    let cells = scene.width.min(1_024) as usize;
+    let mut row = vec![false; cells];
+    row[cells / 2] = true;
+    let cell_width = scene.width as f32 / cells as f32;
+    for y in 0..scene.height {
+        let source = row.clone();
+        for (x, active) in source.iter().copied().enumerate() {
+            if active {
+                let start = (x as f32 * cell_width) as u32;
+                let end = (((x + 1) as f32 * cell_width) as u32).min(scene.width);
+                for pixel_x in start..end {
+                    image.put_pixel(pixel_x, y, shade(palette, y as f32 / scene.height as f32));
+                }
+            }
+            let left = source[(x + cells - 1) % cells] as u8;
+            let center = source[x] as u8;
+            let right = source[(x + 1) % cells] as u8;
+            let pattern = (left << 2) | (center << 1) | right;
+            row[x] = ((90_u8 >> pattern) & 1) == 1;
+        }
+    }
+}
+
+fn render_attractor(scene: &Scene, image: &mut RgbImage, phase: f32) {
+    let palette = palette(&scene.palette);
+    let (a, b, c, d) = (-1.4 + phase.sin() * 0.04, 1.6, 1.0, 0.7);
+    let (mut x, mut y) = (0.1_f32, 0.1_f32);
+    let points = scene.iterations.saturating_mul(160).clamp(40_000, 320_000);
+    for index in 0..points {
+        let next_x = (a * y).sin() + c * (a * x).cos();
+        let next_y = (b * x).sin() + d * (b * y).cos();
+        x = next_x;
+        y = next_y;
+        if index > 100 {
+            let px = scene.width as f32 * (0.5 + x * 0.22);
+            let py = scene.height as f32 * (0.5 + y * 0.22);
+            draw_glow(
+                image,
+                px as i32,
+                py as i32,
+                1,
+                shade(palette, index as f32 / points as f32),
+            );
+        }
+    }
+}
+
+fn draw_line(
+    image: &mut RgbImage,
+    start_x: f32,
+    start_y: f32,
+    end_x: f32,
+    end_y: f32,
+    colour: Rgb<u8>,
+) {
+    let dx = end_x - start_x;
+    let dy = end_y - start_y;
+    let steps = dx.abs().max(dy.abs()).ceil().clamp(1.0, 4_096.0) as usize;
+    for step in 0..=steps {
+        let amount = step as f32 / steps as f32;
+        draw_glow(
+            image,
+            (start_x + dx * amount) as i32,
+            (start_y + dy * amount) as i32,
+            1,
+            colour,
+        );
+    }
+}
+
+fn render_particles(scene: &Scene, image: &mut RgbImage, phase: f32) {
+    let palette = palette(&scene.palette);
+    let mut state = scene.seed.max(1);
+    for index in 0..scene.iterations * 10 {
+        let angle = random(&mut state) * std::f32::consts::TAU;
+        let radius = random(&mut state).sqrt() * scene.width.min(scene.height) as f32 * 0.46;
+        let spiral = angle + radius * 0.018 + phase;
+        let x = scene.width as f32 * 0.5 + spiral.cos() * radius;
+        let y = scene.height as f32 * 0.5 + spiral.sin() * radius * 1.25;
+        draw_glow(
+            image,
+            x as i32,
+            y as i32,
+            2 + (random(&mut state) * 5.0) as i32,
+            shade(palette, index as f32 / (scene.iterations * 10) as f32),
+        );
+    }
+}
+
+fn render_flow(scene: &Scene, image: &mut RgbImage, phase: f32) {
+    let palette = palette(&scene.palette);
+    let mut state = scene.seed.max(1);
+    for line in 0..scene.iterations {
+        let mut x = random(&mut state) * scene.width as f32;
+        let mut y = random(&mut state) * scene.height as f32;
+        let colour = shade(palette, line as f32 / scene.iterations as f32);
+        for _ in 0..90 {
+            draw_glow(image, x as i32, y as i32, 1, colour);
+            let angle = (x * 0.012 + phase).sin() * 2.1 + (y * 0.009 - phase * 0.7).cos() * 1.7;
+            x += angle.cos() * 2.2;
+            y += angle.sin() * 2.2;
+        }
+    }
+}
+
+fn draw_glow(image: &mut RgbImage, cx: i32, cy: i32, radius: i32, colour: Rgb<u8>) {
+    for dy in -radius..=radius {
+        for dx in -radius..=radius {
+            let x = cx + dx;
+            let y = cy + dy;
+            if x < 0 || y < 0 || x >= image.width() as i32 || y >= image.height() as i32 {
+                continue;
+            }
+            let distance = ((dx * dx + dy * dy) as f32).sqrt();
+            let strength = (1.0 - distance / (radius as f32 + 0.5)).max(0.0);
+            let pixel = image.get_pixel_mut(x as u32, y as u32);
+            for channel in 0..3 {
+                pixel[channel] =
+                    pixel[channel].saturating_add((colour[channel] as f32 * strength) as u8);
+            }
+        }
+    }
+}
+
+/// Every palette this renderer knows, by every name it answers to.
+pub const PALETTE_NAMES: [&str; 20] = [
+    "violet",
+    "royal",
+    "purple_haze",
+    "amethyst",
+    "ember",
+    "gold",
+    "solar_gold",
+    "ice",
+    "cyan",
+    "electric_cyan",
+    "blue_ocean",
+    "neon_sunset",
+    "sunset",
+    "twilight",
+    "pastel",
+    "rainbow",
+    "ice_fire",
+    "monochrome",
+    "chrome",
+    "emerald",
+];
+
+/// Whether a name resolves to a real palette.
+///
+/// The field used to accept any string and fall through to the default, so a
+/// whole paragraph of the Artist's prose could be stored as the palette and the
+/// render would report success. Every artwork came out the same because the
+/// request had quietly become the default scene.
+pub fn is_known_palette(name: &str) -> bool {
+    let wanted = name.trim().to_ascii_lowercase();
+    PALETTE_NAMES.iter().any(|known| *known == wanted)
+}
+
+fn palette(name: &str) -> ([u8; 3], [u8; 3]) {
+    match name.trim().to_ascii_lowercase().as_str() {
+        "violet" | "royal" | "purple_haze" | "amethyst" => ([8, 2, 14], [255, 120, 245]),
+        "ember" | "gold" | "solar_gold" => ([100, 24, 0], [255, 240, 168]),
+        "ice" | "cyan" | "electric_cyan" | "blue_ocean" => ([2, 7, 18], [180, 255, 255]),
+        "neon_sunset" | "sunset" => ([16, 3, 11], [255, 230, 80]),
+        "twilight" | "pastel" => ([9, 7, 25], [255, 217, 160]),
+        "rainbow" | "ice_fire" => ([18, 2, 29], [255, 99, 63]),
+        "monochrome" | "chrome" => ([3, 3, 3], [255, 255, 255]),
+        _ => ([3, 16, 7], [220, 255, 220]),
+    }
+}
+
+fn shade((low, high): ([u8; 3], [u8; 3]), amount: f32) -> Rgb<u8> {
+    let amount = amount.clamp(0.0, 1.0);
+    Rgb(std::array::from_fn(|index| {
+        (low[index] as f32 * (1.0 - amount) + high[index] as f32 * amount) as u8
+    }))
+}
+
+fn random(state: &mut u64) -> f32 {
+    *state ^= *state << 13;
+    *state ^= *state >> 7;
+    *state ^= *state << 17;
+    (*state as u32) as f32 / u32::MAX as f32
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The payload shapes actually seen on stream, and what each must produce.
+    #[test]
+    fn a_layer_stack_sets_the_subject_rather_than_defaulting_to_particles() {
+        let scene = Scene::parse(concat!(
+            "version 2
+",
+            "layers=kaleidoscope@0.45@screen@violet;lissajous@0.35@multiply@electric_cyan"
+        ))
+        .expect("a usable stack");
+        assert!(
+            matches!(scene.kind, SceneKind::Kaleidoscope),
+            "the first layer is the subject, got {:?}",
+            scene.kind
+        );
+        assert_eq!(scene.layers.len(), 2);
+    }
+
+    #[test]
+    fn prose_is_refused_rather_than_stored_as_a_palette() {
+        // Verbatim: a whole paragraph arrived as the palette and rendered the
+        // default scene while reporting success.
+        let prose = "To explore subtle shadow manipulation in generative art,                      let's consider a Fractal Tree structure";
+        assert!(
+            Scene::parse(&format!(
+                "version 2
+palette={prose}"
+            ))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn an_unknown_palette_is_refused() {
+        assert!(
+            Scene::parse(
+                "version 2
+palette=rose_gold"
+            )
+            .is_err()
+        );
+        assert!(
+            Scene::parse(
+                "version 2
+palette=electric_cyan"
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn an_out_of_range_layer_alpha_is_clamped_not_rejected() {
+        // The Artist writes alphas of 3 and 4; the layer is still what it asked
+        // for, so the number is corrected rather than the request discarded.
+        let scene = Scene::parse(
+            "version 2
+layers=moire@3@screen@electric_cyan",
+        )
+        .expect("the layer survives a bad alpha");
+        assert_eq!(scene.layers.len(), 1);
+        assert!((scene.layers[0].alpha - 1.0).abs() < 1e-6);
+    }
+
+    /// Verbatim from the stream: two real families and one the Artist invented.
+    #[test]
+    fn an_invented_layer_does_not_discard_the_real_ones() {
+        let scene = Scene::parse(concat!(
+            "version 2
+",
+            "layers=kaleidoscope@0.45@screen@violet;",
+            "spirograph@0.35@add@solar_gold;",
+            "reeds_and_inkwells@0.2@screen@violet"
+        ))
+        .expect("the usable layers must survive");
+        assert_eq!(scene.layers.len(), 2, "{:?}", scene.layers);
+        assert_eq!(scene.unknown_layers, vec!["reeds_and_inkwells".to_owned()]);
+    }
+
+    #[test]
+    fn a_stack_of_only_invented_layers_is_refused() {
+        // Rendering the default scene under an unrelated request is worse than
+        // saying the request could not be met.
+        assert!(
+            Scene::parse(
+                "version 2
+layers=reeds_and_inkwells@0.2"
+            )
+            .is_err()
+        );
+    }
+    use image::AnimationDecoder;
+
+    #[test]
+    fn version_two_dsl_parses_and_is_bounded() {
+        let scene = Scene::parse(
+            "version 2\ntype=flow_field\nwidth=320\nheight=480\niterations=80\npalette=violet",
+        )
+        .unwrap();
+        assert_eq!(scene.width, 320);
+        assert!(matches!(scene.kind, SceneKind::FlowField));
+    }
+
+    #[test]
+    fn oversized_render_is_refused() {
+        let scene = Scene {
+            width: MAX_DIMENSION + 1,
+            ..Scene::default()
+        };
+        assert!(scene.validate().is_err());
+    }
+
+    #[test]
+    fn live_preview_frame_count_is_bounded() {
+        assert!(
+            Scene::default()
+                .render_gif(Path::new("unused.gif"), 1)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn live_preview_contains_distinct_animation_frames() {
+        let path = std::env::temp_dir().join(format!(
+            "teledra-fractus-animation-{}.gif",
+            std::process::id()
+        ));
+        let scene = Scene::parse(
+            "version 2\ntype=particles\nwidth=96\nheight=128\niterations=48\npalette=emerald",
+        )
+        .unwrap();
+        scene.render_gif(&path, 4).unwrap();
+        let decoder = image::codecs::gif::GifDecoder::new(std::io::BufReader::new(
+            std::fs::File::open(&path).unwrap(),
+        ))
+        .unwrap();
+        let frames = decoder.into_frames().collect_frames().unwrap();
+        assert_eq!(frames.len(), 4);
+        assert_ne!(frames[0].buffer().as_raw(), frames[1].buffer().as_raw());
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn original_artist_families_render_non_blank_frames() {
+        for family in [
+            "julia",
+            "burning_ship",
+            "tricorn",
+            "newton",
+            "mandala",
+            "woven_web",
+            "guilloche",
+            "lissajous",
+            "moire",
+            "orbital_lace",
+        ] {
+            let scene = Scene::parse(&format!(
+                "version 2\ntype={family}\nwidth=96\nheight=96\niterations=40\npalette=purple_haze"
+            ))
+            .unwrap();
+            let image = scene.render_frame(0.0);
+            let lit = image
+                .pixels()
+                .filter(|pixel| pixel.0.iter().any(|channel| *channel > 4))
+                .count();
+            assert!(lit > 40, "{family} was blank");
+        }
+    }
+
+    #[test]
+    fn layered_scene_supports_alpha_and_blend_modes() {
+        let scene = Scene::parse(
+            "version 2\ntype=mandala\nwidth=96\nheight=96\niterations=40\npalette=purple_haze\nlayers=moire@0.35@screen@electric_cyan;woven_web@0.2@add@solar_gold",
+        )
+        .unwrap();
+        assert_eq!(scene.layers.len(), 2);
+        let image = scene.render_frame(0.0);
+        assert!(
+            image
+                .pixels()
+                .any(|pixel| pixel.0.iter().any(|value| *value > 10))
+        );
+    }
+}

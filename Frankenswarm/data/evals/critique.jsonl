@@ -1,0 +1,1 @@
+{"id":"crit_01","prompt":"What is the defect in this code: list_val = [1,2]; list_val[2] = 3","expected_output":"IndexError","scoring_method":"regex"}

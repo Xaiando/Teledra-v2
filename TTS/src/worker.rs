@@ -18,6 +18,9 @@
 
 use std::io::{BufReader, Write};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::time::Duration;
 
 use thiserror::Error;
 
@@ -33,6 +36,8 @@ pub enum SynthesisError {
     Start(std::io::Error),
     #[error("the voice worker did not become ready")]
     NeverReady,
+    #[error("the voice worker did not finish synthesis within two minutes")]
+    TimedOut,
     #[error("the voice worker has stopped and cannot speak")]
     Stopped,
     #[error("could not send an utterance to the voice worker: {0}")]
@@ -56,7 +61,7 @@ pub trait Synthesizer {
 pub struct WarmWorker {
     child: Child,
     stdin: ChildStdin,
-    stdout: BufReader<ChildStdout>,
+    stdout: Option<BufReader<ChildStdout>>,
 }
 
 impl WarmWorker {
@@ -65,16 +70,36 @@ impl WarmWorker {
     /// The wait happens once per session, not once per line, which is the
     /// entire point of this type.
     pub fn start(mut command: Command) -> Result<Self, SynthesisError> {
+        Self::start_inner(&mut command, None)
+    }
+
+    pub(crate) fn start_reporting(
+        mut command: Command,
+        worker_pid: Arc<AtomicU32>,
+    ) -> Result<Self, SynthesisError> {
+        Self::start_inner(&mut command, Some(worker_pid))
+    }
+
+    fn start_inner(
+        command: &mut Command,
+        worker_pid: Option<Arc<AtomicU32>>,
+    ) -> Result<Self, SynthesisError> {
         let mut child = command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
             .map_err(SynthesisError::Start)?;
+        if let Some(worker_pid) = worker_pid {
+            worker_pid.store(child.id(), Ordering::Release);
+        }
 
-        let stdin = child.stdin.take().ok_or(SynthesisError::NeverReady)?;
-        let stdout = child.stdout.take().ok_or(SynthesisError::NeverReady)?;
-        let stderr = child.stderr.take().ok_or(SynthesisError::NeverReady)?;
+        let pipes = (child.stdin.take(), child.stdout.take(), child.stderr.take());
+        let (Some(stdin), Some(stdout), Some(stderr)) = pipes else {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(SynthesisError::NeverReady);
+        };
 
         // Readiness and diagnostics arrive on stderr while audio flows on
         // stdout, so the two never interleave.
@@ -90,14 +115,18 @@ impl WarmWorker {
             }
         });
 
-        // No timeout: loading a model legitimately takes ten seconds or more,
-        // and the channel closes if the worker dies, which ends the wait.
-        ready_rx.recv().map_err(|_| SynthesisError::NeverReady)?;
+        // Model startup is slow, but it still needs a ceiling so an optional
+        // voice can never leave an orphan or hold application shutdown.
+        if ready_rx.recv_timeout(Duration::from_secs(180)).is_err() {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(SynthesisError::NeverReady);
+        }
 
         Ok(Self {
             child,
             stdin,
-            stdout: BufReader::new(stdout),
+            stdout: Some(BufReader::new(stdout)),
         })
     }
 
@@ -106,6 +135,10 @@ impl WarmWorker {
         drop(self.stdin);
         let _ = self.child.kill();
         let _ = self.child.wait();
+    }
+
+    pub fn is_running(&mut self) -> bool {
+        self.child.try_wait().is_ok_and(|status| status.is_none())
     }
 }
 
@@ -120,9 +153,29 @@ impl Synthesizer for WarmWorker {
         writeln!(self.stdin, "{}\t{}", voice.slug(), text).map_err(SynthesisError::Send)?;
         self.stdin.flush().map_err(SynthesisError::Send)?;
 
-        // Reads to the end marker, so nothing is left in the pipe to stall the
-        // worker or bleed into the next utterance.
-        Ok(pcm::read_utterance(&mut self.stdout)?)
+        // Anonymous-pipe reads have no portable timeout. Move the reader to a
+        // short-lived drain thread; on expiry, killing the child closes the
+        // pipe, releases the reader, and lets session shutdown complete.
+        let mut stdout = self.stdout.take().ok_or(SynthesisError::Stopped)?;
+        let (result_tx, result_rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let result = pcm::read_utterance(&mut stdout);
+            let _ = result_tx.send((stdout, result));
+        });
+        match result_rx.recv_timeout(Duration::from_secs(120)) {
+            Ok((stdout, result)) => {
+                self.stdout = Some(stdout);
+                Ok(result?)
+            }
+            Err(_) => {
+                let _ = self.child.kill();
+                let _ = self.child.wait();
+                if let Ok((stdout, _)) = result_rx.recv_timeout(Duration::from_secs(2)) {
+                    self.stdout = Some(stdout);
+                }
+                Err(SynthesisError::TimedOut)
+            }
+        }
     }
 }
 

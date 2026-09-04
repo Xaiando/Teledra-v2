@@ -11,10 +11,33 @@ crossterm = "0.28"
 # pulls in every format the crate supports.
 image = { version = "0.25", default-features = false, features = ["png"] }
 ratatui = "0.29"
+serde.workspace = true
+serde_json.workspace = true
 teledra-agents = { path = "../Agents" }
 teledra-brain = { path = "Brain" }
 teledra-court = { path = "../Court" }
+teledra-fractus = { path = "../Fractus" }
+teledra-frankenswarm = { path = "../Frankenswarm" }
+teledra-memory = { path = "../Memory" }
+teledra-music = { path = "../Music" }
+teledra-kraken = { path = "../Kraken" }
+teledra-research = { path = "../Research" }
+teledra-sidecars = { path = "../Sidecars" }
+teledra-swarm = { path = "../Swarm" }
+teledra-tower = { path = "../Tower" }
+teledra-tts = { path = "../TTS" }
+teledra-workshop = { path = "../Workshop" }
 tokio.workspace = true
+
+# Console mode is set directly rather than left to the terminal backend's own
+# probe; see `terminal.rs` for why.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_System_Console",
+    "Win32_System_JobObjects",
+    "Win32_System_Threading",
+] }
 
 [[bin]]
 name = "teledra"

@@ -3,334 +3,859 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
-    widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap},
+    widgets::{Block, Borders, Clear, Paragraph, Wrap},
 };
-use teledra_agents::AgentId;
 
-use crate::app::App;
+use crate::app::{App, FocusField};
+use crate::portrait::Portrait;
+use crate::session::SessionSnapshot;
 
-const GOLD: Color = Color::Rgb(218, 179, 92);
-const INK: Color = Color::Rgb(220, 220, 226);
-const MUTED: Color = Color::Rgb(125, 128, 142);
-const QUEEN: Color = Color::Rgb(205, 124, 220);
-const USER: Color = Color::Rgb(106, 182, 255);
-const PANEL: Color = Color::Rgb(31, 33, 43);
+const NEON: Color = Color::Rgb(0, 255, 66);
+const PURPLE: Color = Color::Rgb(147, 51, 234);
+const DARK_PURPLE: Color = Color::Rgb(80, 0, 120);
+const LABEL: Color = Color::Rgb(80, 80, 80);
+const MUTED: Color = Color::Rgb(128, 128, 128);
+const TRACE: Color = Color::Rgb(170, 170, 170);
+const GOLD: Color = Color::Rgb(255, 215, 0);
 
+/// The V1 control room, with the original geometry and visual language.
 pub fn render(frame: &mut Frame<'_>, app: &App) {
     let area = frame.area();
     let rows = Layout::default()
         .direction(Direction::Vertical)
+        .margin(1)
         .constraints([
             Constraint::Length(3),
-            Constraint::Min(8),
+            Constraint::Min(10),
             Constraint::Length(3),
-            Constraint::Length(1),
         ])
         .split(area);
 
     render_header(frame, rows[0], app);
     render_court(frame, rows[1], app);
     render_input(frame, rows[2], app);
-    render_footer(frame, rows[3], app);
 
     if app.help_open() {
-        render_help(frame, centered_rect(62, 62, area));
+        render_help(frame, centered_rect(68, 68, area));
     }
 }
 
-fn render_header(frame: &mut Frame<'_>, area: Rect, app: &App) {
-    let title = Line::from(vec![
-        Span::styled(
-            " TELEDRA V2 ",
-            Style::default()
-                .fg(Color::Black)
-                .bg(GOLD)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled("  Sovereign Court  ", Style::default().fg(INK)),
-        Span::styled("Qwen 2.5 only", Style::default().fg(GOLD)),
-    ]);
-    let status = Line::from(vec![
-        Span::styled(" ", Style::default()),
-        Span::styled(app.notice(), Style::default().fg(MUTED)),
-    ]);
-    let header = Paragraph::new(vec![title, status]).block(
-        Block::default()
-            .borders(Borders::BOTTOM)
-            .border_style(Style::default().fg(GOLD)),
-    );
-    frame.render_widget(header, area);
-}
-
-/// Widest the left column is allowed to grow, and the narrowest terminal that
-/// still earns one: below this the conversation needs every column it can get.
-const CHROME_WIDTH: u16 = 28;
-const CHROME_MINIMUM_TERMINAL: u16 = 72;
-
-fn render_court(frame: &mut Frame<'_>, area: Rect, app: &App) {
-    if area.width < CHROME_MINIMUM_TERMINAL {
-        // A narrow terminal spends its width on the court's words.
-        render_conversation(frame, area, app);
-        return;
-    }
-
-    let columns = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Length(CHROME_WIDTH), Constraint::Min(30)])
-        .split(area);
-    render_chrome(frame, columns[0], app);
-    render_conversation(frame, columns[1], app);
-}
-
-/// The left column: the court's likeness above, its roster below.
-fn render_chrome(frame: &mut Frame<'_>, area: Rect, app: &App) {
-    // The roster is the fixed obligation; the portrait takes what is left, and
-    // is skipped entirely when that would be too little to recognise.
-    let roster_height = AgentId::ALL.len() as u16;
-    let portrait_height = area.height.saturating_sub(roster_height);
-
-    if app.portrait().is_none() || portrait_height < 6 {
-        render_roster(frame, area, app);
-        return;
-    }
-
+/// Read-only portrait view opened by `/Vertical` in a second terminal.
+pub fn render_vertical(frame: &mut Frame<'_>, snapshot: &SessionSnapshot, portrait: &Portrait) {
+    let area = frame.area();
     let rows = Layout::default()
         .direction(Direction::Vertical)
+        .margin(1)
         .constraints([
-            Constraint::Length(portrait_height),
-            Constraint::Length(roster_height),
+            Constraint::Length(4),
+            Constraint::Percentage(52),
+            Constraint::Min(10),
+            Constraint::Length(3),
         ])
         .split(area);
-    render_portrait(frame, rows[0], app);
-    render_roster(frame, rows[1], app);
-}
 
-fn render_portrait(frame: &mut Frame<'_>, area: Rect, app: &App) {
-    let Some(portrait) = app.portrait() else {
-        return;
-    };
-    let lines = portrait.lines(area.width, area.height);
-    if lines.is_empty() {
-        return;
-    }
-    frame.render_widget(Paragraph::new(Text::from(lines)), area);
-}
-
-fn render_roster(frame: &mut Frame<'_>, area: Rect, app: &App) {
-    let items: Vec<ListItem<'_>> = AgentId::ALL
-        .iter()
-        .map(|agent| {
-            let pending = app.pending().is_some_and(|pending| pending.agent == *agent);
-            let suffix = if pending {
-                format!(" {}", app.spinner())
-            } else {
-                String::new()
-            };
-            ListItem::new(Line::from(vec![
-                Span::styled("  ", Style::default()),
-                Span::raw(format!("{}{}", agent.slug(), suffix)),
-            ]))
-        })
-        .collect();
-    let mut state = ListState::default().with_selected(
-        AgentId::ALL
-            .iter()
-            .position(|agent| *agent == app.active_agent()),
+    let header = Paragraph::new(vec![
+        Line::from(Span::styled(
+            "SIBELIUM COGNITIVE INTERFACE",
+            Style::default().fg(NEON).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(vec![
+            Span::styled(
+                "TELEDRA",
+                Style::default().fg(GOLD).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" // VERTICAL BROADCAST", Style::default().fg(PURPLE)),
+        ]),
+    ])
+    .alignment(Alignment::Center)
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(PURPLE)),
     );
-    let list = List::new(items)
-        .block(
-            Block::default()
-                .title(" COURT ")
-                .borders(Borders::RIGHT)
-                .border_style(Style::default().fg(PANEL)),
-        )
-        .highlight_symbol("◆ ")
-        .highlight_style(Style::default().fg(GOLD).add_modifier(Modifier::BOLD));
-    frame.render_stateful_widget(list, area, &mut state);
-}
+    frame.render_widget(header, rows[0]);
 
-fn render_conversation(frame: &mut Frame<'_>, area: Rect, app: &App) {
-    let agent = app.active_agent();
-    let mut lines = vec![
-        Line::from(Span::styled(
-            agent.title(),
+    render_portrait_source(frame, rows[1], portrait);
+
+    let mut speech = Vec::new();
+    let start = snapshot.messages.len().saturating_sub(8);
+    for message in &snapshot.messages[start..] {
+        push_labeled_message(
+            &mut speech,
+            format!("[{}] ", message.sender),
+            &message.text,
             Style::default()
-                .fg(if agent == AgentId::Queen { QUEEN } else { GOLD })
+                .fg(sender_color(&message.sender))
                 .add_modifier(Modifier::BOLD),
-        )),
-        Line::from(Span::styled(
-            "Role-local court session",
-            Style::default().fg(MUTED),
-        )),
-        Line::default(),
-    ];
-
-    if app.active_history().is_empty()
-        && !app.pending().is_some_and(|pending| pending.agent == agent)
-    {
-        lines.push(Line::from(Span::styled(
-            "The chamber is quiet. Address this member of the court below.",
+            Style::default().fg(NEON),
+        );
+    }
+    if speech.is_empty() {
+        speech.push(Line::from(Span::styled(
+            "The sovereign court is gathering its thoughts...",
             Style::default().fg(MUTED),
         )));
     }
-
-    for turn in app.active_history() {
-        push_speech(
-            &mut lines,
-            "YOU  ",
-            Style::default().fg(USER).add_modifier(Modifier::BOLD),
-            &turn.user,
-        );
-        lines.push(Line::default());
-        push_speech(
-            &mut lines,
-            &format!("{:<5}", agent.slug().to_ascii_uppercase()),
-            Style::default()
-                .fg(if agent == AgentId::Queen { QUEEN } else { GOLD })
-                .add_modifier(Modifier::BOLD),
-            &turn.assistant,
-        );
-        lines.push(Line::default());
-    }
-
-    if let Some(pending) = app.pending().filter(|pending| pending.agent == agent) {
-        push_speech(
-            &mut lines,
-            "YOU  ",
-            Style::default().fg(USER).add_modifier(Modifier::BOLD),
-            &pending.user,
-        );
-        lines.push(Line::default());
-        lines.push(Line::from(vec![
+    if snapshot.pending.is_some() {
+        speech.push(Line::from(vec![
             Span::styled(
-                format!("{}  ", app.spinner()),
+                "[Teledra] ",
                 Style::default().fg(GOLD).add_modifier(Modifier::BOLD),
             ),
-            Span::styled("Considering…", Style::default().fg(MUTED)),
+            Span::styled("Considering...", Style::default().fg(NEON)),
         ]));
     }
+    let bottom = scroll_bottom(&speech, rows[2]);
+    frame.render_widget(
+        Paragraph::new(speech)
+            .wrap(Wrap { trim: false })
+            .scroll((bottom, 0))
+            .block(
+                Block::default()
+                    .title(" LIVE NEURAL CHANNEL ")
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(PURPLE)),
+            ),
+        rows[2],
+    );
 
-    let content_width = area.width.saturating_sub(1).max(1) as usize;
-    let rendered_line_count: usize = lines
-        .iter()
-        .map(|line| line.width().max(1).div_ceil(content_width))
-        .sum();
-    let bottom = rendered_line_count.saturating_sub(area.height as usize) as u16;
-    let mut conversation = Paragraph::new(Text::from(lines))
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled(" STATUS: ", Style::default().fg(PURPLE)),
+            Span::styled(&snapshot.notice, Style::default().fg(NEON)),
+        ]))
+        .alignment(Alignment::Center)
         .block(
             Block::default()
-                .title(format!(" {} ", agent.title()))
-                .borders(Borders::NONE),
-        )
-        .wrap(Wrap { trim: false });
-    conversation = conversation.scroll((bottom.saturating_sub(app.scroll()), 0));
-    frame.render_widget(conversation, area);
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(DARK_PURPLE)),
+        ),
+        rows[3],
+    );
 }
 
-fn push_speech<'a>(lines: &mut Vec<Line<'a>>, label: &str, label_style: Style, content: &'a str) {
-    let mut content_lines = content.lines();
-    let first = content_lines.next().unwrap_or_default();
-    lines.push(Line::from(vec![
-        Span::styled(label.to_owned(), label_style),
-        Span::styled(first, Style::default().fg(INK)),
-    ]));
-    for continuation in content_lines {
+/// Read-only kingdom observability view opened by `/Dashboard`.
+pub fn render_dashboard(frame: &mut Frame<'_>, snapshot: &SessionSnapshot) {
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .margin(1)
+        .constraints([
+            Constraint::Length(3),
+            Constraint::Length(5),
+            Constraint::Min(10),
+            Constraint::Length(3),
+        ])
+        .split(frame.area());
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled(
+                "TELEDRA KINGDOM OBSERVATORY",
+                Style::default().fg(GOLD).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" // READ-ONLY", Style::default().fg(PURPLE)),
+        ]))
+        .alignment(Alignment::Center)
+        .block(neon_block(" LIVE DASHBOARD ")),
+        rows[0],
+    );
+    let status = vec![
+        Line::from(vec![
+            Span::styled("Mode: ", Style::default().fg(PURPLE)),
+            Span::styled(&snapshot.mode, Style::default().fg(NEON)),
+            Span::styled("   Night Desk: ", Style::default().fg(PURPLE)),
+            Span::styled(
+                if snapshot.night_desk { "ON" } else { "OFF" },
+                Style::default().fg(if snapshot.night_desk {
+                    Color::Yellow
+                } else {
+                    MUTED
+                }),
+            ),
+        ]),
+        Line::from(format!(
+            "Pending proposals: {}   Workshop experiments: {}   Court messages: {}",
+            snapshot.pending_proposals,
+            snapshot.workshop_experiments,
+            snapshot.messages.len()
+        )),
+        Line::from(format!("Status: {}", snapshot.notice)),
+    ];
+    frame.render_widget(
+        Paragraph::new(status).block(purple_block(" KINGDOM STATUS ")),
+        rows[1],
+    );
+
+    let columns = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(rows[2]);
+    let left = snapshot
+        .private_events
+        .iter()
+        .rev()
+        .take(18)
+        .rev()
+        .map(|event| {
+            Line::from(vec![
+                Span::styled(
+                    format!("[{}] ", event.source),
+                    Style::default()
+                        .fg(sender_color(&event.source))
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(&event.text, Style::default().fg(TRACE)),
+            ])
+        })
+        .collect::<Vec<_>>();
+    frame.render_widget(
+        Paragraph::new(if left.is_empty() {
+            vec![Line::from("No backstage events yet")]
+        } else {
+            left
+        })
+        .wrap(Wrap { trim: false })
+        .block(purple_block(" OPERATIONS / DIAGNOSTICS ")),
+        columns[0],
+    );
+    let right = snapshot
+        .messages
+        .iter()
+        .rev()
+        .take(16)
+        .rev()
+        .map(|message| {
+            Line::from(vec![
+                Span::styled(
+                    format!("[{}] ", message.sender),
+                    Style::default()
+                        .fg(sender_color(&message.sender))
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(&message.text, Style::default().fg(NEON)),
+            ])
+        })
+        .collect::<Vec<_>>();
+    frame.render_widget(
+        Paragraph::new(if right.is_empty() {
+            vec![Line::from("The public court is quiet")]
+        } else {
+            right
+        })
+        .wrap(Wrap { trim: false })
+        .block(purple_block(" COURT ACTIVITY ")),
+        columns[1],
+    );
+    render_view_footer(frame, rows[3], snapshot);
+}
+
+/// Read-only mission and treasury board opened by `/Work`.
+pub fn render_work_board(frame: &mut Frame<'_>, snapshot: &SessionSnapshot) {
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .margin(1)
+        .constraints([
+            Constraint::Length(3),
+            Constraint::Length(4),
+            Constraint::Min(12),
+            Constraint::Length(3),
+        ])
+        .split(frame.area());
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled(
+                "TELEDRA WORK BOARD",
+                Style::default().fg(GOLD).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" // MISSIONS & INCOME LEADS", Style::default().fg(PURPLE)),
+        ]))
+        .alignment(Alignment::Center)
+        .block(neon_block(" READ-ONLY BOARD ")),
+        rows[0],
+    );
+    frame.render_widget(
+        Paragraph::new(vec![
+            Line::from(snapshot.notice.as_str()),
+            Line::from("YOU = operator action   AGENT = court deliverable   BOUNTY = bug bounty   IDEA = one-off product"),
+        ])
+        .block(purple_block(" STANDING POLICY ")),
+        rows[1],
+    );
+
+    let columns = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage(25),
+            Constraint::Percentage(25),
+            Constraint::Percentage(25),
+            Constraint::Percentage(25),
+        ])
+        .split(rows[2]);
+    for (index, lane) in ["you", "agent", "bounty", "idea"].iter().enumerate() {
+        let matching = snapshot
+            .private_events
+            .iter()
+            .filter(|event| {
+                (event.source.eq_ignore_ascii_case("Treasury")
+                    && event
+                        .text
+                        .to_ascii_lowercase()
+                        .contains(&format!("[{lane}]")))
+                    || (index == 1 && event.source.eq_ignore_ascii_case("Work"))
+            })
+            .map(|event| Line::from(event.text.as_str()))
+            .collect::<Vec<_>>();
+        let skip = matching.len().saturating_sub(16);
+        let mut lines = matching.into_iter().skip(skip).collect::<Vec<_>>();
+        if lines.is_empty() {
+            lines.push(Line::from(Span::styled(
+                "No entries",
+                Style::default().fg(MUTED),
+            )));
+        }
+        frame.render_widget(
+            Paragraph::new(lines)
+                .wrap(Wrap { trim: false })
+                .block(purple_block(&format!(" {} ", lane.to_ascii_uppercase()))),
+            columns[index],
+        );
+    }
+    render_view_footer(frame, rows[3], snapshot);
+}
+
+fn neon_block(title: &str) -> Block<'_> {
+    Block::default()
+        .title(title)
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(NEON))
+}
+
+fn purple_block(title: &str) -> Block<'_> {
+    Block::default()
+        .title(title)
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(PURPLE))
+}
+
+fn render_view_footer(frame: &mut Frame<'_>, area: Rect, snapshot: &SessionSnapshot) {
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled(" LIVE: ", Style::default().fg(PURPLE)),
+            Span::styled(&snapshot.notice, Style::default().fg(NEON)),
+            Span::styled("   Esc/Ctrl+Q closes this view", Style::default().fg(MUTED)),
+        ]))
+        .alignment(Alignment::Center)
+        .block(Block::default().borders(Borders::ALL)),
+        area,
+    );
+}
+
+fn render_header(frame: &mut Frame<'_>, area: Rect, app: &App) {
+    let night = app.night_desk_enabled();
+    let suggestions = app.pending_proposals();
+    let header = Line::from(vec![
+        Span::styled(
+            "SIBELIUM COGNITIVE INTERFACE v0.1.0 // HOST: TELEDRA",
+            Style::default().fg(NEON).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(" | STATUS: ", Style::default().fg(PURPLE)),
+        Span::styled(app.notice().to_uppercase(), Style::default().fg(NEON)),
+        Span::styled(" | SUGGESTIONS: ", Style::default().fg(PURPLE)),
+        Span::styled(
+            suggestions.to_string(),
+            if suggestions > 0 {
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(MUTED)
+            },
+        ),
+        Span::styled(" | NIGHT: ", Style::default().fg(PURPLE)),
+        Span::styled(
+            if night { "ON" } else { "OFF" },
+            if night {
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(MUTED)
+            },
+        ),
+    ]);
+    frame.render_widget(
+        Paragraph::new(header).alignment(Alignment::Center).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(PURPLE)),
+        ),
+        area,
+    );
+}
+
+fn render_court(frame: &mut Frame<'_>, area: Rect, app: &App) {
+    let columns = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(35), Constraint::Percentage(65)])
+        .split(area);
+    render_left(frame, columns[0], app);
+    let right = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(12), Constraint::Length(16)])
+        .split(columns[1]);
+    render_conversation(frame, right[0], app);
+    render_private_trace(frame, right[1], app);
+}
+
+fn render_left(frame: &mut Frame<'_>, area: Rect, app: &App) {
+    let sections = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Min(6),
+            Constraint::Length(10),
+            Constraint::Length(5),
+        ])
+        .split(area);
+    if let Some(portrait) = app.portrait() {
+        render_portrait_source(frame, sections[0], portrait);
+    } else {
+        frame.render_widget(
+            Paragraph::new("").block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(DARK_PURPLE)),
+            ),
+            sections[0],
+        );
+    }
+
+    let emotion = match app.mode() {
+        "Comedic" => "Teasing / Playful",
+        "Empathetic" => "Protective / Gentle",
+        "Dark Comedic" => "Cynical / Deadpan",
+        "Babble" => "Excited / Curious",
+        "Streamer" => "Regal thoughts / Live broadcast",
+        "Game Co-Pilot" => "Game Co-Pilot / Couch companion",
+        "Night Desk" => "Quiet / Autonomous",
+        _ => "Proud / Imperial",
+    };
+    let suggestions = app.pending_proposals();
+    let proposals_text = if suggestions > 0 {
+        format!("{suggestions} PENDING")
+    } else {
+        "CLEAR".to_owned()
+    };
+    let workshop_text = format!("{} EXP", app.workshop_count());
+    let protocols = vec![
+        protocol_line("Behavior  ", app.mode(), PURPLE, true),
+        protocol_line("Emotion   ", emotion, NEON, false),
+        protocol_line("Voice     ", teledra_tts::queen_voice_mode(), PURPLE, false),
+        // A console without 24-bit colour still runs the court perfectly and
+        // renders the portrait as an unreadable field of blocks. Naming it here
+        // is the difference between a known limitation and a bug report.
+        protocol_line(
+            "Display   ",
+            if app.truecolor() {
+                "24-BIT"
+            } else {
+                "NO COLOUR"
+            },
+            if app.truecolor() { PURPLE } else { Color::Red },
+            false,
+        ),
+        protocol_line(
+            "Music     ",
+            // Muted is neither on nor off: the piece is still running and one
+            // key brings it straight back, which the operator needs to see.
+            match (app.music_enabled(), app.music_muted()) {
+                (_, true) => "MUTED",
+                (true, false) => "ON",
+                (false, false) => "OFF",
+            },
+            match (app.music_enabled(), app.music_muted()) {
+                (_, true) => Color::Yellow,
+                (true, false) => NEON,
+                (false, false) => Color::Red,
+            },
+            true,
+        ),
+        protocol_line(
+            "Proposals ",
+            &proposals_text,
+            if suggestions > 0 {
+                Color::Yellow
+            } else {
+                LABEL
+            },
+            suggestions > 0,
+        ),
+        protocol_line("Workshop  ", &workshop_text, PURPLE, false),
+        protocol_line(
+            "NightDesk ",
+            if app.night_desk_enabled() {
+                "ACTIVE"
+            } else {
+                "OFF"
+            },
+            if app.night_desk_enabled() {
+                Color::Yellow
+            } else {
+                LABEL
+            },
+            app.night_desk_enabled(),
+        ),
+        Line::default(),
+        Line::from(Span::styled(
+            "Tab:Mode  Ctrl+M:Music  Ctrl+L/K/E/P:Like/Dislike/Expand/Playlist",
+            Style::default().fg(Color::Rgb(60, 60, 60)),
+        )),
+    ];
+    frame.render_widget(
+        Paragraph::new(protocols).block(
+            Block::default()
+                .title(" PROTOCOLS ")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(DARK_PURPLE)),
+        ),
+        sections[1],
+    );
+
+    let state = app.somatic();
+    let face = if state.face_detected {
+        "PRESENT"
+    } else if state.source.is_empty() {
+        "UNKNOWN"
+    } else {
+        "ABSENT"
+    };
+    let face_color = if state.face_detected {
+        NEON
+    } else if state.source.is_empty() {
+        LABEL
+    } else {
+        Color::Red
+    };
+    let asymmetry = state.shoulder_asymmetry.unwrap_or_default();
+    let posture = if state.shoulder_asymmetry.is_none() {
+        "UNKNOWN"
+    } else if asymmetry > 0.08 {
+        "POOR"
+    } else if asymmetry > 0.04 {
+        "UNEVEN"
+    } else {
+        "EXCELLENT"
+    };
+    let posture_color = if state.shoulder_asymmetry.is_none() {
+        LABEL
+    } else if asymmetry > 0.08 {
+        Color::Red
+    } else if asymmetry > 0.04 {
+        Color::Yellow
+    } else {
+        NEON
+    };
+    let filled = ((asymmetry.clamp(0.0, 0.16) / 0.16) * 16.0).round() as usize;
+    let meter = format!("[{}{}]", "#".repeat(filled), ".".repeat(16 - filled));
+    let somatic = vec![
+        protocol_line("Face    ", face, face_color, false),
+        protocol_line("Posture ", posture, posture_color, false),
+        Line::from(vec![
+            Span::styled("Asym    ", Style::default().fg(LABEL)),
+            Span::styled(format!("{asymmetry:.3}"), Style::default().fg(PURPLE)),
+            Span::styled(format!(" {meter}"), Style::default().fg(DARK_PURPLE)),
+        ]),
+    ];
+    frame.render_widget(
+        Paragraph::new(somatic).block(
+            Block::default()
+                .title(" SOMATIC ")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(DARK_PURPLE)),
+        ),
+        sections[2],
+    );
+}
+
+fn protocol_line<'a>(label: &'a str, value: &'a str, color: Color, bold: bool) -> Line<'a> {
+    let mut style = Style::default().fg(color);
+    if bold {
+        style = style.add_modifier(Modifier::BOLD);
+    }
+    Line::from(vec![
+        Span::styled(label, Style::default().fg(LABEL)),
+        Span::styled(value, style),
+    ])
+}
+
+fn render_portrait_source(frame: &mut Frame<'_>, area: Rect, portrait: &Portrait) {
+    let width = area.width.saturating_sub(2);
+    let height = area.height.saturating_sub(2);
+    let lines = portrait.lines(width, height);
+    frame.render_widget(
+        Paragraph::new(Text::from(lines)).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(DARK_PURPLE)),
+        ),
+        area,
+    );
+}
+
+fn render_conversation(frame: &mut Frame<'_>, area: Rect, app: &App) {
+    let mut lines = Vec::new();
+    for message in app.public_messages() {
+        push_labeled_message(
+            &mut lines,
+            format!("[{}] ", message.sender),
+            &message.text,
+            Style::default()
+                .fg(sender_color(&message.sender))
+                .add_modifier(Modifier::BOLD),
+            Style::default().fg(NEON),
+        );
+        // V1 deliberately leaves air between public turns. Without this the
+        // stream-facing court reads as one dense diagnostic log.
+        lines.push(Line::default());
+    }
+    if app.pending().is_some() {
         lines.push(Line::from(vec![
-            Span::raw("     "),
-            Span::styled(continuation, Style::default().fg(INK)),
+            Span::styled(
+                "[Teledra] ",
+                Style::default().fg(GOLD).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!("{} Considering...", app.spinner()),
+                Style::default().fg(NEON),
+            ),
         ]));
+    }
+    let bottom = scroll_bottom(&lines, area);
+    let position = bottom.saturating_sub(app.scroll());
+    let title = if app.scroll() > 0 {
+        format!(
+            " NEURAL COGNITIVE CHANNEL [SCROLL: {position}/{bottom}] (Shift+Up/Down, PageUp/Down) "
+        )
+    } else {
+        " NEURAL COGNITIVE CHANNEL (Shift+Up/Down, PageUp/Down to Scroll) ".to_owned()
+    };
+    frame.render_widget(
+        Paragraph::new(lines)
+            .wrap(Wrap { trim: true })
+            .scroll((position, 0))
+            .block(
+                Block::default()
+                    .title(title)
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(PURPLE)),
+            ),
+        area,
+    );
+}
+
+fn render_private_trace(frame: &mut Frame<'_>, area: Rect, app: &App) {
+    let mut lines = Vec::new();
+    for (source, message) in app.private_events() {
+        push_labeled_message(
+            &mut lines,
+            format!("[{source}] "),
+            message,
+            Style::default()
+                .fg(private_color(source))
+                .add_modifier(Modifier::BOLD),
+            Style::default().fg(TRACE),
+        );
+    }
+    let bottom = scroll_bottom(&lines, area);
+    let title = app.private_events().back().map_or_else(
+        || " BACKSTAGE EVENT TRACE ".to_owned(),
+        |(source, _)| {
+            format!(
+                " BACKSTAGE EVENT TRACE [{} events, latest: {source}] ",
+                app.private_events().len()
+            )
+        },
+    );
+    frame.render_widget(
+        Paragraph::new(lines)
+            .wrap(Wrap { trim: false })
+            .scroll((bottom, 0))
+            .block(
+                Block::default()
+                    .title(title)
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(DARK_PURPLE)),
+            ),
+        area,
+    );
+}
+
+fn push_labeled_message<'a>(
+    lines: &mut Vec<Line<'a>>,
+    label: String,
+    content: &'a str,
+    label_style: Style,
+    content_style: Style,
+) {
+    let indent = " ".repeat(label.chars().count());
+    let mut parts = content.lines();
+    lines.push(Line::from(vec![
+        Span::styled(label, label_style),
+        Span::styled(parts.next().unwrap_or_default(), content_style),
+    ]));
+    for continuation in parts {
+        lines.push(Line::from(vec![
+            Span::raw(indent.clone()),
+            Span::styled(continuation, content_style),
+        ]));
+    }
+}
+
+fn scroll_bottom(lines: &[Line<'_>], area: Rect) -> u16 {
+    let width = area.width.saturating_sub(2).max(1) as usize;
+    let height = area.height.saturating_sub(2) as usize;
+    let rendered: usize = lines
+        .iter()
+        .map(|line| line.width().max(1).div_ceil(width))
+        .sum();
+    rendered.saturating_sub(height).min(u16::MAX as usize) as u16
+}
+
+fn sender_color(sender: &str) -> Color {
+    match sender {
+        "System" => MUTED,
+        "You" => NEON,
+        "Teledra" | "Queen" => GOLD,
+        "Organist" => Color::Rgb(255, 0, 255),
+        "Archivist" => Color::Rgb(0, 255, 255),
+        "Alchemist" => Color::Rgb(0, 255, 0),
+        "Orator" => Color::Rgb(255, 69, 0),
+        "Scribe" => Color::Rgb(169, 169, 169),
+        "Artist" => Color::Rgb(255, 165, 0),
+        "Malthus" => Color::Rgb(255, 90, 90),
+        "Broadcast" => Color::Rgb(210, 255, 80),
+        _ => PURPLE,
+    }
+}
+
+fn private_color(source: &str) -> Color {
+    match source {
+        "NightDesk" | "Night Desk" => Color::Yellow,
+        "Diplomat" => Color::Rgb(120, 200, 255),
+        "Diplomacy" => Color::Rgb(80, 220, 180),
+        "Research" => Color::Rgb(0, 255, 255),
+        "Innovation" => Color::Rgb(255, 0, 255),
+        "Workshop" => NEON,
+        "Restream" => PURPLE,
+        "Status" => MUTED,
+        "Broadcast" => Color::Rgb(210, 255, 80),
+        _ => Color::Rgb(180, 180, 180),
     }
 }
 
 fn render_input(frame: &mut Frame<'_>, area: Rect, app: &App) {
-    let input = if app.input().is_empty() {
-        Line::from(Span::styled(
-            "Speak to the court…",
-            Style::default().fg(MUTED),
-        ))
-    } else {
-        let width = area.width.saturating_sub(2) as usize;
-        let visible: String = app
-            .input()
-            .chars()
-            .rev()
-            .take(width)
-            .collect::<Vec<_>>()
-            .into_iter()
-            .rev()
-            .collect();
-        Line::from(Span::styled(visible, Style::default().fg(INK)))
-    };
-    let input = Paragraph::new(input).block(
-        Block::default()
-            .title(format!(" Address {} ", app.active_agent().title()))
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(if app.pending().is_some() { MUTED } else { GOLD })),
+    let columns = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
+        .split(area);
+
+    let chat_active = app.focus() == FocusField::Chat;
+    let chat_width = columns[0].width.saturating_sub(5) as usize;
+    let chat_text = tail(app.chat_input(), chat_width);
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled(" > ", Style::default().fg(NEON)),
+            Span::styled(&chat_text, Style::default().fg(NEON)),
+        ]))
+        .block(
+            Block::default()
+                .title(if chat_active {
+                    " TRANSMIT (ACTIVE) "
+                } else {
+                    " TRANSMIT "
+                })
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(if chat_active { NEON } else { PURPLE })),
+        ),
+        columns[0],
     );
-    frame.render_widget(input, area);
+
+    let youtube_active = app.focus() == FocusField::YouTube;
+    let youtube_width = columns[1].width.saturating_sub(9) as usize;
+    let youtube_text = tail(app.youtube_input(), youtube_width);
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled(" URL > ", Style::default().fg(NEON)),
+            Span::styled(&youtube_text, Style::default().fg(NEON)),
+        ]))
+        .block(
+            Block::default()
+                .title(if youtube_active {
+                    " YOUTUBE INGEST (ACTIVE) "
+                } else {
+                    " YOUTUBE INGEST "
+                })
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(if youtube_active { NEON } else { PURPLE })),
+        ),
+        columns[1],
+    );
+
+    if chat_active {
+        frame.set_cursor_position((
+            (columns[0].x + 4 + chat_text.chars().count() as u16)
+                .min(columns[0].right().saturating_sub(2)),
+            columns[0].y + 1,
+        ));
+    } else {
+        frame.set_cursor_position((
+            (columns[1].x + 7 + youtube_text.chars().count() as u16)
+                .min(columns[1].right().saturating_sub(2)),
+            columns[1].y + 1,
+        ));
+    }
 }
 
-fn render_footer(frame: &mut Frame<'_>, area: Rect, app: &App) {
-    let footer = Line::from(vec![
-        Span::styled(
-            " Enter ",
-            Style::default().fg(GOLD).add_modifier(Modifier::BOLD),
-        ),
-        Span::styled("send   ", Style::default().fg(MUTED)),
-        Span::styled(
-            "Tab ",
-            Style::default().fg(GOLD).add_modifier(Modifier::BOLD),
-        ),
-        Span::styled("change court member   ", Style::default().fg(MUTED)),
-        Span::styled("PgUp/PgDn ", Style::default().fg(GOLD)),
-        Span::styled("scroll   ", Style::default().fg(MUTED)),
-        Span::styled("F1 ", Style::default().fg(GOLD)),
-        Span::styled("help   ", Style::default().fg(MUTED)),
-        Span::styled("Ctrl+Q ", Style::default().fg(GOLD)),
-        Span::styled("exit", Style::default().fg(MUTED)),
-        Span::styled(
-            format!("    {}", app.endpoint()),
-            Style::default().fg(Color::DarkGray),
-        ),
-    ]);
-    frame.render_widget(Paragraph::new(footer), area);
+fn tail(value: &str, width: usize) -> String {
+    value
+        .chars()
+        .rev()
+        .take(width)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect()
 }
 
 fn render_help(frame: &mut Frame<'_>, area: Rect) {
     frame.render_widget(Clear, area);
     let help = vec![
         Line::from(Span::styled(
-            "TELEDRA V2 COURT CONTROLS",
-            Style::default().fg(GOLD).add_modifier(Modifier::BOLD),
+            "TELEDRA CONTROL SURFACE",
+            Style::default().fg(NEON).add_modifier(Modifier::BOLD),
         )),
         Line::default(),
-        Line::from("Type naturally, then press Enter to address the selected court member."),
+        Line::from("Enter              Transmit to Teledra"),
+        Line::from("Left / Up          Focus chat input"),
+        Line::from("Right / Down       Focus YouTube ingest"),
+        Line::from("Tab / Shift+Tab    Cycle performance mode"),
+        Line::from("Shift+Up / Down    Scroll one line"),
+        Line::from("PageUp / PageDown  Scroll five lines"),
+        Line::from("Ctrl+M             Toggle Court Synth"),
+        Line::from("Ctrl+U             Evolve/play the current music"),
+        Line::from("Ctrl+L/K/E/P        Like/dislike/expand/playlist"),
+        Line::from("Ctrl+G / Ctrl+J    Refresh vision / microphone"),
+        Line::from("Esc                Exit Teledra"),
         Line::default(),
-        Line::from("Tab / Shift+Tab   Move through the court"),
-        Line::from("PageUp / PageDown Scroll the current chamber"),
-        Line::from("Escape            Clear the input"),
-        Line::from("F1 or ?            Close this help"),
-        Line::from("Ctrl+Q or Ctrl+C   Leave Teledra"),
-        Line::default(),
-        Line::from(Span::styled(
-            "Each member keeps a separate conversation. Qwen requests run in the",
-            Style::default().fg(MUTED),
-        )),
-        Line::from(Span::styled(
-            "background so the court remains responsive while an answer is formed.",
-            Style::default().fg(MUTED),
-        )),
+        Line::from("/Vertical opens the simultaneous OBS portrait TUI."),
     ];
-    let popup = Paragraph::new(help)
-        .alignment(Alignment::Left)
-        .wrap(Wrap { trim: true })
-        .block(
+    frame.render_widget(
+        Paragraph::new(help).wrap(Wrap { trim: true }).block(
             Block::default()
                 .title(" HELP ")
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(GOLD)),
-        );
-    frame.render_widget(popup, area);
+                .border_style(Style::default().fg(PURPLE)),
+        ),
+        area,
+    );
 }
 
 fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
@@ -359,10 +884,23 @@ mod tests {
     use teledra_court::Court;
 
     use super::*;
+    use crate::session::{SnapshotEvent, SnapshotMessage};
+
+    fn buffer_text(terminal: &Terminal<TestBackend>) -> String {
+        terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .fold(String::new(), |mut text, cell| {
+                text.push_str(cell.symbol());
+                text
+            })
+    }
 
     #[test]
-    fn court_renders_into_a_terminal_buffer() {
-        let backend = TestBackend::new(110, 32);
+    fn wide_tui_preserves_the_v1_contract() {
+        let backend = TestBackend::new(120, 38);
         let mut terminal = Terminal::new(backend).expect("test terminal");
         let app = App::new(
             Court::default(),
@@ -371,111 +909,133 @@ mod tests {
                 model: QWEN_MODEL,
             },
         );
-        terminal
-            .draw(|frame| render(frame, &app))
-            .expect("TUI should render");
-        let rendered =
-            terminal
-                .backend()
-                .buffer()
-                .content()
-                .iter()
-                .fold(String::new(), |mut text, cell| {
-                    text.push_str(cell.symbol());
-                    text
-                });
-        assert!(rendered.contains("TELEDRA V2"));
-        assert!(rendered.contains("queen"));
-        assert!(rendered.contains("Address Teledra"));
+        terminal.draw(|frame| render(frame, &app)).expect("render");
+        let rendered = buffer_text(&terminal);
+        assert!(rendered.contains("SIBELIUM COGNITIVE INTERFACE v0.1.0"));
+        assert!(rendered.contains("NEURAL COGNITIVE CHANNEL"));
+        assert!(rendered.contains("BACKSTAGE EVENT TRACE"));
+        assert!(rendered.contains("TRANSMIT (ACTIVE)"));
+        assert!(rendered.contains("YOUTUBE INGEST"));
+        assert!(!rendered.contains("Address Teledra"));
+        // Every protocol row has to survive the panel height. Adding one
+        // silently pushed nothing out on paper and showed nothing on screen,
+        // which is the kind of thing only a rendered buffer catches.
+        for row in [
+            "Behavior",
+            "Emotion",
+            "Voice",
+            "Display",
+            "Music",
+            "Proposals",
+            "Workshop",
+            "NightDesk",
+        ] {
+            assert!(rendered.contains(row), "protocol row {row} was not drawn");
+        }
     }
-}
 
-#[cfg(test)]
-mod visual_proof {
-    use ratatui::{Terminal, backend::TestBackend};
-    use teledra_brain::{BrainHealth, QWEN_MODEL};
-    use teledra_court::Court;
-
-    use super::*;
-    use crate::portrait::Portrait;
-
-    /// Renders the court at a realistic terminal size and writes it out as an
-    /// image, so the composition can be judged by eye rather than asserted at.
-    /// Ignored by default; run explicitly when the layout changes.
     #[test]
-    #[ignore]
-    fn write_layout_png() {
-        const COLUMNS: u16 = 120;
-        const ROWS: u16 = 38;
-        // A terminal cell is about twice as tall as it is wide.
-        const CELL_W: u32 = 8;
-        const CELL_H: u32 = 16;
-
-        let backend = TestBackend::new(COLUMNS, ROWS);
-        let mut terminal = Terminal::new(backend).expect("test terminal");
-        let mut court = Court::default();
-        court.record_exchange(
-            "What stirs in the court tonight?",
-            "Strange science, and a portrait that finally has a face. Ha!",
-        );
-        let app = App::new(
-            court,
-            BrainHealth {
-                endpoint: "http://localhost:11434".to_owned(),
-                model: QWEN_MODEL,
-            },
-        )
-        .with_portrait(Some(Portrait::embedded()));
-
-        terminal
-            .draw(|frame| render(frame, &app))
-            .expect("the court should render");
-
-        let buffer = terminal.backend().buffer();
-        let mut canvas =
-            image::RgbImage::new(u32::from(COLUMNS) * CELL_W, u32::from(ROWS) * CELL_H);
-        for row in 0..ROWS {
-            for column in 0..COLUMNS {
-                let cell = &buffer[(column, row)];
-                let symbol = cell.symbol();
-                let fg = to_rgb(cell.style().fg, [220, 220, 226]);
-                let bg = to_rgb(cell.style().bg, [16, 17, 24]);
-                for y in 0..CELL_H {
-                    for x in 0..CELL_W {
-                        // Half blocks paint their lower half with the
-                        // foreground; anything else is approximated by ink
-                        // coverage so text remains legible in the dump.
-                        let colour = if symbol == "\u{2584}" {
-                            if y >= CELL_H / 2 { fg } else { bg }
-                        } else if symbol == " " {
-                            bg
-                        } else if (CELL_H / 4..CELL_H * 3 / 4).contains(&y)
-                            && (CELL_W / 4..CELL_W * 3 / 4).contains(&x)
-                        {
-                            fg
-                        } else {
-                            bg
-                        };
-                        canvas.put_pixel(
-                            u32::from(column) * CELL_W + x,
-                            u32::from(row) * CELL_H + y,
-                            image::Rgb(colour),
-                        );
-                    }
-                }
+    fn the_protocol_panel_holds_every_row_on_a_real_terminal() {
+        // The wide test runs at 120x38. A maximised window is closer to 250x66,
+        // and a panel with a fixed height behaves differently when the space
+        // around it grows. Check the size the court is actually streamed at.
+        for (width, height) in [(120, 38), (200, 50), (250, 66), (140, 42)] {
+            let backend = TestBackend::new(width, height);
+            let mut terminal = Terminal::new(backend).expect("test terminal");
+            let app = App::new(
+                Court::default(),
+                BrainHealth {
+                    endpoint: "http://localhost:11434".to_owned(),
+                    model: QWEN_MODEL,
+                },
+            );
+            terminal.draw(|frame| render(frame, &app)).expect("render");
+            let rendered = buffer_text(&terminal);
+            for row in ["Behavior", "Voice", "Display", "Music", "NightDesk"] {
+                assert!(
+                    rendered.contains(row),
+                    "protocol row {row} missing at {width}x{height}"
+                );
             }
         }
-        let out = std::env::temp_dir().join("teledra_v2_layout.png");
-        canvas.save(&out).expect("layout image should save");
-        println!("LAYOUT_PNG={}", out.display());
     }
 
-    fn to_rgb(colour: Option<ratatui::style::Color>, fallback: [u8; 3]) -> [u8; 3] {
-        match colour {
-            Some(ratatui::style::Color::Rgb(r, g, b)) => [r, g, b],
-            Some(ratatui::style::Color::Black) => [0, 0, 0],
-            Some(ratatui::style::Color::DarkGray) => [90, 92, 100],
-            _ => fallback,
-        }
+    #[test]
+    fn vertical_tui_uses_the_shared_public_feed() {
+        let backend = TestBackend::new(54, 64);
+        let mut terminal = Terminal::new(backend).expect("test terminal");
+        let snapshot = SessionSnapshot {
+            active_slug: "queen".to_owned(),
+            active_title: "Teledra".to_owned(),
+            notice: "Court ready".to_owned(),
+            pending: None,
+            turns: Vec::new(),
+            messages: vec![SnapshotMessage {
+                sender: "Organist".to_owned(),
+                text: "The portrait court is live.".to_owned(),
+            }],
+            terminal: String::new(),
+            ..SessionSnapshot::default()
+        };
+        let portrait = Portrait::embedded();
+        terminal
+            .draw(|frame| render_vertical(frame, &snapshot, &portrait))
+            .expect("render");
+        let rendered = buffer_text(&terminal);
+        assert!(rendered.contains("VERTICAL BROADCAST"));
+        assert!(rendered.contains("portrait court is live"));
+    }
+
+    #[test]
+    fn dashboard_renders_operational_and_court_state() {
+        let backend = TestBackend::new(120, 42);
+        let mut terminal = Terminal::new(backend).expect("test terminal");
+        let snapshot = SessionSnapshot {
+            notice: "Court ready".to_owned(),
+            mode: "Streamer".to_owned(),
+            private_events: vec![SnapshotEvent {
+                source: "Mission".to_owned(),
+                text: "Task one is running".to_owned(),
+            }],
+            messages: vec![SnapshotMessage {
+                sender: "Teledra".to_owned(),
+                text: "Welcome to the court".to_owned(),
+            }],
+            ..SessionSnapshot::default()
+        };
+        terminal
+            .draw(|frame| render_dashboard(frame, &snapshot))
+            .expect("render");
+        let rendered = buffer_text(&terminal);
+        assert!(rendered.contains("KINGDOM OBSERVATORY"));
+        assert!(rendered.contains("Task one is running"));
+        assert!(rendered.contains("Welcome to the court"));
+    }
+
+    #[test]
+    fn work_board_sorts_missions_and_leads_into_lanes() {
+        let backend = TestBackend::new(132, 42);
+        let mut terminal = Terminal::new(backend).expect("test terminal");
+        let snapshot = SessionSnapshot {
+            notice: "Mission m1 has 1 task".to_owned(),
+            private_events: vec![
+                SnapshotEvent {
+                    source: "Work".to_owned(),
+                    text: "#1 Running: build the verifier".to_owned(),
+                },
+                SnapshotEvent {
+                    source: "Treasury".to_owned(),
+                    text: "[bounty] Repair a parser".to_owned(),
+                },
+            ],
+            ..SessionSnapshot::default()
+        };
+        terminal
+            .draw(|frame| render_work_board(frame, &snapshot))
+            .expect("render");
+        let rendered = buffer_text(&terminal);
+        assert!(rendered.contains("WORK BOARD"));
+        assert!(rendered.contains("build the verifier"));
+        assert!(rendered.contains("Repair a parser"));
     }
 }

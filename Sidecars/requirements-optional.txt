@@ -1,0 +1,10 @@
+Pillow==12.2.0
+PyAudio==0.2.14
+SpeechRecognition==3.17.0
+pytesseract==0.3.13
+youtube-transcript-api==1.2.4
+mediapipe==0.10.21
+opencv-python==4.11.0.86
+faster-whisper==1.2.1
+sounddevice==0.5.5
+aiohttp==3.14.0

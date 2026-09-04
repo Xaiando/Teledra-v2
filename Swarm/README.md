@@ -1,6 +1,6 @@
 # Swarm
 
-Owns general bounded task decomposition and execution. It may request work from
-registered capabilities but cannot bypass their validation or persistence
-contracts. Status: not migrated.
-
+Owns durable missions, bounded task envelopes, dependency-aware work, retry
+policy, cancellation, atomic persistence, and evidence-bearing executor
+contracts. It can request registered work but does not own the TUI or a model
+client and cannot bypass another subsystem's validation.
