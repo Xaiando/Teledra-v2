@@ -13,6 +13,7 @@ use super::RuntimeServices;
 static ARTIFACT_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 const FRACTUS_GALLERY_KEEP: usize = 64;
+const IN_PROGRESS_ARTIFACT_GRACE_MS: u128 = 10 * 60 * 1_000;
 
 /// Names the renderer accepts. The matcher resolves overlapping names
 /// longest-first, so `lotus_mandala` is not reduced to `mandala`. The Artist
@@ -65,6 +66,7 @@ pub(super) struct RenderedFractus {
 #[derive(Default)]
 struct GalleryRetention {
     removed_artifacts: usize,
+    removed_orphan_images: usize,
     removed_orphans: usize,
     warnings: Vec<String>,
 }
@@ -641,14 +643,15 @@ pub(super) fn render_fractus_at(
     teledra_fractus::write_manifest(&manifest_path, &manifest)?;
     let retention = prune_fractus_gallery(&directory, FRACTUS_GALLERY_KEEP);
     let retention_notice = if retention.removed_artifacts == 0
+        && retention.removed_orphan_images == 0
         && retention.removed_orphans == 0
         && retention.warnings.is_empty()
     {
         None
     } else {
         let mut notice = format!(
-            "gallery retention removed {} artifact(s) and {} orphan manifest(s)",
-            retention.removed_artifacts, retention.removed_orphans
+            "gallery retention removed {} artifact(s), {} stale orphan image(s), and {} orphan manifest(s)",
+            retention.removed_artifacts, retention.removed_orphan_images, retention.removed_orphans
         );
         if !retention.warnings.is_empty() {
             notice.push_str(&format!(
@@ -712,6 +715,7 @@ fn prune_fractus_gallery(directory: &Path, keep: usize) -> GalleryRetention {
         }
     }
 
+    remove_stale_orphan_images(directory, &mut report);
     remove_orphan_manifests(directory, &mut report);
     report
 }
@@ -760,6 +764,47 @@ fn remove_orphan_manifests(directory: &Path, report: &mut GalleryRetention) {
                 .push(format!("could not remove {}: {error}", path.display())),
         }
     }
+}
+
+/// Deletes unverifiable images left by old interrupted renders, while leaving
+/// a recent image alone because another bounded render thread may still be
+/// writing its frames and has not reached the manifest step yet.
+fn remove_stale_orphan_images(directory: &Path, report: &mut GalleryRetention) {
+    let Ok(entries) = std::fs::read_dir(directory) else {
+        return;
+    };
+    let now = epoch_millis();
+    for path in entries.filter_map(Result::ok).map(|entry| entry.path()) {
+        if !matches!(
+            path.extension().and_then(|extension| extension.to_str()),
+            Some("gif" | "png")
+        ) || path.with_extension("manifest.json").exists()
+        {
+            continue;
+        }
+        let Some(created) = fractus_artifact_epoch(&path) else {
+            continue;
+        };
+        if now.saturating_sub(created) < IN_PROGRESS_ARTIFACT_GRACE_MS {
+            continue;
+        }
+        match std::fs::remove_file(&path) {
+            Ok(()) => report.removed_orphan_images += 1,
+            Err(error) => report
+                .warnings
+                .push(format!("could not remove {}: {error}", path.display())),
+        }
+    }
+}
+
+fn fractus_artifact_epoch(path: &Path) -> Option<u128> {
+    path.file_stem()?
+        .to_str()?
+        .strip_prefix("fractus-")?
+        .split('-')
+        .next()?
+        .parse()
+        .ok()
 }
 
 fn content_digest(path: &Path) -> std::io::Result<(u64, u64)> {
@@ -979,6 +1024,7 @@ mod tests {
         let report = prune_fractus_gallery(directory.path(), 4);
         assert!(report.warnings.is_empty(), "{:?}", report.warnings);
         assert_eq!(report.removed_artifacts, 3);
+        assert_eq!(report.removed_orphan_images, 0);
         assert_eq!(report.removed_orphans, 1);
 
         let remaining = std::fs::read_dir(directory.path())
@@ -1003,5 +1049,22 @@ mod tests {
         for image in remaining {
             assert!(image.with_extension("manifest.json").exists());
         }
+    }
+
+    #[test]
+    fn retention_removes_only_stale_orphan_images() {
+        let directory = TestDirectory::new("fractus-orphan-images");
+        let stale = directory.path().join("fractus-0000000000001-1-0.gif");
+        let recent = directory
+            .path()
+            .join(format!("fractus-{}-1-1.gif", super::epoch_millis()));
+        std::fs::write(&stale, b"interrupted-old-render").unwrap();
+        std::fs::write(&recent, b"render-still-in-progress").unwrap();
+
+        let report = prune_fractus_gallery(directory.path(), 64);
+        assert!(report.warnings.is_empty(), "{:?}", report.warnings);
+        assert_eq!(report.removed_orphan_images, 1);
+        assert!(!stale.exists());
+        assert!(recent.exists());
     }
 }
