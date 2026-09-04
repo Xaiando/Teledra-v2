@@ -1,4 +1,5 @@
-use std::io::Write;
+use std::collections::HashSet;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -10,6 +11,63 @@ use teledra_music::FeedbackVerdict;
 use super::RuntimeServices;
 
 static ARTIFACT_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+const FRACTUS_GALLERY_KEEP: usize = 64;
+
+/// Names the renderer accepts. The matcher resolves overlapping names
+/// longest-first, so `lotus_mandala` is not reduced to `mandala`. The Artist
+/// reliably names these in prose even when it omits the action tag entirely.
+const FRACTUS_FAMILIES: [&str; 36] = [
+    "cellular_automata",
+    "reaction_diffusion",
+    "strange_attractor",
+    "koch_snowflake",
+    "flower_of_life",
+    "lotus_mandala",
+    "star_mandala",
+    "barnsley_fern",
+    "sierpinski",
+    "fractal_tree",
+    "dragon_curve",
+    "radial_weave",
+    "kaleidoscope",
+    "phyllotaxis",
+    "woven_web",
+    "orbital_lace",
+    "harmonograph",
+    "rose_curve",
+    "string_art",
+    "flow_field",
+    "mandelbrot",
+    "burning_ship",
+    "multibrot",
+    "spirograph",
+    "lissajous",
+    "guilloche",
+    "hex_weave",
+    "op_art",
+    "particles",
+    "mandala",
+    "tricorn",
+    "newton",
+    "moire",
+    "truchet",
+    "l_system",
+    "julia",
+];
+
+#[derive(Debug)]
+pub(super) struct RenderedFractus {
+    pub(super) path: PathBuf,
+    pub(super) retention_notice: Option<String>,
+}
+
+#[derive(Default)]
+struct GalleryRetention {
+    removed_artifacts: usize,
+    removed_orphans: usize,
+    warnings: Vec<String>,
+}
 
 #[derive(Debug)]
 pub(super) struct ProposalDecision {
@@ -39,6 +97,55 @@ impl Proposal {
 }
 
 impl RuntimeServices {
+    /// Salvages the concrete scene the Artist described when it narrates
+    /// instead of emitting a `FRACTUS_*` action.
+    ///
+    /// This is deliberately role-gated by the caller. In ordinary court speech
+    /// a word such as "mandala" is conversation; in an Artist turn it is the
+    /// same unambiguous intent that the model was asked to put in a tag. The
+    /// first named family becomes the manifest subject and later families are
+    /// retained as bounded layers.
+    pub(crate) fn salvage_fractus_from_prose(text: &str) -> Option<String> {
+        let families = named_terms(text, &FRACTUS_FAMILIES);
+        let primary = families.first()?;
+        let palettes = named_terms(text, &teledra_fractus::PALETTE_NAMES);
+        let palette = palettes.first().copied().unwrap_or("purple_haze");
+        let seed = prose_seed(text);
+        let mut dsl = format!(
+            "version 2\ntype={primary}\nwidth=600\nheight=800\niterations=180\nseed={seed}\npalette={palette}"
+        );
+
+        let layers = families
+            .iter()
+            .skip(1)
+            .take(7)
+            .enumerate()
+            .map(|(index, family)| {
+                let layer_palette = palettes.get(index + 1).copied().unwrap_or(palette);
+                let alpha = (0.38_f32 - index as f32 * 0.04).max(0.14);
+                format!("{family}@{alpha:.2}@screen@{layer_palette}")
+            })
+            .collect::<Vec<_>>();
+        if !layers.is_empty() {
+            dsl.push_str("\nlayers=");
+            dsl.push_str(&layers.join(";"));
+        }
+
+        Scene::parse(&dsl).ok().map(|_| dsl)
+    }
+
+    pub(crate) fn artist_requested_still(prompt: &str) -> bool {
+        let normalized = prompt.to_ascii_lowercase();
+        [
+            "still image",
+            "still artwork",
+            "static image",
+            "static artwork",
+        ]
+        .iter()
+        .any(|needle| normalized.contains(needle))
+    }
+
     pub(super) fn archive_approved_creative(
         &self,
         kind: &str,
@@ -505,7 +612,7 @@ pub(super) fn render_fractus_at(
     root: &Path,
     dsl: &str,
     live: bool,
-) -> Result<PathBuf, Box<dyn std::error::Error>> {
+) -> Result<RenderedFractus, Box<dyn std::error::Error>> {
     let directory = root.join("fractus");
     std::fs::create_dir_all(&directory)?;
     let id = format!(
@@ -532,7 +639,218 @@ pub(super) fn render_fractus_at(
         scene.render(&image)?
     };
     teledra_fractus::write_manifest(&manifest_path, &manifest)?;
-    Ok(image)
+    let retention = prune_fractus_gallery(&directory, FRACTUS_GALLERY_KEEP);
+    let retention_notice = if retention.removed_artifacts == 0
+        && retention.removed_orphans == 0
+        && retention.warnings.is_empty()
+    {
+        None
+    } else {
+        let mut notice = format!(
+            "gallery retention removed {} artifact(s) and {} orphan manifest(s)",
+            retention.removed_artifacts, retention.removed_orphans
+        );
+        if !retention.warnings.is_empty() {
+            notice.push_str(&format!(
+                "; {} cleanup error(s): {}",
+                retention.warnings.len(),
+                retention.warnings.join("; ")
+            ));
+        }
+        Some(notice)
+    };
+    Ok(RenderedFractus {
+        path: image,
+        retention_notice,
+    })
+}
+
+/// Keeps the newest bounded window, then removes exact duplicates within it.
+///
+/// Capping before hashing is intentional. The first deployment may encounter
+/// several gigabytes of history; everything older than the newest window is
+/// going away regardless, so reading it merely to prove it is duplicate would
+/// turn a small retention pass into a multi-gigabyte scan.
+fn prune_fractus_gallery(directory: &Path, keep: usize) -> GalleryRetention {
+    let mut report = GalleryRetention::default();
+    let entries = match std::fs::read_dir(directory) {
+        Ok(entries) => entries,
+        Err(error) => {
+            report.warnings.push(error.to_string());
+            return report;
+        }
+    };
+    let mut images = entries
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with("fractus-"))
+                && matches!(
+                    path.extension().and_then(|extension| extension.to_str()),
+                    Some("gif" | "png")
+                )
+        })
+        .collect::<Vec<_>>();
+    images.sort_by(|left, right| right.file_name().cmp(&left.file_name()));
+
+    for image in images.iter().skip(keep) {
+        remove_fractus_pair(image, &mut report);
+    }
+
+    let mut digests = HashSet::new();
+    for image in images.iter().take(keep) {
+        match content_digest(image) {
+            Ok(digest) if !digests.insert(digest) => {
+                remove_fractus_pair(image, &mut report);
+            }
+            Ok(_) => {}
+            Err(error) => report
+                .warnings
+                .push(format!("could not hash {}: {error}", image.display())),
+        }
+    }
+
+    remove_orphan_manifests(directory, &mut report);
+    report
+}
+
+fn remove_fractus_pair(image: &Path, report: &mut GalleryRetention) {
+    match std::fs::remove_file(image) {
+        Ok(()) => {
+            report.removed_artifacts += 1;
+            let manifest = image.with_extension("manifest.json");
+            if let Err(error) = std::fs::remove_file(&manifest)
+                && error.kind() != std::io::ErrorKind::NotFound
+            {
+                report
+                    .warnings
+                    .push(format!("could not remove {}: {error}", manifest.display()));
+            }
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => report
+            .warnings
+            .push(format!("could not remove {}: {error}", image.display())),
+    }
+}
+
+fn remove_orphan_manifests(directory: &Path, report: &mut GalleryRetention) {
+    let Ok(entries) = std::fs::read_dir(directory) else {
+        return;
+    };
+    for path in entries.filter_map(Result::ok).map(|entry| entry.path()) {
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        let Some(stem) = name.strip_suffix(".manifest.json") else {
+            continue;
+        };
+        if !stem.starts_with("fractus-")
+            || path.with_file_name(format!("{stem}.gif")).exists()
+            || path.with_file_name(format!("{stem}.png")).exists()
+        {
+            continue;
+        }
+        match std::fs::remove_file(&path) {
+            Ok(()) => report.removed_orphans += 1,
+            Err(error) => report
+                .warnings
+                .push(format!("could not remove {}: {error}", path.display())),
+        }
+    }
+}
+
+fn content_digest(path: &Path) -> std::io::Result<(u64, u64)> {
+    let mut file = std::fs::File::open(path)?;
+    let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+    let mut length = 0_u64;
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        let read = file.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        length += read as u64;
+        for byte in &buffer[..read] {
+            hash ^= u64::from(*byte);
+            hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+    }
+    Ok((length, hash))
+}
+
+fn named_terms<'a>(text: &str, names: &'a [&'a str]) -> Vec<&'a str> {
+    let searchable = searchable_art_text(text);
+    let mut matches = Vec::new();
+    for &name in names {
+        let phrase = name.replace('_', " ");
+        for (start, _) in searchable.match_indices(&phrase) {
+            let end = start + phrase.len();
+            let before_is_word = searchable[..start]
+                .chars()
+                .next_back()
+                .is_some_and(|character| character.is_ascii_alphanumeric());
+            let after_is_word = searchable[end..]
+                .chars()
+                .next()
+                .is_some_and(|character| character.is_ascii_alphanumeric());
+            if !before_is_word && !after_is_word {
+                matches.push((start, end, name));
+            }
+        }
+    }
+    matches.sort_by(|left, right| {
+        left.0
+            .cmp(&right.0)
+            .then_with(|| (right.1 - right.0).cmp(&(left.1 - left.0)))
+    });
+
+    let mut selected: Vec<(usize, usize, &'a str)> = Vec::new();
+    let mut seen = HashSet::new();
+    for candidate in matches {
+        if selected
+            .iter()
+            .any(|(start, end, _)| candidate.0 < *end && candidate.1 > *start)
+            || !seen.insert(candidate.2)
+        {
+            continue;
+        }
+        selected.push(candidate);
+    }
+    selected.into_iter().map(|(_, _, name)| name).collect()
+}
+
+fn searchable_art_text(text: &str) -> String {
+    let mut normalized = String::with_capacity(text.len());
+    let mut separator = true;
+    for character in text.chars() {
+        let character = match character {
+            'é' | 'É' => 'e',
+            character if character.is_ascii_alphanumeric() => character.to_ascii_lowercase(),
+            _ => ' ',
+        };
+        if character == ' ' {
+            if !separator {
+                normalized.push(' ');
+                separator = true;
+            }
+        } else {
+            normalized.push(character);
+            separator = false;
+        }
+    }
+    normalized
+}
+
+fn prose_seed(text: &str) -> u64 {
+    let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+    for byte in text.bytes() {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    hash
 }
 
 fn epoch_millis() -> u128 {
@@ -554,7 +872,32 @@ pub(super) fn open_artifact(_path: &Path) -> std::io::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::RuntimeServices;
+    use super::{RuntimeServices, prune_fractus_gallery};
+    use std::path::{Path, PathBuf};
+
+    struct TestDirectory(PathBuf);
+
+    impl TestDirectory {
+        fn new(name: &str) -> Self {
+            let path = std::env::temp_dir().join(format!(
+                "teledra-{name}-{}-{}",
+                std::process::id(),
+                super::ARTIFACT_SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            ));
+            std::fs::create_dir_all(&path).unwrap();
+            Self(path)
+        }
+
+        fn path(&self) -> &Path {
+            &self.0
+        }
+    }
+
+    impl Drop for TestDirectory {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
 
     #[test]
     fn animation_intent_is_recovered_without_becoming_a_layer() {
@@ -571,5 +914,94 @@ mod tests {
             "{:?}",
             scene.unknown_layers
         );
+    }
+
+    #[test]
+    fn artist_prose_becomes_the_named_scene_and_layers() {
+        let prose = "The Mandala family will hold the symmetry while Lissajous curves move through it. A neon sunset field gives way to electric cyan highlights.";
+        let dsl = RuntimeServices::salvage_fractus_from_prose(prose).unwrap();
+        let scene = teledra_fractus::Scene::parse(&dsl).unwrap();
+        assert!(matches!(scene.kind, teledra_fractus::SceneKind::Mandala));
+        assert_eq!(scene.palette, "neon_sunset");
+        assert!(
+            scene
+                .layers
+                .iter()
+                .any(|layer| matches!(layer.kind, teledra_fractus::SceneKind::Lissajous))
+        );
+        assert!(dsl.contains("electric_cyan"), "{dsl}");
+    }
+
+    #[test]
+    fn longer_family_names_are_not_reduced_to_mandala() {
+        let dsl = RuntimeServices::salvage_fractus_from_prose(
+            "Begin with a lotus mandala in solar gold, then let the petals breathe.",
+        )
+        .unwrap();
+        let scene = teledra_fractus::Scene::parse(&dsl).unwrap();
+        assert!(matches!(
+            scene.kind,
+            teledra_fractus::SceneKind::LotusMandala
+        ));
+        assert!(scene.layers.is_empty(), "{dsl}");
+    }
+
+    #[test]
+    fn ordinary_artist_prose_without_a_family_is_not_invented_into_art() {
+        assert!(
+            RuntimeServices::salvage_fractus_from_prose(
+                "The balance is promising, but the negative space still needs judgment."
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn retention_keeps_the_newest_window_and_deduplicates_it() {
+        let directory = TestDirectory::new("fractus-retention");
+        for index in 0..6 {
+            let stem = format!("fractus-{index:013}-1-0");
+            let image = directory.path().join(format!("{stem}.gif"));
+            let bytes = if index == 4 || index == 5 {
+                b"same-render".to_vec()
+            } else {
+                format!("render-{index}").into_bytes()
+            };
+            std::fs::write(&image, bytes).unwrap();
+            std::fs::write(
+                directory.path().join(format!("{stem}.manifest.json")),
+                b"{}",
+            )
+            .unwrap();
+        }
+        std::fs::write(directory.path().join("fractus-orphan.manifest.json"), b"{}").unwrap();
+
+        let report = prune_fractus_gallery(directory.path(), 4);
+        assert!(report.warnings.is_empty(), "{:?}", report.warnings);
+        assert_eq!(report.removed_artifacts, 3);
+        assert_eq!(report.removed_orphans, 1);
+
+        let remaining = std::fs::read_dir(directory.path())
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| path.extension().and_then(|value| value.to_str()) == Some("gif"))
+            .collect::<Vec<_>>();
+        assert_eq!(remaining.len(), 3, "{remaining:?}");
+        assert!(
+            directory
+                .path()
+                .join("fractus-0000000000005-1-0.gif")
+                .exists()
+        );
+        assert!(
+            !directory
+                .path()
+                .join("fractus-0000000000004-1-0.gif")
+                .exists()
+        );
+        for image in remaining {
+            assert!(image.with_extension("manifest.json").exists());
+        }
     }
 }

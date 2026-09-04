@@ -53,7 +53,15 @@ impl RuntimeServices {
                     &Self::normalize_fractus_payload(&payload),
                 );
                 match Scene::parse(&dsl) {
-                    Ok(_) => self.spawn_fractus(app, tools, dsl, live),
+                    Ok(_) => {
+                        // A concrete Artist action owns the next gallery slot.
+                        // Without resetting this deadline, the fixed rotation
+                        // could fire seconds later and replace the work the
+                        // Artist had finally managed to put on the canvas.
+                        self.next_fractus_evolution =
+                            Some(std::time::Instant::now() + self.fractus_evolution_delay());
+                        self.spawn_fractus(app, tools, dsl, live);
+                    }
                     Err(error) => {
                         app.push_private_event("Artist", error.to_string());
                         self.request_correction(
@@ -371,17 +379,24 @@ impl RuntimeServices {
         let tools = tools.clone();
         std::thread::spawn(move || {
             let rendered = render_fractus_at(&root, &dsl, live);
-            let result = rendered
-                .as_ref()
-                .map(|path| format!("Verified render: {}", path.display()))
-                .map_err(ToString::to_string);
+            let result = rendered.as_ref().map_or_else(
+                |error| Err(error.to_string()),
+                |artifact| {
+                    let mut message = format!("Verified render: {}", artifact.path.display());
+                    if let Some(retention) = &artifact.retention_notice {
+                        message.push_str(&format!("; {retention}"));
+                    }
+                    Ok(message)
+                },
+            );
             let _ = tools.send(ToolReply {
                 source: "Artist",
                 result,
                 court_prompt: None,
-                effect: rendered
-                    .ok()
-                    .map(|path| ToolEffect::FractusReady { path, live }),
+                effect: rendered.ok().map(|artifact| ToolEffect::FractusReady {
+                    path: artifact.path,
+                    live,
+                }),
             });
         });
         app.set_notice(if live {

@@ -396,6 +396,14 @@ fn drain_model_replies(
     while let Ok(mut reply) = replies.try_recv() {
         let actions = if let Ok(raw) = &reply.result {
             let parsed = teledra_court::parse_response(raw);
+            let mut actions = parsed.actions;
+            if let Some(action) = salvaged_artist_fractus(reply.agent, &reply.user, raw, &actions) {
+                actions.push(action);
+                app.push_private_event(
+                    "Artist",
+                    "A scene named in prose was recovered as the next Fractus lineage".to_owned(),
+                );
+            }
             // A member that asks for something the court cannot execute has
             // done no work, however convincing the reply reads. Say so
             // backstage rather than letting the request disappear.
@@ -419,7 +427,7 @@ fn drain_model_replies(
             } else {
                 reply.result = Ok(parsed.visible);
             }
-            parsed.actions
+            actions
         } else {
             Vec::new()
         };
@@ -473,6 +481,27 @@ fn drain_model_replies(
             services.request_missing_score(app);
         }
     }
+}
+
+fn salvaged_artist_fractus(
+    agent: teledra_agents::AgentId,
+    prompt: &str,
+    raw: &str,
+    actions: &[teledra_court::CourtAction],
+) -> Option<teledra_court::CourtAction> {
+    if agent != teledra_agents::AgentId::Artist
+        || actions
+            .iter()
+            .any(|action| matches!(action, teledra_court::CourtAction::Fractus { .. }))
+    {
+        return None;
+    }
+    RuntimeServices::salvage_fractus_from_prose(raw).map(|payload| {
+        teledra_court::CourtAction::Fractus {
+            payload,
+            live: !RuntimeServices::artist_requested_still(prompt),
+        }
+    })
 }
 
 /// The first balanced JSON object in a reply, ignoring any code fence.
@@ -773,5 +802,40 @@ fn voice_for(agent: teledra_agents::AgentId) -> VoiceName {
         AgentId::Artist => VoiceName::Artist,
         AgentId::Diplomat => VoiceName::Diplomat,
         AgentId::Treasurer => VoiceName::Treasurer,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::salvaged_artist_fractus;
+    use teledra_agents::AgentId;
+    use teledra_court::CourtAction;
+
+    #[test]
+    fn only_untagged_artist_prose_is_salvaged() {
+        let prose = "The Mandala family should unfold in neon sunset light.";
+        assert!(matches!(
+            salvaged_artist_fractus(AgentId::Artist, "make art", prose, &[]),
+            Some(CourtAction::Fractus { live: true, .. })
+        ));
+        assert!(salvaged_artist_fractus(AgentId::Queen, "make art", prose, &[]).is_none());
+
+        let existing = vec![CourtAction::Fractus {
+            payload: "mandala".to_owned(),
+            live: true,
+        }];
+        assert!(salvaged_artist_fractus(AgentId::Artist, "make art", prose, &existing).is_none());
+    }
+
+    #[test]
+    fn an_explicit_still_request_is_not_turned_into_a_gif() {
+        let action = salvaged_artist_fractus(
+            AgentId::Artist,
+            "Please make a still image for the archive",
+            "A lissajous study in electric cyan.",
+            &[],
+        )
+        .unwrap();
+        assert!(matches!(action, CourtAction::Fractus { live: false, .. }));
     }
 }
