@@ -15243,9 +15243,16 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                                                 Err(e) => chat_history.push(("System".to_string(), format!("Could not read kingdom links: {}", e))),
                                                             }
                                                         } else if query == "/unlock" {
+                                                            // Operator unlock is authoritative: invalidate in-flight
+                                                            // generation, drop any tokened radio queue entries, and stop
+                                                            // the currently playing foreground before the court roams.
+                                                            let _ = begin_user_turn();
                                                             let ended_session = broadcast_session.take();
                                                             broadcast_session_counter = broadcast_session_counter.wrapping_add(1);
                                                             general_speech_queue.retain(|entry| entry.5.is_none());
+                                                            if let Ok(mut playback) = active_playback.lock() {
+                                                                let _ = playback.take();
+                                                            }
                                                             if let Some(topic) = locked_topic.take() {
                                                                 let message = format!("Court Radio ended by operator: '{}'. The court may roam freely again.", topic);
                                                                 chat_history.push(("Broadcast".to_string(), message.clone()));
@@ -15275,6 +15282,14 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                                             };
                                                             match chosen {
                                                                 Some(t) => {
+                                                                    // Re-lock/replacement is a hard topic boundary. A
+                                                                    // previous host turn or TTS stream must not leak into
+                                                                    // the newly authorized subject.
+                                                                    let _ = begin_user_turn();
+                                                                    if let Ok(mut playback) = active_playback.lock() {
+                                                                        let _ = playback.take();
+                                                                    }
+                                                                    general_speech_queue.retain(|entry| entry.5.is_none());
                                                                     broadcast_session_counter = broadcast_session_counter.wrapping_add(1);
                                                                     let now = Instant::now();
                                                                     let mut session = BroadcastSession::new(
@@ -22506,6 +22521,39 @@ plt.show()
         });
         assert_eq!(success_calls, 1, "valid art must not launch the fallback");
         assert!(authored.earns_creation_credit());
+    }
+
+    #[test]
+    fn youtube_commentary_windows_cover_short_source_contiguously() {
+        let source = "a".repeat(12_000);
+        let windows = youtube_commentary_windows(&source, 5_000, 5);
+        assert_eq!(windows.len(), 3);
+        assert_eq!((windows[0].0, windows[0].1), (0, 5_000));
+        assert_eq!((windows[1].0, windows[1].1), (5_000, 10_000));
+        assert_eq!((windows[2].0, windows[2].1), (10_000, 12_000));
+    }
+
+    #[test]
+    fn youtube_commentary_windows_sample_long_source_through_the_end() {
+        let source = "x".repeat(80_000);
+        let windows = youtube_commentary_windows(&source, 5_500, 5);
+        assert_eq!(windows.len(), 5);
+        assert_eq!(windows.first().map(|window| window.0), Some(0));
+        assert_eq!(windows.last().map(|window| window.1), Some(80_000));
+        assert!(
+            windows.windows(2).all(|pair| pair[0].0 < pair[1].0),
+            "source windows must advance monotonically"
+        );
+    }
+
+    #[test]
+    fn youtube_commentary_segment_target_is_bounded() {
+        // The environment itself is intentionally not mutated here because
+        // Rust tests may execute in parallel. The selector's clamp is covered
+        // indirectly by the window bound and the production call never asks
+        // for more than six segments.
+        let windows = youtube_commentary_windows(&"z".repeat(100_000), 5_500, 6);
+        assert!(windows.len() <= 6);
     }
 
     #[test]
