@@ -31,15 +31,25 @@ def video_id_from_url(value: str) -> str:
 def fetch_snippets(video_id: str):
     from youtube_transcript_api import YouTubeTranscriptApi
 
+    # The library changed from class-level get_transcript(...) to an instance
+    # fetch(...) API. Support both so a clean checkout is not coupled to one
+    # historical package surface.
     api = YouTubeTranscriptApi()
+    if hasattr(api, "fetch"):
+        try:
+            transcript = api.fetch(video_id, languages=["en"])
+            return list(transcript)
+        except Exception:
+            transcript = api.fetch(video_id)
+            return list(transcript)
+
+    legacy = getattr(YouTubeTranscriptApi, "get_transcript", None)
+    if legacy is None:
+        raise RuntimeError("Installed youtube-transcript-api exposes no supported fetch method.")
     try:
-        transcript = api.fetch(video_id, languages=["en"])
-        return list(transcript)
+        return list(legacy(video_id, languages=["en"]))
     except Exception:
-        # Let the library choose an available transcript/language rather than
-        # failing a multilingual source simply because English is absent.
-        transcript = api.fetch(video_id)
-        return list(transcript)
+        return list(legacy(video_id))
 
 
 def field(item, name: str, default=None):
