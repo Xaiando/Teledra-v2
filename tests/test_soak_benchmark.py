@@ -19,7 +19,13 @@ class SoakBenchmarkContractTests(unittest.TestCase):
             "stdout_tail": json.dumps(payload, indent=2),
             "stderr_tail": "",
         }
-        with mock.patch.object(soak, "run_cmd", return_value=completed):
+        with (
+            mock.patch.object(soak, "VENV_PY") as python_path,
+            mock.patch.object(soak, "DASHBOARD") as dashboard_path,
+            mock.patch.object(soak, "run_cmd", return_value=completed),
+        ):
+            python_path.exists.return_value = True
+            dashboard_path.exists.return_value = True
             result = soak.snapshot_dashboard()
 
         self.assertEqual(result["parsed_health"], {"overall": "observable"})
@@ -33,7 +39,11 @@ class SoakBenchmarkContractTests(unittest.TestCase):
             "stdout_tail": "",
             "stderr_tail": "ImportError: broken backend",
         }
-        with mock.patch.object(soak, "run_cmd", return_value=crashed):
+        with (
+            mock.patch.object(soak, "VENV_PY") as python_path,
+            mock.patch.object(soak, "run_cmd", return_value=crashed),
+        ):
+            python_path.exists.return_value = True
             self.assertFalse(soak.light_tts_dry()["ok"])
 
         usage = {
@@ -41,7 +51,11 @@ class SoakBenchmarkContractTests(unittest.TestCase):
             "returncode": 1,
             "stderr_tail": "Usage: python generate_voice.py <text> <voice_name>",
         }
-        with mock.patch.object(soak, "run_cmd", return_value=usage):
+        with (
+            mock.patch.object(soak, "VENV_PY") as python_path,
+            mock.patch.object(soak, "run_cmd", return_value=usage),
+        ):
+            python_path.exists.return_value = True
             self.assertTrue(soak.light_tts_dry()["ok"])
 
 

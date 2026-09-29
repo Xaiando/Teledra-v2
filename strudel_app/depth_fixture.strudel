@@ -1,0 +1,9 @@
+stack(
+  s("<bd ~ sd ~> bd [~ bd] sd ~").gain(0.46).pan(0).lpf(9000).room(0.08),
+  s("<~ hh*4 ~ oh> hh*2 [hh hh] ~ cp").gain(0.18).pan(0.34).lpf(7200).delay(0.12).delaytime(0.18).delayfeedback(0.28),
+  note("<d2 ~ a1 d2> [d2 ~] <f2 g2> a1").s("triangle").gain(0.26).pan(-0.08).lpf(780).attack(0.01).release(0.16).slow(2),
+  note("<d3,f3,a3 bb2,d3,f3 c3,e3,g3 a2,c3,e3>").s("triangle").gain(0.16).pan(0.12).lpf(1500).room(0.34).attack(0.28).release(0.9).slow(4),
+  note("<a4 ~ f4 [g4 a4]> <d5 c5> ~ <f4 e4>").s("sawtooth").gain(0.13).pan(-0.38).lpf(2400).delay(0.16).delaytime(0.26).delayfeedback(0.32).slow(2),
+  note("<~ d5 f5 a5> [c6 a5] ~ <g5 e5> d5").s("sine").gain(0.11).pan(0.42).lpf(4200).room(0.46).attack(0.04).release(0.42).slow(2),
+  note("<d6 ~ ~ a5> ~ <f6 ~ e6 ~> ~").s("sine").gain(0.07).pan(0.58).lpf(6000).room(0.62).delay(0.22).delaytime(0.38).delayfeedback(0.36).slow(4)
+)

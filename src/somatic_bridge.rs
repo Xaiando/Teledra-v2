@@ -67,7 +67,7 @@ impl SomaticBridge {
             .stdout
             .take()
             .ok_or("Failed to capture python stdout")?;
-        
+
         let stderr = child
             .stderr
             .take()
