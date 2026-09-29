@@ -9,6 +9,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  TELEDRA_BUILD_ID: ${{ github.sha }}
 
 jobs:
   build:
@@ -43,10 +44,21 @@ jobs:
       run: |
         .\.venv\Scripts\Activate.ps1
         python -m compileall -q -x "\.venv|tools[\\/]experiments|kraken[\\/]workspace" .
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         python -m unittest discover tests
 
     - name: Check formatting
       run: cargo fmt --all -- --check
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: "22"
+        cache: "npm"
+        cache-dependency-path: strudel_app/package-lock.json
+
+    - name: Install Strudel dependencies
+      run: npm ci --prefix strudel_app
 
     - name: Build
       run: cargo build --release --locked

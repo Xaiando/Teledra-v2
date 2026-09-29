@@ -500,8 +500,7 @@ const LORE_MEMORY_PATH: &str = "knowledge/lore_memory.jsonl";
 const MUSIC_THEORY_PATH: &str = "knowledge/court_score_composition_doctrine.md";
 const MUSIC_THEORY_LESSONS_PATH: &str = "knowledge/music_theory_lessons.jsonl";
 const COURT_SYNTH_FEEDBACK_EVENTS_DIR: &str = "court_synth\\feedback\\events";
-const COURT_SYNTH_FEEDBACK_STATE_PATH: &str =
-    "court_synth\\feedback\\runtime_state.json";
+const COURT_SYNTH_FEEDBACK_STATE_PATH: &str = "court_synth\\feedback\\runtime_state.json";
 const COURT_SYNTH_WORKSHOP_SCRIPT_PATH: &str = "court_synth\\workshop.py";
 const HUMAN_MUSIC_WORKSHOP_PASSES: u64 = 4;
 const HUMAN_MUSIC_WORKSHOP_BUSY_RETRY_SECS: u64 = 15;
@@ -1111,14 +1110,23 @@ fn trim_broadcast_words(text: &str, maximum: usize) -> String {
 
 fn strip_trailing_handoff(text: &str) -> String {
     let text = text.trim();
-    let sentences: Vec<&str> = text.split_inclusive(|c| c == '.' || c == '!' || c == '?').collect();
+    let sentences: Vec<&str> = text
+        .split_inclusive(|c| c == '.' || c == '!' || c == '?')
+        .collect();
     if sentences.is_empty() {
         return text.to_string();
     }
     let last = sentences.last().unwrap().trim().to_lowercase();
-    let contains_handoff = ["back to teledra", "hand back", "over to you", "back to you", "handing back", "over to teledra"]
-        .iter()
-        .any(|phrase| last.contains(phrase));
+    let contains_handoff = [
+        "back to teledra",
+        "hand back",
+        "over to you",
+        "back to you",
+        "handing back",
+        "over to teledra",
+    ]
+    .iter()
+    .any(|phrase| last.contains(phrase));
 
     if contains_handoff {
         let mut result = String::new();
@@ -1906,17 +1914,20 @@ fn is_teledra_runtime_child(name: &str, cmdline: &str) -> bool {
     if !(name.contains("python") || name.contains("node")) {
         return false;
     }
-    let workspace_root = std::env::var("TELEDRA_ROOT").unwrap_or_else(|_| {
-        std::env::current_dir()
-            .map(|p| p.to_string_lossy().into_owned())
-            .unwrap_or_else(|_| ".".to_string())
-    }).to_ascii_lowercase().replace('/', "\\");
+    let workspace_root = std::env::var("TELEDRA_ROOT")
+        .unwrap_or_else(|_| {
+            std::env::current_dir()
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_else(|_| ".".to_string())
+        })
+        .to_ascii_lowercase()
+        .replace('/', "\\");
 
     let cmdline = cmdline.to_ascii_lowercase().replace('/', "\\");
     if !cmdline.contains(&workspace_root) {
         return false;
     }
-    
+
     // Explicitly target only resident/playback services that this orchestrator owns,
     // not developer tools or Kraken.
     [
@@ -3229,14 +3240,20 @@ fn leading_court_role_label(text: &str) -> Option<CourtRole> {
 /// Shared tokenization for the topic-overlap validator and the ticket prompt:
 /// whatever words the validator will demand, the prompt must have offered.
 fn broadcast_topic_keywords(topic: &str) -> Vec<String> {
-    let stop_words = ["the", "and", "for", "with", "this", "that", "from", "your", "about", "what", "then", "into", "their"];
+    let stop_words = [
+        "the", "and", "for", "with", "this", "that", "from", "your", "about", "what", "then",
+        "into", "their",
+    ];
     let mut keywords: Vec<String> = Vec::new();
     for word in topic.split(|c: char| !c.is_alphanumeric()) {
         let word = word.trim();
         if word.len() < 2 || stop_words.contains(&word.to_lowercase().as_str()) {
             continue;
         }
-        if !keywords.iter().any(|existing| existing.eq_ignore_ascii_case(word)) {
+        if !keywords
+            .iter()
+            .any(|existing| existing.eq_ignore_ascii_case(word))
+        {
             keywords.push(word.to_string());
         }
     }
@@ -3271,9 +3288,19 @@ fn broadcast_reply_invalid_reason(ticket: &BroadcastTicket, visible: &str) -> Op
         ));
     }
     let lower_visible = visible.to_lowercase();
-    for phrase in &["back to teledra", "hand back", "over to you", "back to you", "handing back", "over to teledra"] {
+    for phrase in &[
+        "back to teledra",
+        "hand back",
+        "over to you",
+        "back to you",
+        "handing back",
+        "over to teledra",
+    ] {
         if lower_visible.contains(phrase) {
-            return Some(format!("the reply contained an forbidden verbal handoff phrase: '{}'", phrase));
+            return Some(format!(
+                "the reply contained an forbidden verbal handoff phrase: '{}'",
+                phrase
+            ));
         }
     }
     if ticket.kind != BroadcastTurnKind::MusicBridge {
@@ -4019,7 +4046,6 @@ fn run_human_music_workshop_cli(args: &[String]) -> Result<serde_json::Value, St
     command
         .arg(COURT_SYNTH_WORKSHOP_SCRIPT_PATH)
         .args(args)
-        
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     hide_console(&mut command);
@@ -6114,10 +6140,7 @@ fn current_workshop_report_passed(filename: &str) -> bool {
         Ok(name) => name,
         Err(_) => return false,
     };
-    let report_path = format!(
-        "tools\\experiments\\reports\\{}.report.md",
-        safe_filename
-    );
+    let report_path = format!("tools\\experiments\\reports\\{}.report.md", safe_filename);
     std::fs::read_to_string(report_path)
         .map(|report| report.to_lowercase().contains("status: passed"))
         .unwrap_or(false)
@@ -7001,10 +7024,7 @@ fn write_workshop_tool(
     let _ = std::fs::create_dir_all("tools\\logs");
 
     let tool_path = format!("tools\\experiments\\{}", filename);
-    let report_path = format!(
-        "tools\\experiments\\reports\\{}.report.md",
-        filename
-    );
+    let report_path = format!("tools\\experiments\\reports\\{}.report.md", filename);
     let previous_tool = std::fs::read_to_string(&tool_path).ok();
     let previous_report = std::fs::read_to_string(&report_path).ok();
     let previous_was_passed = previous_report
@@ -8590,7 +8610,6 @@ fn run_mcp_bridge(sub: &str, stdin_json: Option<&str>) -> Result<serde_json::Val
     let mut cmd = Command::new(".venv\\Scripts\\python.exe");
     cmd.arg("mcp_bridge.py")
         .arg(sub)
-        
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
     if stdin_json.is_some() {
@@ -8709,7 +8728,6 @@ fn mcp_call(server: &str, tool: &str, args_json: &str) -> Option<String> {
 fn run_treasury_scout() -> Option<String> {
     let mut cmd = Command::new(".venv\\Scripts\\python.exe");
     cmd.arg("treasury_scout.py")
-        
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
     hide_console(&mut cmd);
@@ -8827,7 +8845,6 @@ fn build_growth_report() -> String {
 fn run_copilot_vision() -> Option<String> {
     let mut cmd = Command::new(".venv\\Scripts\\python.exe");
     cmd.arg("copilot_vision.py")
-        
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
     hide_console(&mut cmd);
@@ -9822,11 +9839,10 @@ fn record_creative_feedback(vote: &str) -> String {
     // Hash the live content so repeated votes on the same artifact are de-dupable.
     let content = match kind.as_str() {
         "music" => std::fs::read_to_string("music.py").unwrap_or_default(),
-        "strudel" => {
-            std::fs::read_to_string("strudel_app\\current.strudel").unwrap_or_default()
+        "strudel" => std::fs::read_to_string("strudel_app\\current.strudel").unwrap_or_default(),
+        "court_synth" => {
+            std::fs::read_to_string("court_synth\\current_score.json").unwrap_or_default()
         }
-        "court_synth" => std::fs::read_to_string("court_synth\\current_score.json")
-            .unwrap_or_default(),
         _ => reference.clone(),
     };
     let hash = short_content_hash(&content);
@@ -9957,7 +9973,6 @@ fn run_outreach_poster(sub: &str, stdin_json: Option<&str>) -> Result<serde_json
     let mut cmd = Command::new(".venv\\Scripts\\python.exe");
     cmd.arg("outreach_poster.py")
         .arg(sub)
-        
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     if stdin_json.is_some() {
@@ -10531,9 +10546,7 @@ fn court_score_rotation_from(current_code: &str, seed: u64) -> Result<String, St
     // Prefer the newest off-air, theory-gated study. The lab never mutates the
     // live project; this is the single audited promotion seam and all ordinary
     // keeper/feedback/identity gates still apply below.
-    if let Ok(candidate) = std::fs::read_to_string(
-        "court_synth\\lab\\latest_candidate.json",
-    ) {
+    if let Ok(candidate) = std::fs::read_to_string("court_synth\\lab\\latest_candidate.json") {
         let lab_changes_groove_family = serde_json::from_str::<serde_json::Value>(current_code)
             .ok()
             .zip(serde_json::from_str::<serde_json::Value>(&candidate).ok())
@@ -10989,7 +11002,6 @@ fn validate_strudel_music_code(code: &str) -> Result<(), String> {
     cmd.arg(".\\strudel_app\\app.mjs")
         .arg("validate")
         .arg(&tmp_path)
-        
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     hide_console(&mut cmd);
@@ -11166,11 +11178,7 @@ fn validate_python_music_code(code: &str) -> Result<(), String> {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|duration| duration.as_nanos())
         .unwrap_or(0);
-    let tmp_path = format!(
-        "__music_validate_{}_{}.py",
-        std::process::id(),
-        nonce
-    );
+    let tmp_path = format!("__music_validate_{}_{}.py", std::process::id(), nonce);
     std::fs::write(&tmp_path, code)
         .map_err(|e| format!("Failed to write validation file: {}", e))?;
 
@@ -11316,7 +11324,6 @@ fn run_music_smoketest(candidate_path: &str) -> Result<(), String> {
     let mut cmd = Command::new(".venv\\Scripts\\python.exe");
     cmd.arg("tools\\music_smoketest.py")
         .arg(candidate_path)
-        
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     hide_console(&mut cmd);
@@ -11340,21 +11347,44 @@ fn run_music_smoketest(candidate_path: &str) -> Result<(), String> {
                 if let Ok(json) = serde_json::from_str::<serde_json::Value>(&raw_err) {
                     if let Some(event) = json.get("event") {
                         let event_str = event.as_str().unwrap_or("");
-                        if event_str == "TELEDRA_INCIDENT_CREATED" || event_str == "TELEDRA_RENDER_MANIFEST" {
-                            if json.get("envelope_version").and_then(|v| v.as_str()) != Some("1.0") {
+                        if event_str == "TELEDRA_INCIDENT_CREATED"
+                            || event_str == "TELEDRA_RENDER_MANIFEST"
+                        {
+                            if json.get("envelope_version").and_then(|v| v.as_str()) != Some("1.0")
+                            {
                                 return Err(format!("Unsupported {} version", event_str));
                             }
-                            
+
                             let run_id = json.get("run_id").and_then(|v| v.as_str()).unwrap_or("");
-                            let artifact_id = json.get(if event_str == "TELEDRA_INCIDENT_CREATED" { "incident_id" } else { "manifest_id" }).and_then(|v| v.as_str()).unwrap_or("");
-                            let relpath = json.get("artifact_relpath").and_then(|v| v.as_str()).unwrap_or("");
-                            let expected_sha = json.get("artifact_sha256").and_then(|v| v.as_str()).unwrap_or("");
-                            let expected_bytes = json.get("artifact_bytes").and_then(|v| v.as_u64()).unwrap_or(0);
+                            let artifact_id = json
+                                .get(if event_str == "TELEDRA_INCIDENT_CREATED" {
+                                    "incident_id"
+                                } else {
+                                    "manifest_id"
+                                })
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("");
+                            let relpath = json
+                                .get("artifact_relpath")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("");
+                            let expected_sha = json
+                                .get("artifact_sha256")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("");
+                            let expected_bytes = json
+                                .get("artifact_bytes")
+                                .and_then(|v| v.as_u64())
+                                .unwrap_or(0);
 
                             if expected_bytes > 1024 * 1024 * 10 || expected_bytes == 0 {
                                 return Err("Artifact size out of bounds".into());
                             }
-                            if relpath.contains("..") || relpath.starts_with('/') || relpath.starts_with('\\') || relpath.contains(':') {
+                            if relpath.contains("..")
+                                || relpath.starts_with('/')
+                                || relpath.starts_with('\\')
+                                || relpath.contains(':')
+                            {
                                 return Err("Invalid artifact_relpath format".into());
                             }
 
@@ -11367,21 +11397,47 @@ fn run_music_smoketest(candidate_path: &str) -> Result<(), String> {
                                     let mut hasher = sha2::Sha256::new();
                                     hasher.update(&bytes);
                                     let actual_sha = format!("sha256:{:02x}", hasher.finalize());
-                                    
+
                                     if actual_sha == expected_sha {
                                         if event_str == "TELEDRA_INCIDENT_CREATED" {
-                                            if let Ok(incident) = serde_json::from_slice::<serde_json::Value>(&bytes) {
-                                                let inc_run_id = incident.get("run_id").and_then(|v| v.as_str()).unwrap_or("");
-                                                let inc_id = incident.get("incident_id").and_then(|v| v.as_str()).unwrap_or("");
-                                                
+                                            if let Ok(incident) =
+                                                serde_json::from_slice::<serde_json::Value>(&bytes)
+                                            {
+                                                let inc_run_id = incident
+                                                    .get("run_id")
+                                                    .and_then(|v| v.as_str())
+                                                    .unwrap_or("");
+                                                let inc_id = incident
+                                                    .get("incident_id")
+                                                    .and_then(|v| v.as_str())
+                                                    .unwrap_or("");
+
                                                 if inc_run_id == run_id && inc_id == artifact_id {
-                                                    let failure_class = incident.get("failure_class").and_then(|v| v.as_str()).unwrap_or("UNKNOWN");
-                                                    let failure_code = incident.get("failure_code").and_then(|v| v.as_str()).unwrap_or("UNKNOWN");
-                                                    let stage = incident.get("failure_stage").and_then(|v| v.as_str()).unwrap_or("UNKNOWN");
-                                                    let severity = incident.get("severity").and_then(|v| v.as_str()).unwrap_or("UNKNOWN");
-                                                    
-                                                    raw_err = format!("Incident {}\nClass: {}\nCode: {}\nStage: {}\nSeverity: {}\nAuthorization: NOT_ISSUED", 
-                                                        artifact_id, failure_class, failure_code, stage, severity);
+                                                    let failure_class = incident
+                                                        .get("failure_class")
+                                                        .and_then(|v| v.as_str())
+                                                        .unwrap_or("UNKNOWN");
+                                                    let failure_code = incident
+                                                        .get("failure_code")
+                                                        .and_then(|v| v.as_str())
+                                                        .unwrap_or("UNKNOWN");
+                                                    let stage = incident
+                                                        .get("failure_stage")
+                                                        .and_then(|v| v.as_str())
+                                                        .unwrap_or("UNKNOWN");
+                                                    let severity = incident
+                                                        .get("severity")
+                                                        .and_then(|v| v.as_str())
+                                                        .unwrap_or("UNKNOWN");
+
+                                                    raw_err = format!(
+                                                        "Incident {}\nClass: {}\nCode: {}\nStage: {}\nSeverity: {}\nAuthorization: NOT_ISSUED",
+                                                        artifact_id,
+                                                        failure_class,
+                                                        failure_code,
+                                                        stage,
+                                                        severity
+                                                    );
                                                 }
                                             }
                                         } else {
@@ -11389,7 +11445,10 @@ fn run_music_smoketest(candidate_path: &str) -> Result<(), String> {
                                             return Ok(());
                                         }
                                     } else {
-                                        return Err(format!("Hash mismatch for {}: expected {}, got {}", relpath, expected_sha, actual_sha));
+                                        return Err(format!(
+                                            "Hash mismatch for {}: expected {}, got {}",
+                                            relpath, expected_sha, actual_sha
+                                        ));
                                     }
                                 }
                             }
@@ -11462,8 +11521,7 @@ const LOCAL_STRUDEL_PYTHON_PATH: &str = ".venv\\Scripts\\python.exe";
 const COURT_SYNTH_SCRIPT_PATH: &str = "court_synthesizer.py";
 const COURT_SYNTH_SCORE_PATH: &str = "court_synth\\current_score.json";
 const LEGACY_STRUDEL_DIR: &str = "tools\\Strudel";
-const LEGACY_STRUDEL_RUNNER: &str =
-    "tools\\Strudel\\run.bat";
+const LEGACY_STRUDEL_RUNNER: &str = "tools\\Strudel\\run.bat";
 const STRUDEL_PROCESS_MARKERS: &[&str] = &[
     "strudel_app\\app.mjs play",
     "strudel_app/app.mjs play",
@@ -11532,8 +11590,7 @@ fn build_strudel_command(mode: StrudelLaunchMode) -> Command {
                 .env("TELEDRA_WINDOW_GEOMETRY", "980x400+50+700")
                 .arg(LOCAL_STRUDEL_APP_PATH)
                 .arg("play")
-                .arg("8")
-                ;
+                .arg("8");
             command
         }
         StrudelLaunchMode::LegacyJavaSketchpad => {
@@ -11597,7 +11654,6 @@ fn validate_court_score_code(code: &str) -> Result<(), String> {
         .arg(COURT_SYNTH_SCRIPT_PATH)
         .arg("validate")
         .arg(&tmp_path)
-        
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     hide_console(&mut command);
@@ -11619,11 +11675,7 @@ fn normalize_court_score_harmony(code: &str, source_code: Option<&str>) -> Resul
         .duration_since(std::time::UNIX_EPOCH)
         .map(|duration| duration.as_nanos())
         .unwrap_or(0);
-    let base = format!(
-        "court_synth\\__normalize_{}_{}",
-        std::process::id(),
-        nonce
-    );
+    let base = format!("court_synth\\__normalize_{}_{}", std::process::id(), nonce);
     let score_path = format!("{base}.json");
     let source_path = format!("{base}_source.json");
     std::fs::create_dir_all("court_synth")
@@ -11641,7 +11693,6 @@ fn normalize_court_score_harmony(code: &str, source_code: Option<&str>) -> Resul
         .arg(COURT_SYNTH_SCRIPT_PATH)
         .arg("normalize")
         .arg(&score_path)
-        
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     if source_code.is_some() {
@@ -11909,7 +11960,6 @@ fn launch_court_synth_validated(
         .arg("--geometry")
         .arg("1480x900+36+36")
         .arg("--play")
-        
         .stdout(Stdio::null())
         .stderr(Stdio::null());
     hide_console(&mut command);
@@ -12126,8 +12176,7 @@ fn write_fractus_command(args: &[String]) -> Result<(), String> {
 fn launch_strudel_editor(
     active_gui_process: &Arc<std::sync::Mutex<Option<std::process::Child>>>,
 ) -> Result<String, String> {
-    let staged =
-        std::fs::read_to_string("strudel_app\\current.strudel").unwrap_or_default();
+    let staged = std::fs::read_to_string("strudel_app\\current.strudel").unwrap_or_default();
     let score = if is_court_score_code(&staged) {
         staged
     } else {
@@ -12255,7 +12304,6 @@ fn launch_legacy_python_music_editor(
         .arg("50")
         .arg("--geometry")
         .arg("900x600+50+50") // music stays left of Fractus
-        
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
     hide_console(&mut cmd);
@@ -12522,7 +12570,6 @@ fn launch_fractus_art(
         .arg("900")
         .arg("--height")
         .arg("650")
-        
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
     for arg in &args {
@@ -12642,7 +12689,6 @@ fn launch_fractus_live_art(
         .arg("900")
         .arg("--height")
         .arg("650")
-        
         .stdout(Stdio::null())
         .stderr(Stdio::null());
     hide_console(&mut command);
@@ -12946,8 +12992,9 @@ impl AppPaths {
 
         let python = root.join(".venv").join("Scripts").join("python.exe");
         let python_opt = if python.exists() { Some(python) } else { None };
-        
-        let config_env = std::env::var("TELEDRA_CONFIG").unwrap_or_else(|_| "config.json".to_string());
+
+        let config_env =
+            std::env::var("TELEDRA_CONFIG").unwrap_or_else(|_| "config.json".to_string());
         let config = root.join(config_env);
 
         Ok(AppPaths {
@@ -12988,24 +13035,37 @@ fn parse_cli() -> Result<StartupOptions, String> {
 }
 
 fn validate_environment(paths: &AppPaths, mode: &StartupMode) -> Result<EnvironmentReport, String> {
-    let mut config_res = CheckResult { passed: true, message: "OK".to_string() };
+    let mut config_res = CheckResult {
+        passed: true,
+        message: "OK".to_string(),
+    };
     if !paths.config.exists() {
         let msg = format!("Config file {} not found.", paths.config.display());
         if *mode == StartupMode::Strict {
             return Err(msg);
         } else {
-            config_res = CheckResult { passed: false, message: msg };
+            config_res = CheckResult {
+                passed: false,
+                message: msg,
+            };
         }
     } else {
         // Read and parse config to check for empty keys on remote hosts
         if let Ok(contents) = std::fs::read_to_string(&paths.config) {
             if let Ok(parsed) = serde_json::from_str::<crate::brain::BrainConfig>(&contents) {
-                let is_remote = parsed.api_url.contains("generativelanguage.googleapis.com") || parsed.api_url.contains("googleapis");
+                let is_remote = parsed.api_url.contains("generativelanguage.googleapis.com")
+                    || parsed.api_url.contains("googleapis");
                 if is_remote && parsed.api_key.is_empty() {
-                    return Err(format!("TELEDRA_CONFIG '{}' uses a remote endpoint but provides an empty api_key.", paths.config.display()));
+                    return Err(format!(
+                        "TELEDRA_CONFIG '{}' uses a remote endpoint but provides an empty api_key.",
+                        paths.config.display()
+                    ));
                 }
             } else {
-                return Err(format!("TELEDRA_CONFIG '{}' is malformed JSON.", paths.config.display()));
+                return Err(format!(
+                    "TELEDRA_CONFIG '{}' is malformed JSON.",
+                    paths.config.display()
+                ));
             }
         }
     }
@@ -13015,9 +13075,7 @@ fn validate_environment(paths: &AppPaths, mode: &StartupMode) -> Result<Environm
     }
     let python = paths.python.as_ref().unwrap();
 
-    let check_python_script = |script: &std::path::PathBuf| -> bool {
-        script.exists()
-    };
+    let check_python_script = |script: &std::path::PathBuf| -> bool { script.exists() };
 
     let check_module = |module: &str| -> bool {
         std::process::Command::new(python)
@@ -13057,26 +13115,40 @@ fn validate_environment(paths: &AppPaths, mode: &StartupMode) -> Result<Environm
         "LuxTTS",
     ];
     if !check_python_script(&paths.voice_script) {
-        voice = Capability::Disabled { reason: "generate_voice.py missing".into() };
+        voice = Capability::Disabled {
+            reason: "generate_voice.py missing".into(),
+        };
     } else if let Some(missing) = check_assets(&voice_assets) {
-        voice = Capability::Disabled { reason: format!("Missing voice asset: {}", missing) };
+        voice = Capability::Disabled {
+            reason: format!("Missing voice asset: {}", missing),
+        };
     }
-    
+
     // Somatic
     let mut somatic = Capability::Available;
     if !check_python_script(&paths.somatic_script) {
-        somatic = Capability::Disabled { reason: "somatic_cortex_stream.py missing".into() };
+        somatic = Capability::Disabled {
+            reason: "somatic_cortex_stream.py missing".into(),
+        };
     } else {
         // Validate external somatic dependencies
         let ht_root = std::env::var("TELEDRA_HEALTHTOOL_ROOT").unwrap_or_default();
         if ht_root.is_empty() || !std::path::PathBuf::from(&ht_root).exists() {
-            somatic = Capability::Disabled { reason: "TELEDRA_HEALTHTOOL_ROOT is not set or missing".into() };
+            somatic = Capability::Disabled {
+                reason: "TELEDRA_HEALTHTOOL_ROOT is not set or missing".into(),
+            };
         } else {
             let model_dir = std::env::var("TELEDRA_SOMATIC_MODEL_DIR").unwrap_or_else(|_| {
-                std::path::PathBuf::from(&ht_root).join("Neuralook").join("models").to_string_lossy().to_string()
+                std::path::PathBuf::from(&ht_root)
+                    .join("Neuralook")
+                    .join("models")
+                    .to_string_lossy()
+                    .to_string()
             });
             if !std::path::PathBuf::from(&model_dir).exists() {
-                somatic = Capability::Disabled { reason: format!("Somatic model dir missing: {}", model_dir) };
+                somatic = Capability::Disabled {
+                    reason: format!("Somatic model dir missing: {}", model_dir),
+                };
             }
         }
     }
@@ -13084,13 +13156,17 @@ fn validate_environment(paths: &AppPaths, mode: &StartupMode) -> Result<Environm
     // Vision
     let mut vision = Capability::Available;
     if !paths.root.join("copilot_vision.py").exists() {
-        vision = Capability::Disabled { reason: "copilot_vision.py missing".into() };
+        vision = Capability::Disabled {
+            reason: "copilot_vision.py missing".into(),
+        };
     }
 
     // Copilot Mic
     let mut copilot_mic = Capability::Available;
     if !paths.root.join("copilot_mic.py").exists() {
-        copilot_mic = Capability::Disabled { reason: "copilot_mic.py missing".into() };
+        copilot_mic = Capability::Disabled {
+            reason: "copilot_mic.py missing".into(),
+        };
     }
 
     // Court Synth modules check
@@ -13101,15 +13177,26 @@ fn validate_environment(paths: &AppPaths, mode: &StartupMode) -> Result<Environm
     }
 
     if *mode == StartupMode::Strict {
-        if let Capability::Disabled { reason } = &voice { return Err(format!("Strict mode voice failure: {}", reason)); }
-        if let Capability::Disabled { reason } = &somatic { return Err(format!("Strict mode somatic failure: {}", reason)); }
-        if let Capability::Disabled { reason } = &vision { return Err(format!("Strict mode vision failure: {}", reason)); }
-        if let Capability::Disabled { reason } = &copilot_mic { return Err(format!("Strict mode copilot mic failure: {}", reason)); }
+        if let Capability::Disabled { reason } = &voice {
+            return Err(format!("Strict mode voice failure: {}", reason));
+        }
+        if let Capability::Disabled { reason } = &somatic {
+            return Err(format!("Strict mode somatic failure: {}", reason));
+        }
+        if let Capability::Disabled { reason } = &vision {
+            return Err(format!("Strict mode vision failure: {}", reason));
+        }
+        if let Capability::Disabled { reason } = &copilot_mic {
+            return Err(format!("Strict mode copilot mic failure: {}", reason));
+        }
     }
 
     Ok(EnvironmentReport {
         root: paths.root.to_string_lossy().into_owned(),
-        mode: match mode { StartupMode::Minimal => "Minimal".into(), StartupMode::Strict => "Strict".into() },
+        mode: match mode {
+            StartupMode::Minimal => "Minimal".into(),
+            StartupMode::Strict => "Strict".into(),
+        },
         config: config_res,
         voice,
         somatic,
@@ -13137,7 +13224,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     runtime.block_on(run(cli, paths, report))
 }
 
-async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) -> Result<(), Box<dyn std::error::Error>> {
+async fn run(
+    cli: StartupOptions,
+    paths: AppPaths,
+    report: EnvironmentReport,
+) -> Result<(), Box<dyn std::error::Error>> {
     println!("[startup] Build identity: {}", BUILD_IDENTITY);
 
     if std::env::args().any(|arg| arg == "--phase-a-self-test") {
@@ -13273,7 +13364,6 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
             .arg("court_synth\\living_music_engine.py")
             .arg("--interval")
             .arg("180")
-            
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null());
@@ -13791,11 +13881,9 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                     log_lines
                 )))
                 .await;
-            let mut dream_cmd =
-                tokio::process::Command::new(".venv\\Scripts\\python.exe");
+            let mut dream_cmd = tokio::process::Command::new(".venv\\Scripts\\python.exe");
             dream_cmd
                 .arg("dream.py")
-                
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null());
             hide_console_tokio(&mut dream_cmd);
@@ -14590,7 +14678,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                             let mut std_cmd = Command::new(".venv\\Scripts\\python.exe");
                                             std_cmd
                                                 .arg("copilot_mic.py")
-                                                
+
                                                 .stdout(Stdio::piped())
                                                 .stderr(Stdio::null());
                                             hide_console(&mut std_cmd);
@@ -15173,7 +15261,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                                                 );
                                                                 command
                                                                     .arg("kingdom_dashboard.py")
-                                                                    
+
                                                                     .stdout(Stdio::null())
                                                                     .stderr(Stdio::null());
                                                                 match command.spawn() {
@@ -19436,7 +19524,7 @@ async fn run(cli: StartupOptions, paths: AppPaths, report: EnvironmentReport) ->
                                         let mut art_cmd = Command::new(".venv\\Scripts\\python.exe");
                                         art_cmd
                                             .arg("art.py")
-                                            
+
                                             .stdout(std::process::Stdio::null())
                                             .stderr(std::process::Stdio::null());
                                         hide_console(&mut art_cmd);
@@ -20884,25 +20972,38 @@ mod creativity_tests {
 
     #[test]
     fn startup_cleanup_spares_kraken_and_manual_project_jobs() {
+        let workspace_root = std::env::var("TELEDRA_ROOT").unwrap_or_else(|_| {
+            std::env::current_dir()
+                .expect("workspace root")
+                .to_string_lossy()
+                .into_owned()
+        });
+        let in_workspace = |args: &str| format!("\"{workspace_root}\\{args}\"");
         assert!(is_teledra_runtime_child(
             "python.exe",
-            r#".venv\Scripts\python.exe restream_listener.py"#,
+            &in_workspace(r#".venv\Scripts\python.exe restream_listener.py"#),
         ));
         assert!(is_teledra_runtime_child(
             "node.exe",
-            r#"node strudel_app\app.mjs play"#,
+            &in_workspace(r#"node strudel_app\app.mjs play"#),
         ));
         assert!(!is_teledra_runtime_child(
             "python.exe",
-            r#".venv\Scripts\python.exe kraken\kraken.py run 2"#,
+            &in_workspace(r#".venv\Scripts\python.exe kraken\kraken.py run 2"#),
         ));
         assert!(!is_teledra_runtime_child(
             "python.exe",
-            r#".venv\Scripts\python.exe tools\manual_analysis.py"#,
+            &in_workspace(r#".venv\Scripts\python.exe tools\manual_analysis.py"#),
         ));
         assert!(is_teledra_runtime_child(
             "pythonw.exe",
-            r#".venv\Scripts\pythonw.exe court_synthesizer.py open court_synth\current_score.json --play"#,
+            &in_workspace(
+                r#".venv\Scripts\pythonw.exe court_synthesizer.py open court_synth\current_score.json --play"#
+            ),
+        ));
+        assert!(!is_teledra_runtime_child(
+            "python.exe",
+            r#"C:\other_project\.venv\Scripts\python.exe restream_listener.py"#,
         ));
     }
 
@@ -22189,7 +22290,7 @@ note("<~ e4 f4 g4> [a3 c4] ~ <d4 b3> e4").s("sine").gain(0.1).pan(0.4).room(0.4)
                 .collect::<Vec<_>>(),
             vec![LOCAL_STRUDEL_APP_PATH, "play", "8"]
         );
-        assert_eq!(cybernetic.get_current_dir(), Some(Path::new(".")));
+        assert_eq!(cybernetic.get_current_dir(), None);
 
         let legacy = build_strudel_command(StrudelLaunchMode::LegacyJavaSketchpad);
         assert_eq!(legacy.get_program(), "cmd.exe");
@@ -22578,11 +22679,19 @@ plt.show()
         let mut session = BroadcastSession::new(1, "Modern Web Design".to_string(), Instant::now());
         session.last_host_claim = "Let's discuss layout aesthetics".to_string();
         session.next_kind = BroadcastTurnKind::Counterpoint;
-        
+
         let ticket = build_broadcast_ticket(&mut session, Instant::now());
         assert_eq!(ticket.role, CourtRole::Artist);
-        assert!(ticket.assignment.contains("Challenge the host from a visual design, aesthetics, layout"));
-        assert!(ticket.assignment.contains("Relate this directly to: Modern, Web, Design."));
+        assert!(
+            ticket
+                .assignment
+                .contains("Challenge the host from a visual design, aesthetics, layout")
+        );
+        assert!(
+            ticket
+                .assignment
+                .contains("Relate this directly to: Modern, Web, Design.")
+        );
         assert!(
             !ticket.assignment.contains("'Modern Web Design'"),
             "assignments prime keywords, never the verbatim theme"
@@ -22601,11 +22710,12 @@ plt.show()
     fn every_broadcast_prompt_names_the_locked_topic() {
         // The topic-overlap validator rejects replies without a topic word, so
         // every prompt must actually tell the speaker what the topic is.
-        let mut session =
-            BroadcastSession::new(1, "Dragon Ball Z".to_string(), Instant::now());
+        let mut session = BroadcastSession::new(1, "Dragon Ball Z".to_string(), Instant::now());
         session.last_host_claim = "Transformations are earned, not given.".to_string();
-        session.last_contribution =
-            Some((CourtRole::Malthus, "The hidden assumption is scarcity.".to_string()));
+        session.last_contribution = Some((
+            CourtRole::Malthus,
+            "The hidden assumption is scarcity.".to_string(),
+        ));
         for kind in [
             BroadcastTurnKind::HostOpening,
             BroadcastTurnKind::Counterpoint,
@@ -22653,7 +22763,8 @@ plt.show()
         };
 
         // 1. Rejects forbidden verbal handoff phrase
-        let reply_with_handoff = "This design is cool. Back to you, Teledra. We want to test formatting.";
+        let reply_with_handoff =
+            "This design is cool. Back to you, Teledra. We want to test formatting.";
         let err = broadcast_reply_invalid_reason(&ticket, reply_with_handoff);
         assert!(err.is_some());
         assert!(err.unwrap().contains("forbidden verbal handoff phrase"));
@@ -22662,7 +22773,10 @@ plt.show()
         let reply_no_overlap = "The quick brown fox jumps over the lazy dog in the middle of a very long sentence that has absolutely nothing to do with what we were talking about earlier today.";
         let err = broadcast_reply_invalid_reason(&ticket, reply_no_overlap);
         assert!(err.is_some());
-        assert!(err.unwrap().contains("drifted completely from the locked topic"));
+        assert!(
+            err.unwrap()
+                .contains("drifted completely from the locked topic")
+        );
 
         // 3. Accepts when overlap exists and no handoff
         let reply_ok = "However, the layout design of this web page has some limitations in user experience that we must address. While the visual aesthetics and colors make it stand out from the rest of the generic sites, we need a more consistent spacing system so that the actual structure remains readable and engaging for everyday users.";
@@ -22686,12 +22800,24 @@ plt.show()
         let mut chat_history = Vec::new();
         let mut private_events = Vec::new();
 
-        push_court_feed(&mut chat_history, &mut private_events, false, "System", "Off-air event message");
+        push_court_feed(
+            &mut chat_history,
+            &mut private_events,
+            false,
+            "System",
+            "Off-air event message",
+        );
         assert_eq!(chat_history.len(), 1);
         assert_eq!(chat_history[0].1, "Off-air event message");
         assert_eq!(private_events.len(), 0);
 
-        push_court_feed(&mut chat_history, &mut private_events, true, "System", "On-air event message");
+        push_court_feed(
+            &mut chat_history,
+            &mut private_events,
+            true,
+            "System",
+            "On-air event message",
+        );
         assert_eq!(chat_history.len(), 1);
         assert_eq!(private_events.len(), 1);
         assert_eq!(private_events[0].1, "On-air event message");
