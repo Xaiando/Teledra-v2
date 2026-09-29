@@ -1,0 +1,25 @@
+{
+  "name": "strudel_app",
+  "version": "1.0.0",
+  "description": "Local Strudel-compatible pattern workspace for Teledra.",
+  "main": "app.mjs",
+  "scripts": {
+    "status": "node app.mjs status",
+    "validate": "node app.mjs validate",
+    "render": "node app.mjs render",
+    "open": "node app.mjs open",
+    "play": "node app.mjs play",
+    "devices": "node app.mjs devices",
+    "test": "node app.mjs validate depth_fixture.strudel && node app.mjs render 8 depth_fixture.strudel"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "dependencies": {
+    "@strudel/core": "1.2.3",
+    "@strudel/mini": "1.2.3",
+    "@strudel/tonal": "1.2.3",
+    "@strudel/transpiler": "1.2.3"
+  }
+}
