@@ -7567,7 +7567,6 @@ async fn think_with_brain_snapshot_for(
     Ok(reply)
 }
 
-
 async fn generate_youtube_deep_commentary(
     brain_cell: &Arc<RwLock<Brain>>,
     transcript: &str,
@@ -7576,11 +7575,8 @@ async fn generate_youtube_deep_commentary(
     session_epoch: u64,
     tx: &mpsc::Sender<AppEvent>,
 ) -> Result<String, String> {
-    let windows = youtube_commentary_windows(
-        transcript,
-        5_500,
-        youtube_commentary_segment_target(),
-    );
+    let windows =
+        youtube_commentary_windows(transcript, 5_500, youtube_commentary_segment_target());
     if windows.is_empty() {
         return Err("YouTube transcript contained no usable commentary windows.".to_string());
     }
