@@ -36,7 +36,7 @@ pub fn render(frame: &mut Frame<'_>, app: &App) {
     render_input(frame, rows[2], app);
 
     if app.help_open() {
-        render_help(frame, centered_rect(68, 68, area));
+        render_help(frame, centered_rect(85, 92, area));
     }
 }
 
@@ -720,6 +720,10 @@ fn scroll_bottom(lines: &[Line<'_>], area: Rect) -> u16 {
 }
 
 fn sender_color(sender: &str) -> Color {
+    // Viewers get their own colour, whatever their account is called.
+    if sender.starts_with(crate::runtime::CHAT_PREFIX) {
+        return Color::Rgb(120, 200, 255);
+    }
     match sender {
         "System" => MUTED,
         "You" => NEON,
@@ -744,7 +748,7 @@ fn private_color(source: &str) -> Color {
         "Research" => Color::Rgb(0, 255, 255),
         "Innovation" => Color::Rgb(255, 0, 255),
         "Workshop" => NEON,
-        "Restream" => PURPLE,
+        "Restream" | "Social Stream" => PURPLE,
         "Status" => MUTED,
         "Broadcast" => Color::Rgb(210, 255, 80),
         _ => Color::Rgb(180, 180, 180),
@@ -839,13 +843,22 @@ fn render_help(frame: &mut Frame<'_>, area: Rect) {
         Line::from("Tab / Shift+Tab    Cycle performance mode"),
         Line::from("Shift+Up / Down    Scroll one line"),
         Line::from("PageUp / PageDown  Scroll five lines"),
-        Line::from("Ctrl+M             Toggle Court Synth"),
+        Line::from("Ctrl+M             Mute/unmute Court Synth"),
         Line::from("Ctrl+U             Evolve/play the current music"),
         Line::from("Ctrl+L/K/E/P        Like/dislike/expand/playlist"),
         Line::from("Ctrl+G / Ctrl+J    Refresh vision / microphone"),
-        Line::from("Esc                Exit Teledra"),
+        Line::from("Esc                Close help; exit when help is closed"),
         Line::default(),
         Line::from("/Vertical opens the simultaneous OBS portrait TUI."),
+        Line::from("Music: /Music /MusicOff /MusicMute /Keep /MusicReject"),
+        Line::from("Art: /Art /Fractus /FractusLive"),
+        Line::from("Court: /Mode /NightDesk /Lock /Podcast /Unlock /Agents"),
+        Line::from("Podcast: /Lock <topic> (60m); /Podcast 90m <topic>; /Podcast status"),
+        Line::from("Knowledge: /Research /YouTube /Dream /Reflect"),
+        Line::from("Work: /Mission /MissionCancel /Tasks /Workshop /Tower"),
+        Line::from("Review: /Proposals /Approve <id> /Reject <id>"),
+        Line::from("Inputs: /Mic /Vision /Somatic /Stream"),
+        Line::from("Views: /Dashboard /Work /Vertical   Tests: /Test /Verify"),
     ];
     frame.render_widget(
         Paragraph::new(help).wrap(Wrap { trim: true }).block(
@@ -896,6 +909,39 @@ mod tests {
                 text.push_str(cell.symbol());
                 text
             })
+    }
+
+    #[test]
+    fn wide_tui_keeps_the_half_block_portrait_and_rgb_palette() {
+        let mut terminal = Terminal::new(TestBackend::new(140, 42)).expect("test terminal");
+        let app = App::new(
+            Court::default(),
+            BrainHealth {
+                endpoint: "http://localhost:11434".to_owned(),
+                model: QWEN_MODEL,
+            },
+        )
+        .with_portrait(Some(Portrait::embedded()));
+        terminal.draw(|frame| render(frame, &app)).expect("render");
+        let cells = terminal.backend().buffer().content();
+        let pixels = cells
+            .iter()
+            .filter(|cell| matches!(cell.symbol(), "▄" | "▀" | "█"))
+            .filter_map(|cell| match (cell.fg, cell.bg) {
+                (Color::Rgb(r, g, b), Color::Rgb(br, bg, bb)) => Some((r, g, b, br, bg, bb)),
+                _ => None,
+            })
+            .collect::<std::collections::BTreeSet<_>>();
+        assert!(
+            pixels.len() > 64,
+            "portrait pixels must retain their RGB foreground/background colours"
+        );
+        assert!(cells.iter().any(|cell| cell.fg == NEON));
+        assert!(cells.iter().any(|cell| cell.fg == PURPLE));
+        let rendered = buffer_text(&terminal);
+        assert!(rendered.contains("PROTOCOLS"));
+        assert!(rendered.contains("NEURAL COGNITIVE CHANNEL"));
+        assert!(rendered.contains("TRANSMIT (ACTIVE)"));
     }
 
     #[test]

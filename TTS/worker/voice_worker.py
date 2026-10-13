@@ -33,12 +33,17 @@ Two rules this file must keep
 from __future__ import annotations
 
 import contextlib
+import math
 import os
+import re
 import struct
 import sys
+import wave
 
 SAMPLE_RATE = 48_000
-GAP_SECONDS = 0.16
+GAP_SECONDS = 0.10
+EDGE_FADE_SECONDS = 0.005
+DEFAULT_SPEED = 0.90
 READY = "READY"
 MODEL = "YatharthS/LuxTTS"
 
@@ -53,8 +58,61 @@ REFERENCES = {
     "artist": "../../assets/artist_ref_clean.wav",
     "diplomat": "../../assets/diplomat_ref_clean.wav",
     "treasurer": "../../assets/treasurer_ref_clean.wav",
+    "malthus": "../../assets/malthus_ref_clean.wav",
+    "wizard": "../../assets/wizard_ref_clean.wav",
 }
-FALLBACK_VOICE = "queen"
+WARMUP_VOICE = "queen"
+QUEEN_REFERENCES = {
+    "custom": "../../assets/cenedra_ref_custom.wav",
+    "clean": REFERENCES["queen"],
+    "sarcastic": "../../assets/cenedra_ref_sarcastic.wav",
+    "analytical": "../../assets/cenedra_ref_analytical.wav",
+}
+
+
+def queen_mode() -> str:
+    wanted = os.environ.get("TELEDRA_QUEEN_VOICE", "custom").strip().lower()
+    return wanted if wanted in QUEEN_REFERENCES else "custom"
+
+
+def speech_speed() -> float:
+    try:
+        speed = float(os.environ.get("TELEDRA_TTS_SPEED", str(DEFAULT_SPEED)))
+    except ValueError:
+        return DEFAULT_SPEED
+    return min(1.10, max(0.55, speed)) if math.isfinite(speed) else DEFAULT_SPEED
+
+
+def prepare_audio(wave):
+    """Keep mono PCM intact and join each sentence to silence without a click."""
+    import numpy as np
+
+    samples = np.asarray(wave, dtype=np.float32)
+    if samples.ndim == 2 and samples.shape[0] == 1:
+        samples = samples[0]
+    if samples.ndim != 1:
+        raise ValueError(f"expected mono speech, got shape {samples.shape}")
+    if not np.isfinite(samples).all():
+        raise ValueError("speech contains non-finite samples")
+    samples = samples.copy()
+    fade = min(round(SAMPLE_RATE * EDGE_FADE_SECONDS), samples.size // 2)
+    if fade:
+        # A raised cosine also has zero slope at either end. Five milliseconds
+        # removes a discontinuity without trimming words or changing timing.
+        ramp = (0.5 - 0.5 * np.cos(np.linspace(0, np.pi, fade))).astype(np.float32)
+        samples[:fade] *= ramp
+        samples[-fade:] *= ramp[::-1]
+    if samples.size == 1:
+        samples[0] = 0.0
+    return samples
+
+
+def reference_duration(path: str) -> float:
+    with wave.open(path, "rb") as recording:
+        duration = recording.getnframes() / recording.getframerate()
+    if not 0.5 <= duration <= 30.0:
+        raise ValueError(f"reference duration must be 0.5..30 seconds, got {duration:.3f}")
+    return duration
 
 
 def note(message: str) -> None:
@@ -84,24 +142,16 @@ class AudioOut:
         self._stream.flush()
 
 
-def reference_for(voice: str, base: str) -> str | None:
-    """The reference recording for a voice, falling back to the Queen."""
-    relative = REFERENCES.get(voice)
+def reference_for(voice: str, base: str) -> str:
+    """Require the requested voice's own recording; never substitute a speaker."""
+    relative = QUEEN_REFERENCES[queen_mode()] if voice == "queen" else REFERENCES.get(voice)
     if relative is None:
-        note(f"WARNING: unknown voice '{voice}'; using {FALLBACK_VOICE}")
-        relative = REFERENCES[FALLBACK_VOICE]
+        raise ValueError(f"unknown voice '{voice}'")
 
     path = os.path.normpath(os.path.join(base, relative))
-    if os.path.exists(path):
-        return path
-
-    note(f"WARNING: no recording for '{voice}' at {path}; using {FALLBACK_VOICE}")
-    fallback = os.path.normpath(os.path.join(base, REFERENCES[FALLBACK_VOICE]))
-    if os.path.exists(fallback):
-        return fallback
-
-    note(f"ERROR: no reference recording at {fallback}")
-    return None
+    if not os.path.isfile(path):
+        raise FileNotFoundError(f"no reference recording for '{voice}' at {path}")
+    return path
 
 
 def into_sentences(text: str, minimum_words: int = 5) -> list[str]:
@@ -151,7 +201,6 @@ def find_luxtts() -> None:
     candidates = [
         os.environ.get("TELEDRA_LUXTTS", ""),
         os.path.normpath(os.path.join(here, "..", "..", "LuxTTS")),
-        os.path.normpath(os.path.join(here, "..", "..", "..", "Teledra", "LuxTTS")),
     ]
     for candidate in candidates:
         if candidate and os.path.isdir(candidate):
@@ -194,11 +243,14 @@ class Voice:
             return self._prompts[voice]
 
         path = reference_for(voice, self._base)
-        if path is None:
-            return None
         note(f"encoding the reference for '{voice}' (once)")
         with contextlib.redirect_stdout(sys.stderr):
-            prompt = self._engine.encode_prompt(path)
+            # LuxTTS defaults to five seconds. That clips the clean Queen in
+            # "magnificently", so every generated sentence completes the word.
+            # Encode the complete waveform and its matching transcript together.
+            duration = reference_duration(path)
+            note(f"reference '{voice}': {duration:.3f}s, queen mode={queen_mode()}")
+            prompt = self._engine.encode_prompt(path, duration=duration + 0.05)
         self._prompts[voice] = prompt
         return prompt
 
@@ -212,11 +264,11 @@ class Voice:
         import numpy as np
 
         prompt = self.prompt_for(voice)
-        if prompt is None:
-            return
         note("warming the voice")
         with contextlib.redirect_stdout(sys.stderr):
-            wave = self._engine.generate_speech("Ready.   ", prompt)
+            wave = self._engine.generate_speech(
+                "Ready.   ", prompt, speed=speech_speed(), return_smooth=True
+            )
         # Touch the result so nothing is optimised away, then drop it.
         _ = np.asarray(wave, dtype=np.float32).size
 
@@ -224,34 +276,39 @@ class Voice:
         import numpy as np
         import torch
 
-        prompt = self.prompt_for(voice)
         out.begin()
-        if prompt is None:
-            # No recording: end cleanly so the court hears silence and reads
-            # the reason on stderr, rather than waiting on a stalled pipe.
-            out.end()
-            return
-
-        gap = np.zeros(int(SAMPLE_RATE * GAP_SECONDS), dtype=np.float32)
-        sentences = into_sentences(text) or [text]
         try:
+            prompt = self.prompt_for(voice)
+            text = re.sub(r"[*`#]+", "", text).strip()
+            if not text:
+                return
+            gap = np.zeros(int(SAMPLE_RATE * GAP_SECONDS), dtype=np.float32)
+            sentences = into_sentences(text) or [text]
             for index, sentence in enumerate(sentences):
                 spoken = sentence if sentence[-1:] in ".!?\"" else f"{sentence}."
                 with contextlib.redirect_stdout(sys.stderr):
                     try:
-                        wave = self._engine.generate_speech(f"{spoken}   ", prompt)
+                        # LuxTTS's smooth path keeps the native vocoder band and
+                        # resamples it to 48 kHz. The default predicts another
+                        # >12 kHz band, which can add a fizzy electrical texture.
+                        wave = self._engine.generate_speech(
+                            f"{spoken}   ", prompt, speed=speech_speed(), return_smooth=True
+                        )
                     except Exception as gen_err:
                         if "out of memory" in str(gen_err).lower() and torch.cuda.is_available():
                             note("WARNING: CUDA OOM during speech generation; clearing cache and retrying")
                             torch.cuda.empty_cache()
-                            wave = self._engine.generate_speech(f"{spoken}   ", prompt)
+                            wave = self._engine.generate_speech(
+                                f"{spoken}   ", prompt, speed=speech_speed(), return_smooth=True
+                            )
                         else:
                             raise gen_err
-                samples = np.asarray(wave, dtype=np.float32).reshape(-1)
+                samples = prepare_audio(wave)
                 out.frame(samples)
                 if index + 1 < len(sentences):
                     out.frame(gap)
         finally:
+            # One request gets exactly one end marker, including failures.
             out.end()
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
@@ -274,7 +331,7 @@ def main() -> int:
     # actually hears is as prompt as every line after it. READY then means
     # "ready to speak quickly", not merely "loaded".
     try:
-        voice.warm_up(FALLBACK_VOICE)
+        voice.warm_up(WARMUP_VOICE)
     except Exception as error:  # noqa: BLE001
         note(f"WARNING: could not warm the voice: {error}")
 
@@ -304,8 +361,6 @@ def main() -> int:
             # The reader is mid-utterance; it must be released or the whole
             # court stalls waiting for audio that will never arrive.
             note(f"ERROR: synthesis failed: {error}")
-            out.end()
-
     return 0
 
 

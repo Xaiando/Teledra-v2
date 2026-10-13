@@ -1,0 +1,22 @@
+{
+  "model": "buzzart_brain_v1",
+  "file": "heritage-001056.npz",
+  "npz_sha256": "227e27e34a9ee47e6139ab6b955c77dfe61178e8d4cbf7ca9ba39cf66ed0290d",
+  "brain_sha256": "b89dc4184d751acf9399a3cbbf60b33672c09fb9f53866c8659f641ac7823605",
+  "saved_at": "2026-09-17T12:31:12.399939+00:00",
+  "identity": {
+    "model": "buzzart_brain_v1",
+    "brain_sha256": "b89dc4184d751acf9399a3cbbf60b33672c09fb9f53866c8659f641ac7823605",
+    "trainable_parameters": 1074,
+    "leak": 0.3504209480687701,
+    "recurrent_gain": 1.06705255363171,
+    "readout_gain": 1.8354650665469707,
+    "generation": 1056,
+    "fixed": "Connectome coupling, transmitter signs and normalization are unchanged; only engineered projections, per-type bias and bounded dynamics scalars are trained."
+  },
+  "metadata": {
+    "generation": 1056,
+    "run": "local-practice-20260917-1250",
+    "lineage": "heritage"
+  }
+}

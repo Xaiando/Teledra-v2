@@ -7,3 +7,11 @@
 /.venv/
 **/__pycache__/
 *.py[cod]
+
+# Local training runs, rendered proof media, and packaged executables.
+/Music/training/
+/FlyComposer/training/
+/FlyComposer/bin/
+/FlyComposer/data/foundation/sources/
+/evolution-proof/
+/handoff-output/

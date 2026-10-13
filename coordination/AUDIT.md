@@ -227,3 +227,120 @@ away from being obvious.
 4. Recall on autonomous turns (#5). Unlocks a crate that already works.
 5. Night Desk yield + rota (#3). Same fix as today's, one branch over.
 6. Proposal expiry (#4), `[FACT:]` stripping (#6), `/help` (#9).
+
+---
+
+## Organist / DAW / synth review — after the checkpoint merge
+
+Checked against the merged tree (`77796a1`), the live lineage
+(`Harmonic Resonance`, v4348), the ledger, and every harness. The merge is
+coherent: the six-movement cycle (pulse → motif → counterpoint → texture →
+harmony → modulation) absorbed the re-voicing axis (fires on *Texture*) and
+the key/tempo anchor (moves on *Modulation*, every sixth variation). One
+thing changes at a time, which is the right shape.
+
+**Verified working**
+
+- 215 workspace tests, clippy `-D warnings` clean; `daw.py --self-test`
+  passes; DAW protocol is typed and refuses free-form actions.
+- `evolution_proof`: three consecutive movements, distinct score and PCM
+  digests, correlation to previous −0.06…0.03, difference RMS ≈ 0.20. Not a
+  renamed loop.
+- Live render: peak 0.890, RMS 0.138, dynamic range 2.10×, seam 1.2 (limit 14).
+- Key/mode moved 7 times in 40 variations, tempo held 100–109 BPM. Anchored.
+- Instrument registers separate cleanly (cello 36–69 … flute 72–98).
+
+**Fixed in this pass**
+
+- *Re-voicing could double a voice.* The index offset let two parts of one
+  family land on the same seat; the live lineage carried `Reed, Reed` and a
+  walk produced `Pad … Pad`. Voices are now chosen before any track is
+  touched and a taken voice is skipped. Regression test:
+  `re_orchestration_never_doubles_a_voice`. An *inherited* doubling (from the
+  model's own score) is resolved at the first Texture movement, not before.
+- *A DAW crash looked like a dismissal.* `ensure_running` set `dismissed` on
+  any exit, stderr is discarded, so a crashed studio vanished silently and
+  never returned until `/Music`. Now a non-zero exit is reported backstage
+  and the studio reopens on the next score; only a clean exit stays closed.
+- `arrangement_report` now takes a score path like the other harnesses.
+
+**For Sol — worth doing next, in order**
+
+1. **Density is unbounded.** The live cello plays 256/256 sixteenths (8 per
+   bar, 269 ms gate) — the profile's own "an organ played as sixteenths is a
+   machine gun" — and polyphony sits at 10+ voices for whole sections
+   (`arrangement_report` on the live score). The arranger never thins what
+   the model wrote. A per-role floor (sustaining voices ≥ eighths, bowed ≥
+   quarters) enforced in `arrange.rs` would make the profile's rule
+   mechanical instead of advisory.
+2. **Craft is a presence checklist, so it is always 100.** Every variation
+   in a 40-step walk and every `evolution_proof` line scores 100/100. It
+   asks *is there* a pulse / foundation / middle / melody / cadence — and the
+   mastering boundary inserts whatever is missing (`insert_performance_voice`).
+   By construction it cannot fail. It has no notion of masking (two voices in
+   one register), density, or the doubling above. Either add those axes or
+   stop showing the number; a score that never moves is `SUGGESTIONS: 73`
+   again.
+3. **The cadence claim is off.** The handover says a variation every 18–36 s
+   (`native_evolution_delay` clamps piece length to that). The ledger says
+   median **48 s**, p10 36, p90 50 — 3 of 92 gaps land in the claimed band.
+   Render + verify + swap adds ~12 s the claim doesn't count. 48 s is a good
+   cadence; the document should say 48.
+4. **The Organist never uses the tag.** Last 200 turns: 30 Organist replies,
+   0 `[COURT_SCORE:`, 3 bare JSON, 27 prose. Composer nudges: 26 sent, 0
+   tagged, 11 salvaged as bare JSON, 15 prose. Salvage carries 42 % of
+   compositions; native evolution carries everything else. The profile's
+   one-shot should be a *complete tagged score*, not a schema paragraph —
+   this model copies shapes.
+5. **Injected voices are invisible to the model.** The mastering boundary
+   adds `Master Kick` / `Master Bass` at render time but the persisted score
+   stays four tracks, so the Organist never sees the drums it is hearing and
+   cannot write against them. Persist what was played, or tell the model.
+6. Minor: `Pluck` sustain 0.10, `Bell`/`Arp` 0.06 — the audit reports them
+   as "sustains" while the profile promises they decay to silence. Set to 0
+   like Piano/Harp, or lengthen the release and accept the small hold.
+
+---
+
+## Music redesign — evolution is development, not mutation
+
+The operator's verdict was "the music logic is terrible, and they need to
+make longer looping tracks; it almost worked in V1". Measured against V1,
+both halves were right, and both had one-line causes.
+
+| | V1 | V2 before | V2 now |
+|---|---|---|---|
+| minimum piece | 120 s / 64 bars (`MIN_COMPOSITION_SECONDS`) | **16 bars cap** in `mastered()` — 40 s at 96 BPM | ≥ 120 s by tempo, 32–64 bars |
+| hold before change | ≥ 300 s (`MUSIC_MIN_INTERVAL_SECS`) | piece length clamped 18–36 s; live median 48 s | 2 × piece length, clamped 120–600 s |
+| what a change does to the notes | nothing — a new piece came from the model | rotate steps, shift degrees mod 7 | register, gate, rhythm density, chord order, voicing |
+| one Motif variation, flute | — | **56 % of notes rewritten, downbeat moved** | 0 notes changed; gate 1.0 → 0.8, reed up an octave |
+| one Counterpoint variation, harp | — | **88 % rewritten, downbeat moved** | 3/8 rhythm slots, no new pitches, downbeat kept |
+
+Live after relaunch: `Harmonic Resonance`, 52 bars, **125 s** (was 40),
+variation gap **255 s** (was 48). `evolution_proof` still shows distinct
+digests per movement.
+
+What changed and where:
+
+- `Score::mastered` — `bars.clamp(8, 16)` → floor of two minutes at the
+  piece's tempo, 32–64. Test: `a_mastered_piece_lasts_at_least_two_minutes`.
+- `Score::evolved` — Pulse toggles one off-beat hit (never the kick, never a
+  beat) and leans kick gain; Motif moves a melodic part's octave inside its
+  natural range or changes its gate; Counterpoint thins or fills the middle
+  voices' rhythm using neighbouring pitches only; Harmony rotates the
+  progression instead of transposing the bass; Texture and Modulation
+  unchanged. Tests: `a_variation_keeps_the_tune` (pitch classes and downbeat
+  survive every non-Modulation movement), `every_movement_is_audible_to_the_runtime`.
+- `arrange.rs` phrase development: inversion → sequence a third above the
+  answer. Contour survives chord-tone snapping.
+- `runtime/mod.rs`: `native_evolution_delay` 18–36 s → 120–600 s; env and
+  DAW cadence clamps 12–120 → 60–900 s. `daw.py` cadences are 2 / 5 / 10 min.
+- `default_score`: 48 bars, flute carries a two-bar (32-step) phrase.
+- `organist.md`: asks for 32–48 bars and two-bar melodic patterns.
+
+For Sol: `evolution_proof`'s "correlation to previous ≈ 0" was never
+evidence of an audible difference. Two renders of the *same* score with
+different seeds correlate near zero at sample level (humanised timing,
+reverb). It proves "not byte-identical", nothing more. The tune-preservation
+test above is the check that means something; a listening-scale metric
+(e.g. chroma or onset-pattern similarity) would be the honest replacement.

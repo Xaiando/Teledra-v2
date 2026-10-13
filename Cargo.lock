@@ -2177,6 +2177,7 @@ dependencies = [
  "teledra-tower",
  "teledra-tts",
  "teledra-workshop",
+ "tempfile",
  "tokio",
  "windows-sys 0.61.2",
 ]
@@ -2210,6 +2211,7 @@ name = "teledra-fractus"
 version = "0.1.0"
 dependencies = [
  "image",
+ "png",
  "serde",
  "serde_json",
  "thiserror 2.0.19",

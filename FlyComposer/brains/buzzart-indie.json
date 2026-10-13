@@ -1,0 +1,89 @@
+{
+  "model": "buzzart_brain_v1",
+  "file": "buzzart-indie.npz",
+  "npz_sha256": "d4217fe94ca46019aafac40615bf7953eb3b81a228dbf8e67b50e213205d6e26",
+  "brain_sha256": "ed677a29641ec17687a29b70d311bba2a98b15d3f1c02276dd3b77b6cf909862",
+  "saved_at": "2026-09-17T03:58:20.794199+00:00",
+  "identity": {
+    "model": "buzzart_brain_v1",
+    "brain_sha256": "ed677a29641ec17687a29b70d311bba2a98b15d3f1c02276dd3b77b6cf909862",
+    "trainable_parameters": 1074,
+    "leak": 0.3384567660168683,
+    "recurrent_gain": 1.072239777742658,
+    "readout_gain": 2.104082140919094,
+    "generation": 130,
+    "fixed": "Connectome coupling, transmitter signs and normalization are unchanged; only engineered projections, per-type bias and bounded dynamics scalars are trained."
+  },
+  "metadata": {
+    "initialized_from": {
+      "controller": "leaky_tanh_rate_v1",
+      "seed": 2026,
+      "context_scale": 0.3
+    },
+    "generation": 130,
+    "validation": {
+      "fitness": 0.8172504432276502,
+      "critic_fitness": 0.8425018435167647,
+      "naturalness": 0.9144961169924828,
+      "mean_reward": 0.8572971438595015,
+      "diversity": 0.9566661531735137,
+      "components": {
+        "melody": 0.9067035758353001,
+        "breathing": 0.9631775964678149,
+        "rhythm": 0.9014820795239833,
+        "motif": 0.939658655026594,
+        "harmony": 0.9282423375770271,
+        "texture": 0.8994173886252368,
+        "form": 0.7374017534710551
+      },
+      "errors": []
+    },
+    "best_validation": {
+      "fitness": 0.8172504432276502,
+      "critic_fitness": 0.8425018435167647,
+      "naturalness": 0.9144961169924828,
+      "mean_reward": 0.8572971438595015,
+      "diversity": 0.9566661531735137,
+      "components": {
+        "melody": 0.9067035758353001,
+        "breathing": 0.9631775964678149,
+        "rhythm": 0.9014820795239833,
+        "motif": 0.939658655026594,
+        "harmony": 0.9282423375770271,
+        "texture": 0.8994173886252368,
+        "form": 0.7374017534710551
+      },
+      "errors": []
+    },
+    "published_from": "training/buzzart/indie-2/best.npz",
+    "test_seeds": {
+      "seeds": "70000-70031",
+      "fitness": 0.892,
+      "original_fly_fitness": 0.748
+    },
+    "source_run": "training/buzzart/indie-2",
+    "songbook": {
+      "file": "data/foundation/indie-blend.json",
+      "sha256": "c818f116a552f7cc654254dd8c9fd2e2363b229e60a5b54fcf1a4d7c8b8382d9",
+      "blend": {
+        "console": 0.3,
+        "amiga": 0.15,
+        "songbook": 0.55
+      },
+      "motifs": 212
+    },
+    "style": "console",
+    "temperament": "indie",
+    "palette": "genesis",
+    "measured": {
+      "seeds": "96001-96010",
+      "notes_per_second": 6.3,
+      "rest_share": 0.4,
+      "vs_arcade_trained": {
+        "notes_per_second": 8.5,
+        "rest_share": 0.32
+      }
+    },
+    "note": "indie-2: between retro games and lofi, measured against the court's kingdom tunes (96 BPM, 0.54 rest share). Genesis FM voices, thinned drums, capped arpeggios, and critic bands centred on that space rather than above the floor."
+  }
+}

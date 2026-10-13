@@ -1,0 +1,26 @@
+{
+  "file": "songbook.json",
+  "sha256": "89504ba0180a5b5386c8db8c3baa5b9f4df040c6c3af131890abf0aac5d76e35",
+  "bytes": 135210,
+  "source": {
+    "library": "music21 10.5.0 corpus",
+    "corpora": {
+      "ryansMammoth": 1059,
+      "oneills1850": 1341,
+      "bach chorale sopranos": 240
+    },
+    "chorales_for_harmony": 240,
+    "works": 2640,
+    "melodies": 2640,
+    "notes": 264186,
+    "licensing": "Public-domain folk collections and Bach chorales as bundled with music21 (BSD-3-Clause library).",
+    "built_at": "2026-09-15T11:42:22.382479+00:00",
+    "build_seconds": 344.2
+  },
+  "reference": {
+    "interval_logprob": -1.8238,
+    "ioi_logprob": -1.8682,
+    "root_logprob": -1.49,
+    "scope": "Mean log-probability per token on 264 held-out melodies under tables from the other 2376"
+  }
+}

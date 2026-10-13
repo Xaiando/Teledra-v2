@@ -1,0 +1,85 @@
+{
+  "model": "buzzart_brain_v1",
+  "file": "buzzart-blended.npz",
+  "npz_sha256": "f3d526f04c251523dab90cd3d7200bf9fa9604b71d085a2036950602af30ec9f",
+  "brain_sha256": "8875254b6077d6a359d86b7c3cdb3fbb5cc3f358bc9278c74442b77f477de1fd",
+  "saved_at": "2026-09-17T03:37:16.602586+00:00",
+  "identity": {
+    "model": "buzzart_brain_v1",
+    "brain_sha256": "8875254b6077d6a359d86b7c3cdb3fbb5cc3f358bc9278c74442b77f477de1fd",
+    "trainable_parameters": 1074,
+    "leak": 0.32990307984563744,
+    "recurrent_gain": 0.9750732149951351,
+    "readout_gain": 2.173307050172742,
+    "generation": 100,
+    "fixed": "Connectome coupling, transmitter signs and normalization are unchanged; only engineered projections, per-type bias and bounded dynamics scalars are trained."
+  },
+  "metadata": {
+    "initialized_from": {
+      "controller": "leaky_tanh_rate_v1",
+      "seed": 2026,
+      "context_scale": 0.3
+    },
+    "generation": 100,
+    "validation": {
+      "fitness": 0.823537029838963,
+      "critic_fitness": 0.8530724540454708,
+      "naturalness": 0.9010307947643995,
+      "mean_reward": 0.85548733669443,
+      "diversity": 0.9929397347165629,
+      "components": {
+        "melody": 0.8538399148793827,
+        "breathing": 1.0,
+        "rhythm": 0.9687303370427813,
+        "motif": 0.8911087134883634,
+        "harmony": 0.9434178175350493,
+        "texture": 0.9701294691214046,
+        "form": 0.7310364016051629
+      },
+      "errors": []
+    },
+    "best_validation": {
+      "fitness": 0.823537029838963,
+      "critic_fitness": 0.8530724540454708,
+      "naturalness": 0.9010307947643995,
+      "mean_reward": 0.85548733669443,
+      "diversity": 0.9929397347165629,
+      "components": {
+        "melody": 0.8538399148793827,
+        "breathing": 1.0,
+        "rhythm": 0.9687303370427813,
+        "motif": 0.8911087134883634,
+        "harmony": 0.9434178175350493,
+        "texture": 0.9701294691214046,
+        "form": 0.7310364016051629
+      },
+      "errors": []
+    },
+    "published_from": "training/buzzart/blended-1/best.npz",
+    "test_seeds": {
+      "seeds": "70000-70031",
+      "fitness": 0.892,
+      "original_fly_fitness": 0.748
+    },
+    "source_run": "training/buzzart/blended-1",
+    "songbook": {
+      "file": "data/foundation/blended.json",
+      "sha256": "9a9fdf794d6f61e951d8f5134db0849de5526fe1ab6e1ea5243c7ebd25484e95",
+      "blend": {
+        "console": 0.4,
+        "amiga": 0.25,
+        "songbook": 0.35
+      },
+      "motifs": 160
+    },
+    "style": "console",
+    "held_out": {
+      "seeds": "95000-95015",
+      "blended_brain": 0.848,
+      "untrained_buzzart": 0.753,
+      "original_fly": 0.74,
+      "naturalness": 0.916
+    },
+    "note": "blended-1 best held-out brain: retro-led blended songbook (40% chiptune, 25% tracker module, 35% folk and chorale) with console style."
+  }
+}

@@ -1,5 +1,10 @@
 # Codex handover: Organist DAW
 
+For current behavior and live acceptance, see
+[2026-09-06 operational acceptance](OPERATIONAL_ACCEPTANCE.md) and
+[Music/README](../Music/README.md). Historical timings and proof figures below
+describe their dated runs.
+
 **Prepared:** 2026-08-03; major overhaul verified 2026-08-28  
 **Workspace:** `D:\Teledra V2`  
 **Current state:** major v3 workstation overhaul implemented and machine-verified
@@ -30,9 +35,11 @@ reference.
   meters, transport state, and accurate pause/resume playheads.
 - The verified score and audio persist under the V2 data root as
   `music/current_score.json` and `music/current.wav`.
-- Rust creates a verified variation every 18--36 seconds by default. Studio can
-  select 24, 36, or 48 seconds. This guarantee does not depend on the model
-  returning a valid or changed score.
+- Rust creates a verified variation every 120--600 seconds by default (twice
+  the piece length; V1 held a piece for 300 s). Studio can select 2, 5, or 10
+  minutes. This guarantee does not depend on the model returning a valid or
+  changed score. The earlier 18--36 s rule rewrote the tune before its second
+  pass finished; see `AUDIT.md`, "Music redesign".
 - Evolution is a six-movement cycle: pulse, motif, counterpoint, texture,
   harmony, and modulation. Only the named axis is rewritten; tonic/tempo remain
   anchored until modulation and progressions retain a diatonic loop cadence.

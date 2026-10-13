@@ -51,6 +51,8 @@ pub enum ResearchError {
     InvalidUrl(String),
     #[error("research redirect limit exceeded")]
     RedirectLimit,
+    #[error("research response is not readable text ({0})")]
+    NotText(String),
 }
 
 #[derive(Clone, Debug)]
@@ -202,12 +204,20 @@ impl ResearchService {
             {
                 return Err(ResearchError::TooLarge);
             }
+            let content_type = response
+                .headers()
+                .get(reqwest::header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok())
+                .map(|value| value.to_ascii_lowercase());
             let mut bytes = Vec::new();
             response
                 .take(MAX_RESPONSE_BYTES as u64 + 1)
                 .read_to_end(&mut bytes)?;
             if bytes.len() > MAX_RESPONSE_BYTES {
                 return Err(ResearchError::TooLarge);
+            }
+            if let Some(kind) = unreadable_kind(content_type.as_deref(), &bytes) {
+                return Err(ResearchError::NotText(kind));
             }
             return Ok(String::from_utf8_lossy(&bytes).into_owned());
         }
@@ -245,6 +255,28 @@ impl ResearchBrief {
                         .any(|clause| clause == claim)
             })
     }
+}
+
+/// Names why a response must not be decoded as text. A PDF or image decoded
+/// lossily becomes a page of replacement characters that the court then quotes.
+fn unreadable_kind(content_type: Option<&str>, bytes: &[u8]) -> Option<String> {
+    if bytes.starts_with(b"%PDF") {
+        return Some("PDF".to_owned());
+    }
+    if let Some(kind) = content_type {
+        let essence = kind.split(';').next().unwrap_or_default().trim();
+        let readable = essence.is_empty()
+            || essence.starts_with("text/")
+            || essence.ends_with("json")
+            || essence.ends_with("xml")
+            || essence == "application/xhtml+xml"
+            || essence == "application/javascript"
+            || (essence == "application/octet-stream" && !bytes.contains(&0));
+        if !readable {
+            return Some(essence.to_owned());
+        }
+    }
+    bytes.contains(&0).then(|| "binary data".to_owned())
 }
 
 fn source_provenance(raw_url: &str) -> (String, String, f32) {
@@ -520,6 +552,23 @@ fn now_ms() -> u128 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn binary_responses_are_refused_instead_of_decoded_as_text() {
+        assert_eq!(
+            unreadable_kind(Some("application/pdf"), b"%PDF-1.7 endstream"),
+            Some("PDF".to_owned())
+        );
+        assert_eq!(
+            unreadable_kind(None, b"%PDF-1.4 stream"),
+            Some("PDF".to_owned())
+        );
+        assert!(unreadable_kind(Some("image/png"), b"\x89PNG").is_some());
+        assert!(unreadable_kind(Some("text/html; charset=utf-8"), b"<html>ok</html>").is_none());
+        assert!(unreadable_kind(Some("application/json"), b"{}").is_none());
+        assert!(unreadable_kind(None, b"plain words").is_none());
+        assert!(unreadable_kind(None, b"a\0b").is_some());
+    }
 
     #[test]
     fn query_encoding_is_safe() {

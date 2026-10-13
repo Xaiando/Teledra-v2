@@ -10,8 +10,16 @@ use image::{Delay, DynamicImage, Frame, Rgb, RgbImage};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+mod kinetic;
+mod orbits;
+mod richness;
+pub use richness::VisualRichness;
+
 const MAX_DIMENSION: u32 = 2_048;
 const MAX_ITERATIONS: u32 = 2_000;
+pub const MAX_ANIMATION_FRAMES: u16 = 240;
+pub const MAX_ANIMATION_PIXELS: u64 = 96_000_000;
+const MAX_ANIMATION_BYTES: u64 = 128 * 1024 * 1024;
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -82,6 +90,12 @@ pub struct Scene {
     pub palette: String,
     #[serde(default)]
     pub layers: Vec<SceneLayer>,
+    #[serde(default = "default_symmetry")]
+    pub symmetry: u32,
+    #[serde(default = "default_zoom")]
+    pub zoom: f64,
+    #[serde(default = "default_motion")]
+    pub motion: f32,
     /// Layer names the Artist asked for that this renderer does not know.
     ///
     /// Recorded on the scene so the manifest shows what was requested and not
@@ -97,6 +111,30 @@ pub struct RenderManifest {
     pub image: PathBuf,
     pub non_black_pixels: u64,
     pub verified: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub animation: Option<AnimationMetadata>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub visual_richness: Option<VisualRichness>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct AnimationMetadata {
+    pub frame_count: u16,
+    pub fps: u16,
+    pub loop_seconds: f64,
+    pub distinct_frames: usize,
+    pub mean_frame_delta: f64,
+    pub seam_delta: f64,
+}
+
+fn default_symmetry() -> u32 {
+    12
+}
+fn default_zoom() -> f64 {
+    1.0
+}
+fn default_motion() -> f32 {
+    0.65
 }
 
 #[derive(Debug, Error)]
@@ -109,19 +147,24 @@ pub enum FractusError {
     Io(#[from] std::io::Error),
     #[error("Fractus manifest JSON failed: {0}")]
     Json(#[from] serde_json::Error),
+    #[error("Fractus animation encoding failed: {0}")]
+    Png(#[from] png::EncodingError),
 }
 
 impl Default for Scene {
     fn default() -> Self {
         Self {
             version: 2,
-            kind: SceneKind::Particles,
+            kind: SceneKind::LotusMandala,
             width: 900,
             height: 1_200,
             iterations: 420,
             seed: 0x07e1_ed2a,
             palette: "emerald".to_owned(),
             layers: Vec::new(),
+            symmetry: default_symmetry(),
+            zoom: default_zoom(),
+            motion: default_motion(),
             unknown_layers: Vec::new(),
         }
     }
@@ -130,11 +173,8 @@ impl Default for Scene {
 impl Scene {
     pub fn parse(dsl: &str) -> Result<Self, FractusError> {
         let mut fields = HashMap::new();
-        for raw in dsl.lines() {
-            let line = raw.trim();
-            if line.is_empty() || line.starts_with('#') {
-                continue;
-            }
+        for line in dsl_fields(dsl) {
+            let line = line.as_str();
             if let Some(version) = line.strip_prefix("version ") {
                 fields.insert("version".to_owned(), version.trim().to_owned());
                 continue;
@@ -168,7 +208,9 @@ impl Scene {
                 "lissajous" => SceneKind::Lissajous,
                 "moire" => SceneKind::Moire,
                 "orbital_lace" => SceneKind::OrbitalLace,
-                "spirograph" => SceneKind::Spirograph,
+                // The spirograph renderer uses the rolling-inside-circle
+                // hypotrochoid equations, including the minus sign in y.
+                "spirograph" | "hypotrochoid" => SceneKind::Spirograph,
                 "harmonograph" => SceneKind::Harmonograph,
                 "rose_curve" => SceneKind::RoseCurve,
                 "string_art" => SceneKind::StringArt,
@@ -206,6 +248,29 @@ impl Scene {
         }
         if let Some(value) = fields.get("seed") {
             scene.seed = parse(value, "seed")?;
+        }
+        // Out-of-range style numbers are clamped rather than refused: a
+        // symmetry of 4 or a zoom of 12 is a clear intent, and refusing it
+        // cost the court another model call to ask for the same scene again.
+        // Non-finite values still fail validation.
+        if let Some(value) = fields.get("symmetry") {
+            scene.symmetry = parse::<u32>(value, "symmetry")?.clamp(6, 24);
+        }
+        if let Some(value) = fields.get("zoom") {
+            let zoom: f64 = parse(value, "zoom")?;
+            scene.zoom = if zoom.is_finite() {
+                zoom.clamp(0.5, 8.0)
+            } else {
+                zoom
+            };
+        }
+        if let Some(value) = fields.get("motion") {
+            let motion: f32 = parse(value, "motion")?;
+            scene.motion = if motion.is_finite() {
+                motion.clamp(0.0, 1.0)
+            } else {
+                motion
+            };
         }
         if let Some(value) = fields.get("palette") {
             if !is_known_palette(value) {
@@ -261,6 +326,27 @@ impl Scene {
                 "a scene supports at most eight compositing layers".to_owned(),
             ));
         }
+        if !(6..=24).contains(&self.symmetry)
+            || !self.zoom.is_finite()
+            || !(0.5..=8.0).contains(&self.zoom)
+            || !self.motion.is_finite()
+            || !(0.0..=1.0).contains(&self.motion)
+        {
+            return Err(FractusError::Invalid(
+                "symmetry must be 6..24, zoom 0.5..8, and motion 0..1; all values must be finite"
+                    .to_owned(),
+            ));
+        }
+        if !is_known_palette(&self.palette)
+            || self
+                .layers
+                .iter()
+                .any(|layer| !is_known_palette(&layer.palette))
+        {
+            return Err(FractusError::Invalid(
+                "scene and layer palettes must use a supported name".to_owned(),
+            ));
+        }
         for layer in &self.layers {
             if !layer.alpha.is_finite() || !(0.0..=1.0).contains(&layer.alpha) {
                 return Err(FractusError::Invalid(
@@ -278,6 +364,98 @@ impl Scene {
         verify(self.clone(), output.to_path_buf(), &image)
     }
 
+    /// Preview the actual subject before a costly animation render. The court
+    /// uses this explicit operator preference; primitive renders remain usable
+    /// through the general renderer for callers that deliberately request them.
+    pub fn require_visual_richness(&self) -> Result<VisualRichness, FractusError> {
+        self.validate()?;
+        let facts = richness::measure(&self.render_frame(0.0));
+        let concerns = facts.concerns();
+        if concerns.is_empty() {
+            Ok(facts)
+        } else {
+            Err(FractusError::Invalid(format!(
+                "visual richness check: {}. Develop visible internal structure, tonal depth and framing within this one family; a larger image, motion-only change or unrelated overlays cannot satisfy this check",
+                concerns.join("; ")
+            )))
+        }
+    }
+
+    /// Lossless true-colour animation: no per-frame GIF palette quantization.
+    /// Frames are encoded one at a time and every frame is verified before the
+    /// artifact can be published. The Studio's decode budget uses the same cap.
+    pub fn render_animation(
+        &self,
+        output: &Path,
+        frame_count: u16,
+        fps: u16,
+    ) -> Result<RenderManifest, FractusError> {
+        self.validate()?;
+        validate_animation_budget(self, frame_count)?;
+        if !(12..=30).contains(&fps) {
+            return Err(FractusError::Invalid(
+                "animation frame rate must be 12..30".to_owned(),
+            ));
+        }
+        let first = self.render_frame(0.0);
+        let mut manifest = verify(self.clone(), output.to_path_buf(), &first)?;
+        let result = (|| -> Result<AnimationMetadata, FractusError> {
+            let file = BufWriter::new(File::create(output)?);
+            let mut encoder = png::Encoder::new(file, self.width, self.height);
+            encoder.set_color(png::ColorType::Rgb);
+            encoder.set_depth(png::BitDepth::Eight);
+            encoder.set_compression(png::Compression::Fast);
+            encoder.set_animated(u32::from(frame_count), 0)?;
+            encoder.set_frame_delay(1, fps)?;
+            encoder.set_blend_op(png::BlendOp::Source)?;
+            encoder.set_dispose_op(png::DisposeOp::None)?;
+            let mut writer = encoder.write_header()?;
+            writer.write_image_data(first.as_raw())?;
+            let mut previous = first.clone();
+            let mut distinct = std::collections::HashSet::from([frame_digest(&first)]);
+            let mut delta = 0.0;
+            for index in 1..frame_count {
+                let phase = index as f32 / frame_count as f32 * std::f32::consts::TAU;
+                let frame = self.render_frame(phase);
+                verify(self.clone(), output.to_path_buf(), &frame)?;
+                delta += frame_delta(&previous, &frame);
+                distinct.insert(frame_digest(&frame));
+                writer.write_image_data(frame.as_raw())?;
+                previous = frame;
+            }
+            writer.finish()?;
+            if std::fs::metadata(output)?.len() > MAX_ANIMATION_BYTES {
+                return Err(FractusError::Invalid(
+                    "encoded animation exceeds the Studio's 128 MiB file limit".to_owned(),
+                ));
+            }
+            let seam_delta = frame_delta(&previous, &first);
+            if self.motion > 0.0 && distinct.len() < 2 {
+                return Err(FractusError::Invalid(
+                    "animated scene produced identical frames".to_owned(),
+                ));
+            }
+            Ok(AnimationMetadata {
+                frame_count,
+                fps,
+                loop_seconds: f64::from(frame_count) / f64::from(fps),
+                distinct_frames: distinct.len(),
+                mean_frame_delta: (delta + seam_delta) / f64::from(frame_count),
+                seam_delta,
+            })
+        })();
+        match result {
+            Ok(animation) => {
+                manifest.animation = Some(animation);
+                Ok(manifest)
+            }
+            Err(error) => {
+                let _ = std::fs::remove_file(output);
+                Err(error)
+            }
+        }
+    }
+
     /// Renders a bounded, looping live preview suitable for projection or OBS.
     pub fn render_gif(
         &self,
@@ -285,6 +463,7 @@ impl Scene {
         frame_count: u16,
     ) -> Result<RenderManifest, FractusError> {
         self.validate()?;
+        validate_animation_budget(self, frame_count)?;
         if !(2..=120).contains(&frame_count) {
             return Err(FractusError::Invalid(
                 "live frame count must be 2..=120".to_owned(),
@@ -334,46 +513,150 @@ impl Scene {
             | SceneKind::Julia
             | SceneKind::Multibrot
             | SceneKind::BurningShip
-            | SceneKind::Tricorn => render_escape(self, image, phase),
-            SceneKind::Newton => render_newton(self, image, phase),
+            | SceneKind::Tricorn => kinetic::render_escape(self, image, phase),
+            SceneKind::Newton => kinetic::render_newton(self, image, phase),
             SceneKind::Mandala
             | SceneKind::LotusMandala
             | SceneKind::StarMandala
             | SceneKind::FlowerOfLife
             | SceneKind::RadialWeave
             | SceneKind::Kaleidoscope
-            | SceneKind::Phyllotaxis => render_radial(self, image, phase),
+            | SceneKind::Phyllotaxis => kinetic::render_radial(self, image, phase),
+            SceneKind::Guilloche
+            | SceneKind::Spirograph
+            | SceneKind::OrbitalLace
+            | SceneKind::RoseCurve => orbits::render(self, image, phase),
             SceneKind::WovenWeb
-            | SceneKind::Guilloche
             | SceneKind::Lissajous
             | SceneKind::Moire
-            | SceneKind::OrbitalLace
-            | SceneKind::Spirograph
             | SceneKind::Harmonograph
-            | SceneKind::RoseCurve
-            | SceneKind::StringArt => render_curves(self, image, phase),
+            | SceneKind::StringArt => render_curves(self, image, phase.sin() * self.motion),
             SceneKind::Sierpinski
             | SceneKind::KochSnowflake
             | SceneKind::FractalTree
             | SceneKind::DragonCurve
             | SceneKind::BarnsleyFern
-            | SceneKind::LSystem => render_recursive(self, image, phase),
+            | SceneKind::LSystem => render_recursive(self, image, phase.sin() * self.motion),
             SceneKind::Truchet | SceneKind::HexWeave | SceneKind::OpArt => {
-                render_tiles(self, image, phase)
+                render_tiles(self, image, phase.sin() * self.motion)
             }
             SceneKind::CellularAutomata | SceneKind::ReactionDiffusion => {
-                render_cells(self, image, phase)
+                render_cells(self, image, phase.sin() * self.motion)
             }
-            SceneKind::Particles => render_particles(self, image, phase),
-            SceneKind::FlowField => render_flow(self, image, phase),
-            SceneKind::StrangeAttractor => render_attractor(self, image, phase),
+            SceneKind::Particles => render_particles(self, image, phase.sin() * self.motion),
+            SceneKind::FlowField => render_flow(self, image, phase.sin() * self.motion),
+            SceneKind::StrangeAttractor => render_attractor(self, image, phase.sin() * self.motion),
         }
     }
+}
+
+/// The DSL with one field per line, as every line-based consumer expects.
+pub fn canonical_dsl(dsl: &str) -> String {
+    dsl_fields(dsl).join("\n")
+}
+
+/// Keep the selected subject and its parameters, without compositing other
+/// families. The gallery uses this policy; `Scene::parse` and the renderer
+/// still support deliberately authored composite scenes for other callers.
+pub fn single_family_dsl(dsl: &str) -> Result<String, FractusError> {
+    let scene = Scene::parse(dsl)?;
+    let fields = dsl_fields(dsl);
+    let has_subject = fields.iter().any(|field| {
+        field.split_once(['=', ':']).is_some_and(|(key, _)| {
+            matches!(key.trim().to_ascii_lowercase().as_str(), "type" | "kind")
+        })
+    });
+    let mut fields = fields
+        .into_iter()
+        .filter(|field| {
+            !field
+                .split_once(['=', ':'])
+                .is_some_and(|(key, _)| key.trim().eq_ignore_ascii_case("layers"))
+        })
+        .collect::<Vec<_>>();
+    if !has_subject && let Some(subject) = scene.layers.first() {
+        // A layers-only request names its subject first. Promote that exact
+        // family and palette instead of replacing it with the scene default.
+        let kind = serde_json::to_value(subject.kind)?;
+        fields.push(format!("type={}", kind.as_str().unwrap_or_default()));
+        fields.push(format!("palette={}", subject.palette));
+    }
+    Ok(fields.join("\n"))
 }
 
 pub fn write_manifest(path: &Path, manifest: &RenderManifest) -> Result<(), FractusError> {
     std::fs::write(path, serde_json::to_vec_pretty(manifest)?)?;
     Ok(())
+}
+
+fn validate_animation_budget(scene: &Scene, frame_count: u16) -> Result<(), FractusError> {
+    if !(2..=MAX_ANIMATION_FRAMES).contains(&frame_count)
+        || u64::from(scene.width) * u64::from(scene.height) * u64::from(frame_count)
+            > MAX_ANIMATION_PIXELS
+    {
+        return Err(FractusError::Invalid(format!(
+            "animation must have 2..{MAX_ANIMATION_FRAMES} frames and at most {MAX_ANIMATION_PIXELS} decoded pixels"
+        )));
+    }
+    Ok(())
+}
+
+fn frame_digest(frame: &RgbImage) -> u64 {
+    frame
+        .as_raw()
+        .iter()
+        .fold(0xcbf2_9ce4_8422_2325, |hash, byte| {
+            (hash ^ u64::from(*byte)).wrapping_mul(0x100_0000_01b3)
+        })
+}
+
+fn frame_delta(first: &RgbImage, second: &RgbImage) -> f64 {
+    first
+        .as_raw()
+        .iter()
+        .zip(second.as_raw())
+        .map(|(a, b)| f64::from(a.abs_diff(*b)))
+        .sum::<f64>()
+        / (first.as_raw().len() as f64 * 255.0)
+}
+
+/// One DSL field per entry, whether fields arrive on lines or after `;`.
+///
+/// The Artist's profile teaches the one-line form, `version 2; type=julia;
+/// ...`, and the model writes exactly that. Read line by line, the whole line
+/// was the version field, so every tagged composition failed with "version is
+/// not a valid number" and the prose fallback chose the art instead: a
+/// Lissajous knot the Artist had only mentioned in passing was drawn over the
+/// mandala it asked for. `;` also separates entries inside `layers=`, so a
+/// piece without a key of its own continues the layer stack before it.
+fn dsl_fields(dsl: &str) -> Vec<String> {
+    let mut fields: Vec<String> = Vec::new();
+    for raw in dsl.lines() {
+        let line = raw.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let mut in_layers = false;
+        for piece in line.split(';').map(str::trim) {
+            if piece.is_empty() {
+                continue;
+            }
+            let keyed = piece.starts_with("version") || piece.contains(['=', ':']);
+            if in_layers
+                && !keyed
+                && let Some(layers) = fields.last_mut()
+            {
+                layers.push(';');
+                layers.push_str(piece);
+                continue;
+            }
+            in_layers = piece
+                .split_once(['=', ':'])
+                .is_some_and(|(key, _)| key.trim().eq_ignore_ascii_case("layers"));
+            fields.push(piece.to_owned());
+        }
+    }
+    fields
 }
 
 fn parse<T>(value: &str, name: &str) -> Result<T, FractusError>
@@ -490,9 +773,13 @@ fn verify(scene: Scene, path: PathBuf, image: &RgbImage) -> Result<RenderManifes
         .filter(|pixel| pixel.0.iter().any(|channel| *channel > 4))
         .count() as u64;
     let minimum = u64::from(image.width()) * u64::from(image.height()) / 200;
-    if non_black_pixels < minimum {
+    let bright_pixels = image
+        .pixels()
+        .filter(|pixel| pixel.0.iter().any(|channel| *channel > 24))
+        .count() as u64;
+    if non_black_pixels < minimum || bright_pixels < minimum {
         return Err(FractusError::Invalid(
-            "render verification found an effectively blank image".to_owned(),
+            "render verification found an effectively blank or unlit image".to_owned(),
         ));
     }
     Ok(RenderManifest {
@@ -500,143 +787,9 @@ fn verify(scene: Scene, path: PathBuf, image: &RgbImage) -> Result<RenderManifes
         image: path,
         non_black_pixels,
         verified: true,
+        animation: None,
+        visual_richness: Some(richness::measure(image)),
     })
-}
-
-fn render_escape(scene: &Scene, image: &mut RgbImage, phase: f32) {
-    let palette = palette(&scene.palette);
-    let zoom = 1.0 + phase.sin() as f64 * 0.08;
-    let drift_x = phase.cos() as f64 * 0.035;
-    let drift_y = phase.sin() as f64 * 0.025;
-    for y in 0..scene.height {
-        for x in 0..scene.width {
-            let cx = (x as f64 / scene.width as f64 * 3.2 - 2.25) / zoom + drift_x;
-            let cy = (y as f64 / scene.height as f64 * 2.5 - 1.25) / zoom + drift_y;
-            let (mut zx, mut zy, constant_x, constant_y) = match scene.kind {
-                SceneKind::Julia => (
-                    cx,
-                    cy,
-                    -0.7 + phase.cos() as f64 * 0.08,
-                    0.27015 + phase.sin() as f64 * 0.08,
-                ),
-                _ => (0.0, 0.0, cx, cy),
-            };
-            let mut count = 0;
-            while zx * zx + zy * zy <= 4.0 && count < scene.iterations {
-                (zx, zy) = match scene.kind {
-                    SceneKind::Multibrot => (
-                        zx * zx * zx - 3.0 * zx * zy * zy + constant_x,
-                        3.0 * zx * zx * zy - zy * zy * zy + constant_y,
-                    ),
-                    SceneKind::BurningShip => {
-                        let (absolute_x, absolute_y) = (zx.abs(), zy.abs());
-                        (
-                            absolute_x * absolute_x - absolute_y * absolute_y + constant_x,
-                            2.0 * absolute_x * absolute_y + constant_y,
-                        )
-                    }
-                    SceneKind::Tricorn => {
-                        (zx * zx - zy * zy + constant_x, -2.0 * zx * zy + constant_y)
-                    }
-                    _ => (zx * zx - zy * zy + constant_x, 2.0 * zx * zy + constant_y),
-                };
-                count += 1;
-            }
-            if count < scene.iterations {
-                image.put_pixel(x, y, shade(palette, count as f32 / scene.iterations as f32));
-            }
-        }
-    }
-}
-
-fn render_newton(scene: &Scene, image: &mut RgbImage, phase: f32) {
-    let palette = palette(&scene.palette);
-    let scale = 3.6_f64;
-    for y in 0..scene.height {
-        for x in 0..scene.width {
-            let mut real = (x as f64 / scene.width as f64 - 0.5) * scale;
-            let mut imaginary = (y as f64 / scene.height as f64 - 0.5) * scale;
-            let mut count = 0;
-            for iteration in 0..scene.iterations.min(180) {
-                let real2 = real * real;
-                let imaginary2 = imaginary * imaginary;
-                let denominator = 3.0 * (real2 + imaginary2).powi(2);
-                if denominator < 1e-14 {
-                    break;
-                }
-                let function_real = real * (real2 - 3.0 * imaginary2) - 1.0;
-                let function_imaginary = imaginary * (3.0 * real2 - imaginary2);
-                let derivative_real = 3.0 * (real2 - imaginary2);
-                let derivative_imaginary = 6.0 * real * imaginary;
-                real -= (function_real * derivative_real
-                    + function_imaginary * derivative_imaginary)
-                    / denominator;
-                imaginary -= (function_imaginary * derivative_real
-                    - function_real * derivative_imaginary)
-                    / denominator;
-                count = iteration;
-                if function_real * function_real + function_imaginary * function_imaginary < 1e-10 {
-                    break;
-                }
-            }
-            let angle = (imaginary.atan2(real) as f32 + phase).rem_euclid(std::f32::consts::TAU);
-            let root = (angle / std::f32::consts::TAU * 3.0).floor() / 3.0;
-            let intensity = 1.0 - count as f32 / scene.iterations.min(180) as f32 * 0.7;
-            image.put_pixel(x, y, shade(palette, (root + intensity * 0.55).fract()));
-        }
-    }
-}
-
-fn render_radial(scene: &Scene, image: &mut RgbImage, phase: f32) {
-    let palette = palette(&scene.palette);
-    if matches!(scene.kind, SceneKind::Phyllotaxis) {
-        let points = scene.iterations.saturating_mul(20).min(40_000);
-        for point in 0..points {
-            let angle = point as f32 * 137.507_77_f32.to_radians() + phase;
-            let radius =
-                (point as f32 / points as f32).sqrt() * scene.width.min(scene.height) as f32 * 0.47;
-            let x = scene.width as f32 * 0.5 + angle.cos() * radius;
-            let y = scene.height as f32 * 0.5 + angle.sin() * radius;
-            draw_glow(
-                image,
-                x as i32,
-                y as i32,
-                2,
-                shade(palette, point as f32 / points as f32),
-            );
-        }
-        return;
-    }
-    let (symmetry, rings, twist, lace) = match scene.kind {
-        SceneKind::LotusMandala => (16.0, 7.0, 0.18, 0.8),
-        SceneKind::StarMandala => (12.0, 10.0, 0.5, 1.3),
-        SceneKind::FlowerOfLife => (6.0, 8.0, 0.0, 1.0),
-        SceneKind::RadialWeave => (18.0, 11.0, 1.1, 1.35),
-        SceneKind::Kaleidoscope => (14.0, 9.0, -0.55, 1.1),
-        _ => (12.0, 8.0, 0.35, 0.55),
-    };
-    let half_width = scene.width as f32 * 0.5;
-    let half_height = scene.height as f32 * 0.5;
-    let maximum = half_width.min(half_height);
-    for y in 0..scene.height {
-        for x in 0..scene.width {
-            let dx = (x as f32 - half_width) / maximum;
-            let dy = (y as f32 - half_height) / maximum;
-            let radius = (dx * dx + dy * dy).sqrt();
-            if radius > 1.0 {
-                continue;
-            }
-            let angle = dy.atan2(dx) + phase;
-            let petals = (angle * symmetry + radius * twist * 12.0).sin().abs();
-            let ring = (radius * rings * std::f32::consts::PI + petals * lace)
-                .sin()
-                .abs();
-            let line = (1.0 - (ring - 0.5).abs() * 8.0).max(0.0);
-            if line > 0.04 {
-                image.put_pixel(x, y, shade(palette, (radius * 0.6 + petals * 0.4) * line));
-            }
-        }
-    }
 }
 
 fn render_curves(scene: &Scene, image: &mut RgbImage, phase: f32) {
@@ -684,10 +837,6 @@ fn render_curves(scene: &Scene, image: &mut RgbImage, phase: f32) {
             SceneKind::Harmonograph => {
                 let decay = (-0.018 * t).exp();
                 ((3.01 * t).sin() * decay, (2.0 * t + 1.2).sin() * decay)
-            }
-            SceneKind::RoseCurve => {
-                let radius = (7.0 * t).cos();
-                (radius * t.cos(), radius * t.sin())
             }
             SceneKind::StringArt => {
                 let alternate = (sample * 37 % samples) as f32 / samples as f32;
@@ -1165,6 +1314,68 @@ fn random(state: &mut u64) -> f32 {
 mod tests {
     use super::*;
 
+    #[test]
+    fn gallery_removes_the_reported_mandala_and_tree_without_changing_the_subject() {
+        let original = "version 2; type=lissajous; width=96; height=128; iterations=180; seed=18365444092935997690; palette=amethyst; symmetry=12; zoom=1.025; motion=0.675; layers=mandala@0.22@screen@electric_cyan;fractal_tree@0.15@screen@amethyst";
+        let clean = single_family_dsl(original).unwrap();
+        let composite = Scene::parse(original).unwrap();
+        let cleaned = Scene::parse(&clean).unwrap();
+        let mut subject_only = composite.clone();
+        subject_only.layers.clear();
+        assert_eq!(
+            serde_json::to_value(&cleaned).unwrap(),
+            serde_json::to_value(&subject_only).unwrap()
+        );
+        assert_eq!(single_family_dsl(&clean).unwrap(), clean);
+        for phase in [0.0, 0.9, 2.1] {
+            let actual = cleaned.render_frame(phase);
+            assert_eq!(actual, subject_only.render_frame(phase));
+            assert_ne!(actual, composite.render_frame(phase));
+        }
+        // Explicit library composites remain available outside the gallery.
+        assert_eq!(composite.layers.len(), 2);
+    }
+
+    #[test]
+    fn a_layers_only_gallery_request_preserves_its_first_family_and_palette() {
+        let clean = single_family_dsl(
+            "version 2; width=96; height=128; seed=9; layers=spirograph@0.3@screen@ice_fire;fractal_tree@0.1@add@gold",
+        )
+        .unwrap();
+        let actual = Scene::parse(&clean).unwrap();
+        let expected = Scene::parse(
+            "version 2; width=96; height=128; seed=9; type=spirograph; palette=ice_fire",
+        )
+        .unwrap();
+        assert!(actual.layers.is_empty());
+        assert_eq!(actual.render_frame(0.7), expected.render_frame(0.7));
+    }
+
+    #[test]
+    fn a_single_family_request_is_preserved_and_invalid_subjects_still_fail() {
+        let original = "version 2; kind=julia; width=96; height=128; iterations=180; seed=9; palette=solar_gold; symmetry=12; zoom=2; motion=0; title=Quiet Current";
+        assert_eq!(
+            single_family_dsl(original).unwrap(),
+            canonical_dsl(original)
+        );
+        assert!(single_family_dsl("type=made_up; layers=mandala@0.2").is_err());
+        assert!(Scene::default().layers.is_empty());
+    }
+
+    #[test]
+    fn the_researched_hypotrochoid_name_selects_its_existing_spirograph_geometry() {
+        let payload = "version 2; type=hypotrochoid; width=96; height=128; seed=463; palette=solar_gold; symmetry=12; zoom=1.2; motion=0.65";
+        let actual = Scene::parse(payload).unwrap();
+        let named = Scene::parse(&payload.replace("hypotrochoid", "spirograph")).unwrap();
+        assert!(matches!(actual.kind, SceneKind::Spirograph));
+        assert_eq!(
+            serde_json::to_value(&actual).unwrap(),
+            serde_json::to_value(&named).unwrap()
+        );
+        assert_eq!(actual.render_frame(0.7), named.render_frame(0.7));
+        assert!(Scene::parse("type=epitrochoid").is_err());
+    }
+
     /// The payload shapes actually seen on stream, and what each must produce.
     #[test]
     fn a_layer_stack_sets_the_subject_rather_than_defaulting_to_particles() {
@@ -1180,6 +1391,53 @@ mod tests {
             scene.kind
         );
         assert_eq!(scene.layers.len(), 2);
+    }
+
+    /// Verbatim from the stream: the Artist's tagged payload, rejected with
+    /// "version is not a valid number" while prose salvage rendered a scene
+    /// it had not asked for.
+    #[test]
+    fn the_one_line_form_the_artist_is_taught_parses_with_its_layer_stack() {
+        let scene = Scene::parse(
+            "version 2; type=julia; width=600; height=800; iterations=180; seed=3947825609874563210; palette=solar_gold; symmetry=12; zoom=2; motion=0.7; layers=mandala@0.18@screen@electric_cyan;fractal_tree@0.1@screen@solar_gold",
+        )
+        .expect("the documented one-line DSL must parse");
+        assert!(matches!(scene.kind, SceneKind::Julia), "{:?}", scene.kind);
+        assert_eq!(scene.seed, 3_947_825_609_874_563_210);
+        assert_eq!(scene.palette, "solar_gold");
+        assert_eq!((scene.width, scene.height, scene.symmetry), (600, 800, 12));
+        assert_eq!(scene.layers.len(), 2, "{:?}", scene.layers);
+        assert!(matches!(scene.layers[1].kind, SceneKind::FractalTree));
+        assert!(scene.unknown_layers.is_empty());
+    }
+
+    #[test]
+    fn one_line_and_multi_line_forms_describe_the_same_scene() {
+        let one_line = Scene::parse(
+            "version 2; type=mandala; seed=9; palette=violet; layers=moire@0.3@screen@ice;woven_web@0.2@add",
+        )
+        .unwrap();
+        let lines = Scene::parse(
+            "version 2\ntype=mandala\nseed=9\npalette=violet\nlayers=moire@0.3@screen@ice;woven_web@0.2@add",
+        )
+        .unwrap();
+        assert_eq!(
+            serde_json::to_value(one_line).unwrap(),
+            serde_json::to_value(lines).unwrap()
+        );
+    }
+
+    #[test]
+    fn a_one_line_payload_still_reports_its_real_error() {
+        // The correction loop can only help when it names the actual problem.
+        let error = Scene::parse("version 2; type=hyptotrochoid; palette=violet")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("unknown scene type 'hyptotrochoid'"),
+            "{error}"
+        );
+        assert!(Scene::parse("version 2; type=mandala; stray words").is_err());
     }
 
     #[test]
@@ -1280,6 +1538,89 @@ layers=reeds_and_inkwells@0.2"
         assert!(
             Scene::default()
                 .render_gif(Path::new("unused.gif"), 1)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn new_geometry_parameters_are_bounded_and_old_scenes_still_load() {
+        // Non-finite values are refused; finite out-of-range values are the
+        // model's clear intent and are clamped into range.
+        for field in ["zoom=NaN", "motion=inf"] {
+            assert!(
+                Scene::parse(&format!("version 2\n{field}")).is_err(),
+                "{field}"
+            );
+        }
+        let clamped = Scene::parse("version 2\nsymmetry=2\nzoom=100\nmotion=-0.1").unwrap();
+        assert_eq!(
+            (clamped.symmetry, clamped.zoom, clamped.motion),
+            (6, 8.0, 0.0)
+        );
+        assert_eq!(Scene::parse("version 2\nsymmetry=25").unwrap().symmetry, 24);
+        let scene =
+            Scene::parse("version 2\ntype=mandala\nsymmetry=18\nzoom=1.2\nmotion=0.4").unwrap();
+        assert_eq!(scene.symmetry, 18);
+        let mut old = serde_json::to_value(scene).unwrap();
+        for field in ["symmetry", "zoom", "motion"] {
+            old.as_object_mut().unwrap().remove(field);
+        }
+        let restored: Scene = serde_json::from_value(old).unwrap();
+        assert_eq!(restored.symmetry, 12);
+        assert_eq!(restored.zoom, 1.0);
+        assert_eq!(restored.motion, 0.65);
+    }
+
+    #[test]
+    fn animation_preserves_full_colour_frame_timing_and_motion() {
+        let path =
+            std::env::temp_dir().join(format!("teledra-fractus-apng-{}.png", std::process::id()));
+        let scene = Scene::parse("version 2\ntype=lotus_mandala\nwidth=96\nheight=128\niterations=80\npalette=neon_sunset").unwrap();
+        let manifest = scene.render_animation(&path, 8, 24).unwrap();
+        let metadata = manifest.animation.unwrap();
+        assert_eq!(metadata.frame_count, 8);
+        assert_eq!(metadata.fps, 24);
+        assert!(metadata.distinct_frames > 1);
+        let decoder = image::codecs::png::PngDecoder::new(std::io::BufReader::new(
+            File::open(&path).unwrap(),
+        ))
+        .unwrap();
+        assert!(decoder.is_apng().unwrap());
+        let frames = decoder
+            .apng()
+            .unwrap()
+            .into_frames()
+            .collect_frames()
+            .unwrap();
+        assert_eq!(frames.len(), 8);
+        for (index, frame) in frames.iter().enumerate() {
+            let expected = scene.render_frame(index as f32 / 8.0 * std::f32::consts::TAU);
+            let decoded = DynamicImage::ImageRgba8(frame.buffer().clone()).to_rgb8();
+            assert_eq!(
+                decoded, expected,
+                "full-colour frame {index} must roundtrip losslessly"
+            );
+            let (num, den) = frame.delay().numer_denom_ms();
+            assert!((f64::from(num) / f64::from(den) - 1000.0 / 24.0).abs() < 0.01);
+        }
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn excessive_animation_memory_and_invalid_fps_are_rejected_before_writing() {
+        let scene = Scene {
+            width: 2048,
+            height: 2048,
+            ..Scene::default()
+        };
+        assert!(
+            scene
+                .render_animation(Path::new("must-not-exist.png"), 120, 24)
+                .is_err()
+        );
+        assert!(
+            Scene::default()
+                .render_animation(Path::new("must-not-exist.png"), 8, 0)
                 .is_err()
         );
     }

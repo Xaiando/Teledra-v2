@@ -1,0 +1,82 @@
+{
+  "model": "buzzart_brain_v1",
+  "file": "buzzart-indie-long.npz",
+  "npz_sha256": "5df3b9cce894914d9d77a568fd5232f656e6210448ca17123a9afbd8f1776c20",
+  "brain_sha256": "73312d7583f00e51e67a0c139b0bd37af75e68d1b9ae225fa8da57c01ad906d2",
+  "saved_at": "2026-09-17T06:20:26.725820+00:00",
+  "identity": {
+    "model": "buzzart_brain_v1",
+    "brain_sha256": "73312d7583f00e51e67a0c139b0bd37af75e68d1b9ae225fa8da57c01ad906d2",
+    "trainable_parameters": 1074,
+    "leak": 0.34778274327191466,
+    "recurrent_gain": 1.0846806214730913,
+    "readout_gain": 1.8449560524866095,
+    "generation": 1750,
+    "fixed": "Connectome coupling, transmitter signs and normalization are unchanged; only engineered projections, per-type bias and bounded dynamics scalars are trained."
+  },
+  "metadata": {
+    "initialized_from": {
+      "controller": "leaky_tanh_rate_v1",
+      "seed": 2026,
+      "context_scale": 0.3
+    },
+    "generation": 1750,
+    "validation": {
+      "fitness": 0.8768073226588186,
+      "critic_fitness": 0.8986377026446865,
+      "naturalness": 0.9305740358096461,
+      "mean_reward": 0.8987252408226513,
+      "diversity": 0.9997565384651399,
+      "components": {
+        "melody": 0.9379499562645691,
+        "breathing": 0.9720254486572808,
+        "rhythm": 0.939755925829821,
+        "motif": 0.9875809544735361,
+        "harmony": 0.9131088213935112,
+        "texture": 0.8399403664161432,
+        "form": 0.8589489200469939
+      },
+      "errors": []
+    },
+    "best_validation": {
+      "fitness": 0.8768073226588186,
+      "critic_fitness": 0.8986377026446865,
+      "naturalness": 0.9305740358096461,
+      "mean_reward": 0.8987252408226513,
+      "diversity": 0.9997565384651399,
+      "components": {
+        "melody": 0.9379499562645691,
+        "breathing": 0.9720254486572808,
+        "rhythm": 0.939755925829821,
+        "motif": 0.9875809544735361,
+        "harmony": 0.9131088213935112,
+        "texture": 0.8399403664161432,
+        "form": 0.8589489200469939
+      },
+      "errors": []
+    },
+    "published_from": "training/buzzart/indie-long/best.npz",
+    "test_seeds": {
+      "seeds": "70000-70031",
+      "fitness": 0.892,
+      "original_fly_fitness": 0.748
+    },
+    "source_run": "training/buzzart/indie-long",
+    "songbook": {
+      "file": "data/foundation/indie-blend.json",
+      "sha256": "c818f116a552f7cc654254dd8c9fd2e2363b229e60a5b54fcf1a4d7c8b8382d9"
+    },
+    "style": "console",
+    "temperament": "indie",
+    "palette": "genesis",
+    "measured": {
+      "seeds": "97001-97012",
+      "roles_at_once": 3.73,
+      "mean_voices_all_layers": 1.96,
+      "peak_voices_all_layers": 5.0,
+      "form": 0.82,
+      "reward": 0.888
+    },
+    "note": "2000 generations, population 64, 8 seeds. Roles-at-once and form improved; sustained layering did not, because console harmony arpeggiates instead of holding chords."
+  }
+}

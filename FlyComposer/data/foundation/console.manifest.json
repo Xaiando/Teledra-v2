@@ -1,0 +1,48 @@
+{
+  "file": "console.json",
+  "sha256": "ed6d95adc0e704f46ecff970b06af51dba04a4324b9bb5ddd9389115c6389145",
+  "bytes": 20734,
+  "source": {
+    "corpora": {
+      "opengameart CC0 MIDI": 19
+    },
+    "works": 19,
+    "melodies": 19,
+    "notes": 2461,
+    "credits": {
+      "15 Melodic RPG Chiptunes": {
+        "author": "Aureolus_Omicron",
+        "license": "CC0 (no credit required)",
+        "page": "https://opengameart.org/content/15-melodic-rpg-chiptunes"
+      },
+      "Long Away Home [8bit]": {
+        "author": "nene",
+        "license": "CC0",
+        "page": "https://opengameart.org/content/long-away-home-8bit"
+      },
+      "Theme Song [8-bit]": {
+        "author": "nene",
+        "license": "CC0",
+        "page": "https://opengameart.org/content/theme-song-8-bit"
+      },
+      "Leap [8bit]": {
+        "author": "nene",
+        "license": "CC0",
+        "page": "https://opengameart.org/content/leap-8bit"
+      },
+      "Boss Battle #2 [\"8 bit\"]": {
+        "author": "nene",
+        "license": "CC0",
+        "page": "https://opengameart.org/content/boss-battle-2-8-bit"
+      }
+    },
+    "licensing": "Every source is CC0 (public domain dedication) on OpenGameArt; see sources.json for pages and hashes.",
+    "built_at": "2026-09-15T12:17:04.885901+00:00"
+  },
+  "reference": {
+    "interval_logprob": -2.1265,
+    "ioi_logprob": -1.9797,
+    "root_logprob": -1.3529,
+    "scope": "Leave-one-piece-out mean log-probability per token over 19 pieces"
+  }
+}

@@ -1,0 +1,561 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "title",
+    "bpm",
+    "bars",
+    "tonic",
+    "mode",
+    "progression",
+    "tracks",
+    "composition"
+  ],
+  "properties": {
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160
+    },
+    "bpm": {
+      "type": "integer",
+      "minimum": 40,
+      "maximum": 220
+    },
+    "bars": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 64
+    },
+    "tonic": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 11
+    },
+    "mode": {
+      "enum": [
+        "major",
+        "minor",
+        "dorian",
+        "mixolydian",
+        "lydian",
+        "phrygian",
+        "harmonic_minor"
+      ]
+    },
+    "swing": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 0.6
+    },
+    "sidechain": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 0.85
+    },
+    "seed": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4294967295
+    },
+    "progression": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "root_degree",
+          "quality"
+        ],
+        "properties": {
+          "root_degree": {
+            "enum": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6
+            ]
+          },
+          "quality": {
+            "enum": [
+              "major",
+              "minor",
+              "diminished",
+              "suspended2",
+              "suspended4",
+              "augmented",
+              "major_seventh",
+              "minor_seventh",
+              "dominant_seventh",
+              "half_diminished"
+            ]
+          }
+        }
+      }
+    },
+    "tracks": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "instrument",
+          "waveform",
+          "gain",
+          "octave",
+          "notes"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "instrument": {
+            "enum": [
+              "sub_bass",
+              "bass",
+              "pad",
+              "keys",
+              "pluck",
+              "lead",
+              "bell",
+              "arp",
+              "organ",
+              "piano",
+              "flute",
+              "reed",
+              "cello",
+              "harp",
+              "violin",
+              "clarinet",
+              "oboe",
+              "horn",
+              "trumpet",
+              "guitar",
+              "vibraphone",
+              "kick",
+              "snare",
+              "hat",
+              "perc",
+              "electric_piano",
+              "honky_tonk_piano",
+              "harpsichord",
+              "clavinet",
+              "celesta",
+              "accordion",
+              "harmonica",
+              "viola",
+              "double_bass",
+              "string_ensemble",
+              "pizzicato_strings",
+              "tremolo_strings",
+              "steel_guitar",
+              "electric_guitar",
+              "jazz_guitar",
+              "muted_guitar",
+              "banjo",
+              "mandolin",
+              "ukulele",
+              "sitar",
+              "koto",
+              "oud",
+              "piccolo",
+              "recorder",
+              "pan_flute",
+              "shakuhachi",
+              "bassoon",
+              "english_horn",
+              "soprano_sax",
+              "tenor_sax",
+              "trombone",
+              "tuba",
+              "flugelhorn",
+              "brass_ensemble",
+              "marimba",
+              "xylophone",
+              "glockenspiel",
+              "tubular_bells",
+              "dulcimer",
+              "theremin",
+              "choir",
+              "synth_brass",
+              "warm_pad",
+              "timpani",
+              "shaker",
+              "conga",
+              "cowbell"
+            ]
+          },
+          "waveform": {
+            "enum": [
+              "sine",
+              "triangle",
+              "square",
+              "saw"
+            ]
+          },
+          "gain": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "octave": {
+            "enum": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8
+            ]
+          },
+          "gate": {
+            "type": "number",
+            "minimum": 0.1,
+            "maximum": 4
+          },
+          "pan": {
+            "type": "number",
+            "minimum": -1,
+            "maximum": 1
+          },
+          "notes": {
+            "description": "Uniform onset grid: 4 positions means one beat between positions, 8 means half a beat, and 16/32/64 means a quarter beat. Duration is a held note length, not time until the next position. Use null positions or fewer positions for slower attacks and phrase gaps.",
+            "anyOf": [
+              {
+                "type": "array",
+                "minItems": 4,
+                "maxItems": 4,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "degree",
+                    "velocity",
+                    "duration"
+                  ],
+                  "properties": {
+                    "degree": {
+                      "enum": [
+                        null,
+                        0,
+                        1,
+                        2,
+                        3,
+                        4,
+                        5,
+                        6,
+                        7,
+                        8,
+                        9,
+                        10,
+                        11,
+                        12,
+                        13,
+                        14,
+                        15,
+                        16,
+                        17,
+                        18,
+                        19,
+                        20
+                      ]
+                    },
+                    "velocity": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    "duration": {
+                      "type": "number",
+                      "minimum": 0.125,
+                      "maximum": 8
+                    }
+                  }
+                }
+              },
+              {
+                "type": "array",
+                "minItems": 8,
+                "maxItems": 8,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "degree",
+                    "velocity",
+                    "duration"
+                  ],
+                  "properties": {
+                    "degree": {
+                      "enum": [
+                        null,
+                        0,
+                        1,
+                        2,
+                        3,
+                        4,
+                        5,
+                        6,
+                        7,
+                        8,
+                        9,
+                        10,
+                        11,
+                        12,
+                        13,
+                        14,
+                        15,
+                        16,
+                        17,
+                        18,
+                        19,
+                        20
+                      ]
+                    },
+                    "velocity": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    "duration": {
+                      "type": "number",
+                      "minimum": 0.125,
+                      "maximum": 8
+                    }
+                  }
+                }
+              },
+              {
+                "type": "array",
+                "minItems": 16,
+                "maxItems": 16,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "degree",
+                    "velocity",
+                    "duration"
+                  ],
+                  "properties": {
+                    "degree": {
+                      "enum": [
+                        null,
+                        0,
+                        1,
+                        2,
+                        3,
+                        4,
+                        5,
+                        6,
+                        7,
+                        8,
+                        9,
+                        10,
+                        11,
+                        12,
+                        13,
+                        14,
+                        15,
+                        16,
+                        17,
+                        18,
+                        19,
+                        20
+                      ]
+                    },
+                    "velocity": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    "duration": {
+                      "type": "number",
+                      "minimum": 0.125,
+                      "maximum": 8
+                    }
+                  }
+                }
+              },
+              {
+                "type": "array",
+                "minItems": 32,
+                "maxItems": 32,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "degree",
+                    "velocity",
+                    "duration"
+                  ],
+                  "properties": {
+                    "degree": {
+                      "enum": [
+                        null,
+                        0,
+                        1,
+                        2,
+                        3,
+                        4,
+                        5,
+                        6,
+                        7,
+                        8,
+                        9,
+                        10,
+                        11,
+                        12,
+                        13,
+                        14,
+                        15,
+                        16,
+                        17,
+                        18,
+                        19,
+                        20
+                      ]
+                    },
+                    "velocity": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    "duration": {
+                      "type": "number",
+                      "minimum": 0.125,
+                      "maximum": 8
+                    }
+                  }
+                }
+              },
+              {
+                "type": "array",
+                "minItems": 64,
+                "maxItems": 64,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "degree",
+                    "velocity",
+                    "duration"
+                  ],
+                  "properties": {
+                    "degree": {
+                      "enum": [
+                        null,
+                        0,
+                        1,
+                        2,
+                        3,
+                        4,
+                        5,
+                        6,
+                        7,
+                        8,
+                        9,
+                        10,
+                        11,
+                        12,
+                        13,
+                        14,
+                        15,
+                        16,
+                        17,
+                        18,
+                        19,
+                        20
+                      ]
+                    },
+                    "velocity": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    "duration": {
+                      "type": "number",
+                      "minimum": 0.125,
+                      "maximum": 8
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "composition": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "form": {
+          "enum": [
+            "arc",
+            "binary",
+            "ternary",
+            "rondo"
+          ]
+        },
+        "phrase_bars": {
+          "enum": [
+            2,
+            4,
+            8
+          ]
+        },
+        "steps_per_bar": {
+          "enum": [4, 8, 16],
+          "default": 16
+        },
+        "chord_bars": {
+          "enum": [
+            1,
+            2,
+            4
+          ]
+        },
+        "development": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "texture": {
+          "enum": [
+            "ensemble",
+            "chamber",
+            "ambient"
+          ]
+        },
+        "harmony": {
+          "enum": [
+            "diatonic",
+            "chromatic"
+          ]
+        }
+      },
+      "required": [
+        "form",
+        "phrase_bars",
+        "chord_bars",
+        "development",
+        "texture",
+        "harmony"
+      ]
+    }
+  }
+}

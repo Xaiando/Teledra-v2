@@ -1,0 +1,714 @@
+{
+  "version": 1,
+  "dataset": "male-cns:v1.0",
+  "region": "Central complex: heading, ring and fan-shaped-body pathways",
+  "node_kind": "cell-type populations; local IDs are not individual neuron body IDs",
+  "nodes": 51,
+  "edges": 1309,
+  "represented_neurons": 623,
+  "observed_synapse_count": 847131,
+  "reciprocal_directed_edges": 1133,
+  "selection_rule": "EPG/EPGt/PEG/PEN/Delta7 and named ER/ExR/PFN/PFL types, restricted to consistent ACh/GABA/Glu table annotations; both sides combined",
+  "edge_definition": "Exact summed type-to-type connections from downstream-table title attributes, not rounded displayed means",
+  "limitations": "Aggregate published table excerpt; unreported edges are excluded, not proven absent. Type aggregation loses cell-specific and bilateral structure. This is not a whole-brain or individual-neuron simulation.",
+  "sign_assumptions": {
+    "ACh": "excitatory +1",
+    "GABA": "inhibitory -1",
+    "Glu": "assumed inhibitory -1; receptor-dependent physiology is not established by connectivity"
+  },
+  "excluded_types": [
+    "ExR2",
+    "ExR3"
+  ],
+  "neuron_types": [
+    {
+      "index": 0,
+      "name": "Delta7",
+      "transmitter": "Glu",
+      "population": 42,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/Delta7.html"
+    },
+    {
+      "index": 1,
+      "name": "EPG",
+      "transmitter": "ACh",
+      "population": 8,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/EPG.html"
+    },
+    {
+      "index": 2,
+      "name": "EPGt",
+      "transmitter": "ACh",
+      "population": 4,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/EPGt.html"
+    },
+    {
+      "index": 3,
+      "name": "ER1_a",
+      "transmitter": "GABA",
+      "population": 9,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER1_a.html"
+    },
+    {
+      "index": 4,
+      "name": "ER1_b",
+      "transmitter": "GABA",
+      "population": 11,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER1_b.html"
+    },
+    {
+      "index": 5,
+      "name": "ER1_c",
+      "transmitter": "GABA",
+      "population": 4,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER1_c.html"
+    },
+    {
+      "index": 6,
+      "name": "ER2_a",
+      "transmitter": "GABA",
+      "population": 12,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER2_a.html"
+    },
+    {
+      "index": 7,
+      "name": "ER2_b",
+      "transmitter": "GABA",
+      "population": 4,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER2_b.html"
+    },
+    {
+      "index": 8,
+      "name": "ER2_c",
+      "transmitter": "GABA",
+      "population": 20,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER2_c.html"
+    },
+    {
+      "index": 9,
+      "name": "ER2_d",
+      "transmitter": "GABA",
+      "population": 5,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER2_d.html"
+    },
+    {
+      "index": 10,
+      "name": "ER3a_a",
+      "transmitter": "GABA",
+      "population": 1,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER3a_a.html"
+    },
+    {
+      "index": 11,
+      "name": "ER3a_b",
+      "transmitter": "GABA",
+      "population": 3,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER3a_b.html"
+    },
+    {
+      "index": 12,
+      "name": "ER3a_c",
+      "transmitter": "GABA",
+      "population": 2,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER3a_c.html"
+    },
+    {
+      "index": 13,
+      "name": "ER3a_d",
+      "transmitter": "GABA",
+      "population": 1,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER3a_d.html"
+    },
+    {
+      "index": 14,
+      "name": "ER3d_a",
+      "transmitter": "GABA",
+      "population": 4,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER3d_a.html"
+    },
+    {
+      "index": 15,
+      "name": "ER3d_b",
+      "transmitter": "GABA",
+      "population": 2,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER3d_b.html"
+    },
+    {
+      "index": 16,
+      "name": "ER3d_c",
+      "transmitter": "GABA",
+      "population": 1,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER3d_c.html"
+    },
+    {
+      "index": 17,
+      "name": "ER3d_d",
+      "transmitter": "GABA",
+      "population": 1,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER3d_d.html"
+    },
+    {
+      "index": 18,
+      "name": "ER3d_e",
+      "transmitter": "GABA",
+      "population": 3,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER3d_e.html"
+    },
+    {
+      "index": 19,
+      "name": "ER3m",
+      "transmitter": "GABA",
+      "population": 2,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER3m.html"
+    },
+    {
+      "index": 20,
+      "name": "ER3p_a",
+      "transmitter": "GABA",
+      "population": 3,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER3p_a.html"
+    },
+    {
+      "index": 21,
+      "name": "ER3p_b",
+      "transmitter": "GABA",
+      "population": 3,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER3p_b.html"
+    },
+    {
+      "index": 22,
+      "name": "ER3w_a",
+      "transmitter": "GABA",
+      "population": 7,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER3w_a.html"
+    },
+    {
+      "index": 23,
+      "name": "ER3w_b",
+      "transmitter": "GABA",
+      "population": 8,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER3w_b.html"
+    },
+    {
+      "index": 24,
+      "name": "ER3w_c",
+      "transmitter": "GABA",
+      "population": 3,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER3w_c.html"
+    },
+    {
+      "index": 25,
+      "name": "ER4d",
+      "transmitter": "GABA",
+      "population": 26,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER4d.html"
+    },
+    {
+      "index": 26,
+      "name": "ER4m",
+      "transmitter": "GABA",
+      "population": 2,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER4m.html"
+    },
+    {
+      "index": 27,
+      "name": "ER5",
+      "transmitter": "GABA",
+      "population": 3,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER5.html"
+    },
+    {
+      "index": 28,
+      "name": "ER6",
+      "transmitter": "GABA",
+      "population": 4,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER6.html"
+    },
+    {
+      "index": 29,
+      "name": "ExR1",
+      "transmitter": "ACh",
+      "population": 4,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ExR1.html"
+    },
+    {
+      "index": 30,
+      "name": "ExR4",
+      "transmitter": "Glu",
+      "population": 1,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ExR4.html"
+    },
+    {
+      "index": 31,
+      "name": "ExR5",
+      "transmitter": "Glu",
+      "population": 3,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ExR5.html"
+    },
+    {
+      "index": 32,
+      "name": "ExR6",
+      "transmitter": "Glu",
+      "population": 1,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ExR6.html"
+    },
+    {
+      "index": 33,
+      "name": "ExR7",
+      "transmitter": "ACh",
+      "population": 1,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ExR7.html"
+    },
+    {
+      "index": 34,
+      "name": "ExR8",
+      "transmitter": "ACh",
+      "population": 1,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ExR8.html"
+    },
+    {
+      "index": 35,
+      "name": "PEG",
+      "transmitter": "ACh",
+      "population": 10,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/PEG.html"
+    },
+    {
+      "index": 36,
+      "name": "PEN_a(PEN1)",
+      "transmitter": "ACh",
+      "population": 18,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/PEN_a%28PEN1%29.html"
+    },
+    {
+      "index": 37,
+      "name": "PEN_b(PEN2)",
+      "transmitter": "ACh",
+      "population": 16,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/PEN_b%28PEN2%29.html"
+    },
+    {
+      "index": 38,
+      "name": "PFL1",
+      "transmitter": "ACh",
+      "population": 6,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/PFL1.html"
+    },
+    {
+      "index": 39,
+      "name": "PFL2",
+      "transmitter": "ACh",
+      "population": 4,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/PFL2.html"
+    },
+    {
+      "index": 40,
+      "name": "PFL3",
+      "transmitter": "ACh",
+      "population": 4,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/PFL3.html"
+    },
+    {
+      "index": 41,
+      "name": "PFNa",
+      "transmitter": "ACh",
+      "population": 58,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/PFNa.html"
+    },
+    {
+      "index": 42,
+      "name": "PFNd",
+      "transmitter": "ACh",
+      "population": 40,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/PFNd.html"
+    },
+    {
+      "index": 43,
+      "name": "PFNm_a",
+      "transmitter": "ACh",
+      "population": 10,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/PFNm_a.html"
+    },
+    {
+      "index": 44,
+      "name": "PFNm_b",
+      "transmitter": "ACh",
+      "population": 10,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/PFNm_b.html"
+    },
+    {
+      "index": 45,
+      "name": "PFNp_a",
+      "transmitter": "ACh",
+      "population": 48,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/PFNp_a.html"
+    },
+    {
+      "index": 46,
+      "name": "PFNp_b",
+      "transmitter": "ACh",
+      "population": 94,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/PFNp_b.html"
+    },
+    {
+      "index": 47,
+      "name": "PFNp_c",
+      "transmitter": "ACh",
+      "population": 34,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/PFNp_c.html"
+    },
+    {
+      "index": 48,
+      "name": "PFNp_d",
+      "transmitter": "ACh",
+      "population": 21,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/PFNp_d.html"
+    },
+    {
+      "index": 49,
+      "name": "PFNp_e",
+      "transmitter": "ACh",
+      "population": 21,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/PFNp_e.html"
+    },
+    {
+      "index": 50,
+      "name": "PFNv",
+      "transmitter": "ACh",
+      "population": 20,
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/PFNv.html"
+    }
+  ],
+  "source_snapshot": {
+    "generated": "2026-09-09 18:56:13",
+    "total_types": 11751,
+    "version": "2.0"
+  },
+  "provenance_url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/",
+  "dataset_url": "https://male-cns.janelia.org/download/",
+  "license": "CC BY 4.0",
+  "license_url": "https://creativecommons.org/licenses/by/4.0/",
+  "attribution": "FlyEM (HHMI Janelia), University of Cambridge, MRC Laboratory of Molecular Biology, Google Research; MaleCNS Cell Type Explorer published by Reiser Lab.",
+  "sources": [
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/Delta7.html",
+      "file": "type_pages/Delta7.html",
+      "sha256": "c185617ab1ae551dd3b9e6a66358da16021bf9fdbf2a3ac2dbe38cb25e2ef396",
+      "bytes": 52807
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/EPG.html",
+      "file": "type_pages/EPG.html",
+      "sha256": "248b7a80aeff9f40b86978abf31fc69bd5b2d6365518b85c6590d0ab0bad10fd",
+      "bytes": 138374
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/EPGt.html",
+      "file": "type_pages/EPGt.html",
+      "sha256": "2dfb7d67cdb2106a282926636c1c052aad38834b30b6dd464d64c5f51665cfc6",
+      "bytes": 60630
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER1_a.html",
+      "file": "type_pages/ER1_a.html",
+      "sha256": "da24f389393bb8da6c63203c8fe6068d20f83d498684eced2396e468bbd975a8",
+      "bytes": 84297
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER1_b.html",
+      "file": "type_pages/ER1_b.html",
+      "sha256": "e6ffd61374b385a88c011e95284417649704b1ad283520c1866fd07857e5f997",
+      "bytes": 104346
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER1_c.html",
+      "file": "type_pages/ER1_c.html",
+      "sha256": "7e7af3d212056b6e5ad564ff5697aa90362a33246f9ab2515315b18f64845fe7",
+      "bytes": 66606
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER2_a.html",
+      "file": "type_pages/ER2_a.html",
+      "sha256": "a022fb2bb3602b1e6f0148750a9bae3edc2ad9eefbc6e9f6b17cc66402796ff8",
+      "bytes": 50162
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER2_b.html",
+      "file": "type_pages/ER2_b.html",
+      "sha256": "97125fe73099478249a4808c7008cc6e871e97e5870c9d75c24c7489892830c3",
+      "bytes": 44649
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER2_c.html",
+      "file": "type_pages/ER2_c.html",
+      "sha256": "a83062de4b28f855dbac3b4d726ac47b343ca48a38c6d787ddf821bdf3e249b2",
+      "bytes": 53954
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER2_d.html",
+      "file": "type_pages/ER2_d.html",
+      "sha256": "dab1666c870de9bb3489194edb6e66445b621f90b6f930a5962d3b14504dc413",
+      "bytes": 46272
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER3a_a.html",
+      "file": "type_pages/ER3a_a.html",
+      "sha256": "4968ed0ef7fda03372d0ec5d160d31471b06623b5fd677a062bf8af781aebef9",
+      "bytes": 53821
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER3a_b.html",
+      "file": "type_pages/ER3a_b.html",
+      "sha256": "6138fccb0b29a14b89af9989523786547485adb4a821d9dfc494da56a5a99d60",
+      "bytes": 57077
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER3a_c.html",
+      "file": "type_pages/ER3a_c.html",
+      "sha256": "0942780b3d15408714995118e446608144e7cd68f193ae4e24e3afb9d29a2db0",
+      "bytes": 67323
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER3a_d.html",
+      "file": "type_pages/ER3a_d.html",
+      "sha256": "78168d45f7ebf556638d91063d5848d1c1cd71e107f0625c3da17440f32a4e70",
+      "bytes": 45547
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER3d_a.html",
+      "file": "type_pages/ER3d_a.html",
+      "sha256": "fa7a6eb4a256af2a24b073dfa31d2c98eb85d4b7ba364fd2ec75d47920d8b96c",
+      "bytes": 45314
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER3d_b.html",
+      "file": "type_pages/ER3d_b.html",
+      "sha256": "76c4073272d4ed745354fa389a6b37bb2b235c10b9fe35966bddfda098dce357",
+      "bytes": 46573
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER3d_c.html",
+      "file": "type_pages/ER3d_c.html",
+      "sha256": "4aea4369518e2ad737df72dd4cab9d0badae1f18422ba4826e74fb3e90ff16a3",
+      "bytes": 44923
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER3d_d.html",
+      "file": "type_pages/ER3d_d.html",
+      "sha256": "90d3659530c15e117f916e2d29013e4d58815f3c0446cc201a92200b71fe2113",
+      "bytes": 45323
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER3d_e.html",
+      "file": "type_pages/ER3d_e.html",
+      "sha256": "d242f8d7d450fc4ad85d44a935a9735ec270ceb93676b0f31bf302647f0b5a67",
+      "bytes": 46832
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER3m.html",
+      "file": "type_pages/ER3m.html",
+      "sha256": "52af1dabedf80daedb1d14fb71994de22dceade74a5585a1567c98f607d29dcb",
+      "bytes": 55829
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER3p_a.html",
+      "file": "type_pages/ER3p_a.html",
+      "sha256": "ac2dbdd18e5b09abb572720d9044620f35de41e5c41c00e5642f6ca92ffa4bb4",
+      "bytes": 47070
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER3p_b.html",
+      "file": "type_pages/ER3p_b.html",
+      "sha256": "1eefe5e87ac9762913b7078a733588cada3283eb145d6d3e4885f1532bf0992b",
+      "bytes": 43024
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER3w_a.html",
+      "file": "type_pages/ER3w_a.html",
+      "sha256": "58dada164af0985791074125858e82545e4d500f55f9512b12aa0d17f5be3391",
+      "bytes": 48671
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER3w_b.html",
+      "file": "type_pages/ER3w_b.html",
+      "sha256": "77ec129cd5471e26a3a0b457fc429b53287c7f818d7a7247e5accad81639a376",
+      "bytes": 47718
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER3w_c.html",
+      "file": "type_pages/ER3w_c.html",
+      "sha256": "6af21e4166a539968cfe217ef17ec77e44a21f0de86b7ee6fc9aba8f54e8a27c",
+      "bytes": 42688
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER4d.html",
+      "file": "type_pages/ER4d.html",
+      "sha256": "bbba08c3963f5467d6463256496616f542c4b5544aac574bdfc00bb874c0b512",
+      "bytes": 54293
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER4m.html",
+      "file": "type_pages/ER4m.html",
+      "sha256": "a8c66332fd766ff742e4f962ea649405daf7afeffce265d05eb3dd7c2adfd5d7",
+      "bytes": 54578
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER5.html",
+      "file": "type_pages/ER5.html",
+      "sha256": "01da40319832964ceffed5ba16c2cb8459001b26c3a164ed1d4d0dadd5c6a559",
+      "bytes": 51471
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ER6.html",
+      "file": "type_pages/ER6.html",
+      "sha256": "f0238666cc97d925535df449391e9808d52940c50846763b45fe87695de24e03",
+      "bytes": 72106
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ExR1.html",
+      "file": "type_pages/ExR1.html",
+      "sha256": "c8329718e3aae90c304668d16d3df1a80b409dded97f3d0fe0eb380c6e29a076",
+      "bytes": 136730
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ExR2.html",
+      "file": "type_pages/ExR2.html",
+      "sha256": "1ffba3d9bc177ef7ac2c8f37c2d68257e3d6049cac45888ffa539025801face5",
+      "bytes": 148282
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ExR3.html",
+      "file": "type_pages/ExR3.html",
+      "sha256": "5228bc76937ebb3ee0f87bee84f6509adc9f9033ec588927110b08244bb0f541",
+      "bytes": 386620
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ExR4.html",
+      "file": "type_pages/ExR4.html",
+      "sha256": "15acf208c686094ad97dfca8dbdcf0d5fb2c0be166de86ebe07aca27b4dcf4a2",
+      "bytes": 132751
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ExR5.html",
+      "file": "type_pages/ExR5.html",
+      "sha256": "9d414a365c7865479b08227f7625ab7a11af72d163a5ea9569c04c66457288a7",
+      "bytes": 225920
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ExR6.html",
+      "file": "type_pages/ExR6.html",
+      "sha256": "17f15b456ca0a30e77662eec5976f7fcd4d3d84977234d8d2ef96c4ccddc034c",
+      "bytes": 260191
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ExR7.html",
+      "file": "type_pages/ExR7.html",
+      "sha256": "4edcae676a00b87966521b8a828d2f3b101cdb0626d314f6c921f322187d9ee7",
+      "bytes": 150558
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/ExR8.html",
+      "file": "type_pages/ExR8.html",
+      "sha256": "b9893c5d107d08a3ffbd2bde2ced1b67985103cf13f58f2de41e3767821f3cea",
+      "bytes": 128200
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/PEG.html",
+      "file": "type_pages/PEG.html",
+      "sha256": "6c68669c54f5f182fad00e790112582b3c1044bf6d8ee43926c861a53f36462d",
+      "bytes": 94347
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/PEN_a%28PEN1%29.html",
+      "file": "type_pages/PEN_a(PEN1).html",
+      "sha256": "8363c5ecc9305687ca7e375a8d0f3af5e27e16d139acbd81f1c368bf496827e1",
+      "bytes": 74485
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/PEN_b%28PEN2%29.html",
+      "file": "type_pages/PEN_b(PEN2).html",
+      "sha256": "dcf280d259893a739e0ec9b58e4a59dd014389478c8591048b15d98eaa5c28a0",
+      "bytes": 85813
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/PFL1.html",
+      "file": "type_pages/PFL1.html",
+      "sha256": "4f87a74945d8619fc9732dae89e6305e3e571b62a66d5fc31927f75f475223ca",
+      "bytes": 195955
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/PFL2.html",
+      "file": "type_pages/PFL2.html",
+      "sha256": "430c49c6c420e24b5e4c287c57515d4c7cf7c7847844e92413deafaa49156d0d",
+      "bytes": 168478
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/PFL3.html",
+      "file": "type_pages/PFL3.html",
+      "sha256": "5a29d862b9ddf4f1cb278a6d4b3a76c808d1f8f3bee26e15e7ebdfe268d94591",
+      "bytes": 216154
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/PFNa.html",
+      "file": "type_pages/PFNa.html",
+      "sha256": "dbbd7ba51e82bafe3c434643dfcdcebc19d1f264e895706514a8a819aa4d962c",
+      "bytes": 88369
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/PFNd.html",
+      "file": "type_pages/PFNd.html",
+      "sha256": "747682cbbde66d6d764e8c697ab4263635342265731bb2934fe58495bf707978",
+      "bytes": 98079
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/PFNm_a.html",
+      "file": "type_pages/PFNm_a.html",
+      "sha256": "894cbcef56bec87113059be16fcae1ada8b45b312b1e607ab51808538ddc3f00",
+      "bytes": 61656
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/PFNm_b.html",
+      "file": "type_pages/PFNm_b.html",
+      "sha256": "821742876135a615f12784ba17016dc9857c664ce108ac2ab0978534fdf22d2d",
+      "bytes": 67636
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/PFNp_a.html",
+      "file": "type_pages/PFNp_a.html",
+      "sha256": "cfd721c0c591bd452562baa75830759e096845c3da08c43bbda254a964a013dd",
+      "bytes": 58577
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/PFNp_b.html",
+      "file": "type_pages/PFNp_b.html",
+      "sha256": "908eeb4ea829c592a911650c6ef891b15af2ab4b4f3d99ae3f2f02dd1d02d676",
+      "bytes": 72411
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/PFNp_c.html",
+      "file": "type_pages/PFNp_c.html",
+      "sha256": "3318eb32816823570fb588b2aa6a2e2331ba83b9eba039c4c7b78a1e25b7bdc6",
+      "bytes": 65740
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/PFNp_d.html",
+      "file": "type_pages/PFNp_d.html",
+      "sha256": "28851db6ecf529286419d082b4dca98d6046bdf77dccad8b29fd6c693c9d32c7",
+      "bytes": 69031
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/PFNp_e.html",
+      "file": "type_pages/PFNp_e.html",
+      "sha256": "c27dc98b8d10ba30f67047fbaed448573b3e7d0ba1c39f176f0131b9cddb71cc",
+      "bytes": 51111
+    },
+    {
+      "url": "https://reiserlab.github.io/celltype-explorer-drosophila-male-cns/types/PFNv.html",
+      "file": "type_pages/PFNv.html",
+      "sha256": "40f94e9e5adb969070c7b072267895a89c2e1a68120c4eb987a2243d9bc81e69",
+      "bytes": 83926
+    }
+  ],
+  "catalog_sha256": "cbbb8a35d0aac077f64d5f98d51d19f6d3ed40331b5c49fb4edb7e2f1e6b1180",
+  "npz_sha256": "98442a237277ff9d9419c5271fec59a79dab868cd055c3ac0ba76d695cf4957c"
+}

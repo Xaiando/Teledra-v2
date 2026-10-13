@@ -1,0 +1,1154 @@
+[
+  {
+    "attack_spacing": 0.5,
+    "description": "Pure low sine foundation; sparse roots with room for the kick.",
+    "gate": 0.8999999761581421,
+    "group": "Electronic",
+    "id": "sub_bass",
+    "mix_level": 0.6000000238418579,
+    "monophonic": true,
+    "name": "Sub Bass",
+    "pan": 0.0,
+    "range": [
+      24,
+      48
+    ],
+    "role": "bass"
+  },
+  {
+    "attack_spacing": 0.0,
+    "description": "Rounded synth bass; articulated pulse and root motion.",
+    "gate": 0.7200000286102295,
+    "group": "Electronic",
+    "id": "bass",
+    "mix_level": 0.5799999833106995,
+    "monophonic": true,
+    "name": "Bass",
+    "pan": 0.0,
+    "range": [
+      28,
+      55
+    ],
+    "role": "bass"
+  },
+  {
+    "attack_spacing": 1.0,
+    "description": "Slow layered synth chords; allow sustained entries to bloom.",
+    "gate": 1.7000000476837158,
+    "group": "Electronic",
+    "id": "pad",
+    "mix_level": 0.41999998688697815,
+    "monophonic": false,
+    "name": "Pad",
+    "pan": 0.0,
+    "range": [
+      45,
+      79
+    ],
+    "role": "harmony"
+  },
+  {
+    "attack_spacing": 0.0,
+    "description": "Soft keyboard chord voicings; rhythmic harmonic support.",
+    "gate": 0.949999988079071,
+    "group": "Keyboards",
+    "id": "keys",
+    "mix_level": 0.5,
+    "monophonic": false,
+    "name": "Keys",
+    "pan": 0.18000000715255737,
+    "range": [
+      48,
+      84
+    ],
+    "role": "harmony"
+  },
+  {
+    "attack_spacing": 0.0,
+    "description": "Short synth pluck; crisp patterns and answering figures.",
+    "gate": 0.5,
+    "group": "Electronic",
+    "id": "pluck",
+    "mix_level": 0.5600000023841858,
+    "monophonic": false,
+    "name": "Pluck",
+    "pan": 0.30000001192092896,
+    "range": [
+      55,
+      91
+    ],
+    "role": "colour"
+  },
+  {
+    "attack_spacing": 0.0,
+    "description": "Focused synth melody; use a clear contour and rests.",
+    "gate": 0.8500000238418579,
+    "group": "Electronic",
+    "id": "lead",
+    "mix_level": 0.6600000262260437,
+    "monophonic": true,
+    "name": "Lead",
+    "pan": -0.10000000149011612,
+    "range": [
+      60,
+      91
+    ],
+    "role": "melody"
+  },
+  {
+    "attack_spacing": 0.0,
+    "description": "Bright ringing bell; sparse high punctuation.",
+    "gate": 1.2000000476837158,
+    "group": "Mallets",
+    "id": "bell",
+    "mix_level": 0.5199999809265137,
+    "monophonic": false,
+    "name": "Bell",
+    "pan": 0.2199999988079071,
+    "range": [
+      72,
+      100
+    ],
+    "role": "colour"
+  },
+  {
+    "attack_spacing": 0.0,
+    "description": "Light articulated arpeggio voice; use broken harmonic figures.",
+    "gate": 0.5,
+    "group": "Electronic",
+    "id": "arp",
+    "mix_level": 0.3799999952316284,
+    "monophonic": false,
+    "name": "Arp",
+    "pan": -0.2800000011920929,
+    "range": [
+      67,
+      98
+    ],
+    "role": "melody"
+  },
+  {
+    "attack_spacing": 1.0,
+    "description": "Sustained additive organ chords; smooth common-tone changes.",
+    "gate": 1.0,
+    "group": "Keyboards",
+    "id": "organ",
+    "mix_level": 0.4399999976158142,
+    "monophonic": false,
+    "name": "Organ",
+    "pan": 0.0,
+    "range": [
+      36,
+      84
+    ],
+    "role": "harmony"
+  },
+  {
+    "attack_spacing": 0.0,
+    "description": "Acoustic piano-inspired hammer attack and decay; melody or broken chords.",
+    "gate": 1.600000023841858,
+    "group": "Keyboards",
+    "id": "piano",
+    "mix_level": 0.5400000214576721,
+    "monophonic": false,
+    "name": "Piano",
+    "pan": -0.20000000298023224,
+    "range": [
+      33,
+      91
+    ],
+    "role": "colour"
+  },
+  {
+    "attack_spacing": 0.5,
+    "description": "Airy high flute; breathing phrases with connected notes.",
+    "gate": 1.100000023841858,
+    "group": "Woodwinds",
+    "id": "flute",
+    "mix_level": 0.5,
+    "monophonic": true,
+    "name": "Flute",
+    "pan": 0.36000001430511475,
+    "range": [
+      72,
+      98
+    ],
+    "role": "melody"
+  },
+  {
+    "attack_spacing": 0.5,
+    "description": "Warm reed colour; lyrical middle-register lines.",
+    "gate": 1.0,
+    "group": "Woodwinds",
+    "id": "reed",
+    "mix_level": 0.47999998927116394,
+    "monophonic": true,
+    "name": "Reed",
+    "pan": -0.3400000035762787,
+    "range": [
+      50,
+      84
+    ],
+    "role": "melody"
+  },
+  {
+    "attack_spacing": 1.0,
+    "description": "Bowed low strings; spacious foundation or a singing low line.",
+    "gate": 1.899999976158142,
+    "group": "Strings",
+    "id": "cello",
+    "mix_level": 0.5600000023841858,
+    "monophonic": true,
+    "name": "Cello",
+    "pan": 0.25999999046325684,
+    "range": [
+      36,
+      69
+    ],
+    "role": "bass"
+  },
+  {
+    "attack_spacing": 0.0,
+    "description": "Ringing harp plucks; broken chords and delicate answers.",
+    "gate": 1.5,
+    "group": "Plucked strings",
+    "id": "harp",
+    "mix_level": 0.5,
+    "monophonic": false,
+    "name": "Harp",
+    "pan": -0.30000001192092896,
+    "range": [
+      36,
+      91
+    ],
+    "role": "colour"
+  },
+  {
+    "attack_spacing": 1.0,
+    "description": "Bowed upper string voice; sustained lyricism with gentle vibrato.",
+    "gate": 1.25,
+    "group": "Strings",
+    "id": "violin",
+    "mix_level": 0.46000000834465027,
+    "monophonic": true,
+    "name": "Violin",
+    "pan": -0.36000001430511475,
+    "range": [
+      55,
+      96
+    ],
+    "role": "melody"
+  },
+  {
+    "attack_spacing": 0.5,
+    "description": "Hollow odd-harmonic woodwind; warm legato melody.",
+    "gate": 1.0,
+    "group": "Woodwinds",
+    "id": "clarinet",
+    "mix_level": 0.47999998927116394,
+    "monophonic": true,
+    "name": "Clarinet",
+    "pan": 0.20000000298023224,
+    "range": [
+      50,
+      89
+    ],
+    "role": "melody"
+  },
+  {
+    "attack_spacing": 0.5,
+    "description": "Focused nasal double-reed colour; exposed melodic answers.",
+    "gate": 1.0,
+    "group": "Woodwinds",
+    "id": "oboe",
+    "mix_level": 0.4000000059604645,
+    "monophonic": true,
+    "name": "Oboe",
+    "pan": -0.20000000298023224,
+    "range": [
+      58,
+      91
+    ],
+    "role": "melody"
+  },
+  {
+    "attack_spacing": 1.0,
+    "description": "Mellow rounded horn; broad low-to-middle phrases.",
+    "gate": 1.0,
+    "group": "Brass",
+    "id": "horn",
+    "mix_level": 0.47999998927116394,
+    "monophonic": true,
+    "name": "Horn",
+    "pan": 0.30000001192092896,
+    "range": [
+      41,
+      77
+    ],
+    "role": "melody"
+  },
+  {
+    "attack_spacing": 0.5,
+    "description": "Bright brass attack; clear calls with breathing space.",
+    "gate": 0.8999999761581421,
+    "group": "Brass",
+    "id": "trumpet",
+    "mix_level": 0.4000000059604645,
+    "monophonic": true,
+    "name": "Trumpet",
+    "pan": -0.25999999046325684,
+    "range": [
+      54,
+      86
+    ],
+    "role": "melody"
+  },
+  {
+    "attack_spacing": 0.0,
+    "description": "Nylon guitar-inspired pluck; warm fingerpicked answers.",
+    "gate": 1.25,
+    "group": "Plucked strings",
+    "id": "guitar",
+    "mix_level": 0.5400000214576721,
+    "monophonic": false,
+    "name": "Guitar",
+    "pan": -0.3199999928474426,
+    "range": [
+      40,
+      88
+    ],
+    "role": "colour"
+  },
+  {
+    "attack_spacing": 0.0,
+    "description": "Mellow metallic bars with tremolo; spacious ringing harmony.",
+    "gate": 1.5,
+    "group": "Mallets",
+    "id": "vibraphone",
+    "mix_level": 0.47999998927116394,
+    "monophonic": false,
+    "name": "Vibraphone",
+    "pan": 0.3199999928474426,
+    "range": [
+      53,
+      89
+    ],
+    "role": "colour"
+  },
+  {
+    "attack_spacing": 0.0,
+    "description": "Low unpitched drum pulse; degree zero is a hit.",
+    "gate": 0.30000001192092896,
+    "group": "Percussion",
+    "id": "kick",
+    "mix_level": 0.8799999952316284,
+    "monophonic": false,
+    "name": "Kick",
+    "pan": 0.0,
+    "range": [
+      30,
+      42
+    ],
+    "role": "percussion"
+  },
+  {
+    "attack_spacing": 0.0,
+    "description": "Noise-and-body backbeat; use accents and ghost hits.",
+    "gate": 0.30000001192092896,
+    "group": "Percussion",
+    "id": "snare",
+    "mix_level": 0.699999988079071,
+    "monophonic": false,
+    "name": "Snare",
+    "pan": 0.0,
+    "range": [
+      56,
+      68
+    ],
+    "role": "percussion"
+  },
+  {
+    "attack_spacing": 0.0,
+    "description": "Tight high-hat ticks; subdivided pulse with rests.",
+    "gate": 0.1599999964237213,
+    "group": "Percussion",
+    "id": "hat",
+    "mix_level": 0.3400000035762787,
+    "monophonic": false,
+    "name": "Hat",
+    "pan": 0.3400000035762787,
+    "range": [
+      78,
+      90
+    ],
+    "role": "percussion"
+  },
+  {
+    "attack_spacing": 0.0,
+    "description": "Short auxiliary percussion; offbeat accents.",
+    "gate": 0.30000001192092896,
+    "group": "Percussion",
+    "id": "perc",
+    "mix_level": 0.5,
+    "monophonic": false,
+    "name": "Perc",
+    "pan": -0.41999998688697815,
+    "range": [
+      50,
+      80
+    ],
+    "role": "percussion"
+  },
+  {
+    "attack_spacing": 0.0,
+    "description": "Bell-like tine attack and warm decay; flowing chord fragments.",
+    "gate": 1.5,
+    "group": "Keyboards",
+    "id": "electric_piano",
+    "mix_level": 0.5199999809265137,
+    "monophonic": false,
+    "name": "Electric Piano",
+    "pan": -0.18000000715255737,
+    "range": [
+      36,
+      91
+    ],
+    "role": "colour"
+  },
+  {
+    "attack_spacing": 0.0,
+    "description": "Bright lightly detuned upright colour; bouncy rhythmic phrases.",
+    "gate": 1.2999999523162842,
+    "group": "Keyboards",
+    "id": "honky_tonk_piano",
+    "mix_level": 0.47999998927116394,
+    "monophonic": false,
+    "name": "Honky Tonk Piano",
+    "pan": -0.1599999964237213,
+    "range": [
+      36,
+      88
+    ],
+    "role": "colour"
+  },
+  {
+    "attack_spacing": 0.0,
+    "description": "Bright plucked keyboard; crisp contrapuntal lines.",
+    "gate": 0.800000011920929,
+    "group": "Keyboards",
+    "id": "harpsichord",
+    "mix_level": 0.41999998688697815,
+    "monophonic": false,
+    "name": "Harpsichord",
+    "pan": 0.18000000715255737,
+    "range": [
+      41,
+      89
+    ],
+    "role": "colour"
+  },
+  {
+    "attack_spacing": 0.0,
+    "description": "Dry percussive electric keyboard; syncopated short notes.",
+    "gate": 0.550000011920929,
+    "group": "Keyboards",
+    "id": "clavinet",
+    "mix_level": 0.46000000834465027,
+    "monophonic": false,
+    "name": "Clavinet",
+    "pan": -0.2199999988079071,
+    "range": [
+      36,
+      84
+    ],
+    "role": "colour"
+  },
+  {
+    "attack_spacing": 0.0,
+    "description": "Soft struck-key chimes; delicate high-register detail.",
+    "gate": 1.25,
+    "group": "Keyboards",
+    "id": "celesta",
+    "mix_level": 0.4399999976158142,
+    "monophonic": false,
+    "name": "Celesta",
+    "pan": 0.2199999988079071,
+    "range": [
+      60,
+      96
+    ],
+    "role": "colour"
+  },
+  {
+    "attack_spacing": 0.5,
+    "description": "Reedy sustained keyboard chords; phrased bellows-like swells.",
+    "gate": 1.100000023841858,
+    "group": "Keyboards",
+    "id": "accordion",
+    "mix_level": 0.41999998688697815,
+    "monophonic": false,
+    "name": "Accordion",
+    "pan": 0.0,
+    "range": [
+      48,
+      84
+    ],
+    "role": "harmony"
+  },
+  {
+    "attack_spacing": 0.5,
+    "description": "Bright free-reed melody; breath-shaped short phrases.",
+    "gate": 0.8999999761581421,
+    "group": "Woodwinds",
+    "id": "harmonica",
+    "mix_level": 0.41999998688697815,
+    "monophonic": true,
+    "name": "Harmonica",
+    "pan": -0.15000000596046448,
+    "range": [
+      55,
+      89
+    ],
+    "role": "melody"
+  },
+  {
+    "attack_spacing": 1.0,
+    "description": "Dark middle-register bowed string; inner melodic line.",
+    "gate": 1.350000023841858,
+    "group": "Strings",
+    "id": "viola",
+    "mix_level": 0.47999998927116394,
+    "monophonic": true,
+    "name": "Viola",
+    "pan": -0.2199999988079071,
+    "range": [
+      48,
+      84
+    ],
+    "role": "melody"
+  },
+  {
+    "attack_spacing": 1.0,
+    "description": "Woody bowed low string; spacious grounded bass movement.",
+    "gate": 1.2999999523162842,
+    "group": "Strings",
+    "id": "double_bass",
+    "mix_level": 0.5799999833106995,
+    "monophonic": true,
+    "name": "Double Bass",
+    "pan": 0.07999999821186066,
+    "range": [
+      28,
+      60
+    ],
+    "role": "bass"
+  },
+  {
+    "attack_spacing": 1.0,
+    "description": "Layered bowed-string chords; slow ensemble swells.",
+    "gate": 1.649999976158142,
+    "group": "Strings",
+    "id": "string_ensemble",
+    "mix_level": 0.36000001430511475,
+    "monophonic": false,
+    "name": "String Ensemble",
+    "pan": -0.07999999821186066,
+    "range": [
+      43,
+      88
+    ],
+    "role": "harmony"
+  },
+  {
+    "attack_spacing": 0.0,
+    "description": "Short plucked orchestral strings; nimble rhythmic support.",
+    "gate": 0.5,
+    "group": "Strings",
+    "id": "pizzicato_strings",
+    "mix_level": 0.5,
+    "monophonic": false,
+    "name": "Pizzicato Strings",
+    "pan": -0.23999999463558197,
+    "range": [
+      43,
+      88
+    ],
+    "role": "colour"
+  },
+  {
+    "attack_spacing": 1.0,
+    "description": "Rapidly pulsing bowed texture; held suspenseful harmony.",
+    "gate": 1.399999976158142,
+    "group": "Strings",
+    "id": "tremolo_strings",
+    "mix_level": 0.3400000035762787,
+    "monophonic": false,
+    "name": "Tremolo Strings",
+    "pan": 0.11999999731779099,
+    "range": [
+      48,
+      91
+    ],
+    "role": "harmony"
+  },
+  {
+    "attack_spacing": 0.0,
+    "description": "Steel-string acoustic shimmer; open fingerpicked figures.",
+    "gate": 1.399999976158142,
+    "group": "Plucked strings",
+    "id": "steel_guitar",
+    "mix_level": 0.49000000953674316,
+    "monophonic": false,
+    "name": "Steel Guitar",
+    "pan": -0.2800000011920929,
+    "range": [
+      40,
+      88
+    ],
+    "role": "colour"
+  },
+  {
+    "attack_spacing": 0.0,
+    "description": "Clean electric-string attack; melodic riffs and offbeat answers.",
+    "gate": 1.0,
+    "group": "Plucked strings",
+    "id": "electric_guitar",
+    "mix_level": 0.4399999976158142,
+    "monophonic": false,
+    "name": "Electric Guitar",
+    "pan": -0.30000001192092896,
+    "range": [
+      40,
+      88
+    ],
+    "role": "colour"
+  },
+  {
+    "attack_spacing": 0.0,
+    "description": "Rounded dark guitar pluck; warm restrained accompaniment.",
+    "gate": 1.2000000476837158,
+    "group": "Plucked strings",
+    "id": "jazz_guitar",
+    "mix_level": 0.5199999809265137,
+    "monophonic": false,
+    "name": "Jazz Guitar",
+    "pan": -0.25,
+    "range": [
+      40,
+      84
+    ],
+    "role": "colour"
+  },
+  {
+    "attack_spacing": 0.0,
+    "description": "Damped string ticks; sparse syncopated rhythmic figures.",
+    "gate": 0.3499999940395355,
+    "group": "Plucked strings",
+    "id": "muted_guitar",
+    "mix_level": 0.5400000214576721,
+    "monophonic": false,
+    "name": "Muted Guitar",
+    "pan": 0.25999999046325684,
+    "range": [
+      40,
+      84
+    ],
+    "role": "colour"
+  },
+  {
+    "attack_spacing": 0.0,
+    "description": "Bright membrane-backed twang; rolling broken chords.",
+    "gate": 0.6499999761581421,
+    "group": "Plucked strings",
+    "id": "banjo",
+    "mix_level": 0.4000000059604645,
+    "monophonic": false,
+    "name": "Banjo",
+    "pan": -0.25,
+    "range": [
+      48,
+      88
+    ],
+    "role": "colour"
+  },
+  {
+    "attack_spacing": 0.0,
+    "description": "Paired-string sparkle; quick repeated notes and answers.",
+    "gate": 0.75,
+    "group": "Plucked strings",
+    "id": "mandolin",
+    "mix_level": 0.41999998688697815,
+    "monophonic": false,
+    "name": "Mandolin",
+    "pan": 0.25,
+    "range": [
+      55,
+      96
+    ],
+    "role": "colour"
+  },
+  {
+    "attack_spacing": 0.0,
+    "description": "Small warm string pluck; light compact chord fragments.",
+    "gate": 0.6499999761581421,
+    "group": "Plucked strings",
+    "id": "ukulele",
+    "mix_level": 0.5199999809265137,
+    "monophonic": false,
+    "name": "Ukulele",
+    "pan": -0.2199999988079071,
+    "range": [
+      60,
+      88
+    ],
+    "role": "colour"
+  },
+  {
+    "attack_spacing": 0.0,
+    "description": "Buzzing long pluck with sympathetic colour; spacious melodic turns.",
+    "gate": 1.5,
+    "group": "Plucked strings",
+    "id": "sitar",
+    "mix_level": 0.3799999952316284,
+    "monophonic": false,
+    "name": "Sitar",
+    "pan": 0.2199999988079071,
+    "range": [
+      48,
+      88
+    ],
+    "role": "colour"
+  },
+  {
+    "attack_spacing": 0.0,
+    "description": "Crisp zither-like attack; isolated plucks and broken figures.",
+    "gate": 1.2000000476837158,
+    "group": "Plucked strings",
+    "id": "koto",
+    "mix_level": 0.46000000834465027,
+    "monophonic": false,
+    "name": "Koto",
+    "pan": -0.23999999463558197,
+    "range": [
+      45,
+      89
+    ],
+    "role": "colour"
+  },
+  {
+    "attack_spacing": 0.0,
+    "description": "Dark fretless-lute colour; warm low and middle melodic answers.",
+    "gate": 0.949999988079071,
+    "group": "Plucked strings",
+    "id": "oud",
+    "mix_level": 0.5199999809265137,
+    "monophonic": false,
+    "name": "Oud",
+    "pan": 0.20000000298023224,
+    "range": [
+      36,
+      81
+    ],
+    "role": "colour"
+  },
+  {
+    "attack_spacing": 0.5,
+    "description": "Small bright flute colour; brief upper-register flourishes.",
+    "gate": 0.8500000238418579,
+    "group": "Woodwinds",
+    "id": "piccolo",
+    "mix_level": 0.3400000035762787,
+    "monophonic": true,
+    "name": "Piccolo",
+    "pan": 0.3199999928474426,
+    "range": [
+      74,
+      103
+    ],
+    "role": "melody"
+  },
+  {
+    "attack_spacing": 0.5,
+    "description": "Clear whistle-like woodwind; simple articulated melody.",
+    "gate": 0.949999988079071,
+    "group": "Woodwinds",
+    "id": "recorder",
+    "mix_level": 0.46000000834465027,
+    "monophonic": true,
+    "name": "Recorder",
+    "pan": -0.20000000298023224,
+    "range": [
+      60,
+      96
+    ],
+    "role": "melody"
+  },
+  {
+    "attack_spacing": 0.5,
+    "description": "Breathy pipe attacks; separated airy melodic gestures.",
+    "gate": 0.8999999761581421,
+    "group": "Woodwinds",
+    "id": "pan_flute",
+    "mix_level": 0.46000000834465027,
+    "monophonic": true,
+    "name": "Pan Flute",
+    "pan": 0.25,
+    "range": [
+      60,
+      91
+    ],
+    "role": "melody"
+  },
+  {
+    "attack_spacing": 0.5,
+    "description": "Bamboo-flute-inspired breath and low harmonics; spacious lines.",
+    "gate": 1.2000000476837158,
+    "group": "Woodwinds",
+    "id": "shakuhachi",
+    "mix_level": 0.4399999976158142,
+    "monophonic": true,
+    "name": "Shakuhachi",
+    "pan": -0.25,
+    "range": [
+      50,
+      86
+    ],
+    "role": "melody"
+  },
+  {
+    "attack_spacing": 0.5,
+    "description": "Woody low double reed; articulated bass and lyrical low answers.",
+    "gate": 1.0,
+    "group": "Woodwinds",
+    "id": "bassoon",
+    "mix_level": 0.47999998927116394,
+    "monophonic": true,
+    "name": "Bassoon",
+    "pan": 0.18000000715255737,
+    "range": [
+      34,
+      77
+    ],
+    "role": "bass"
+  },
+  {
+    "attack_spacing": 0.5,
+    "description": "Mellow dark double reed; sustained middle-register lament.",
+    "gate": 1.149999976158142,
+    "group": "Woodwinds",
+    "id": "english_horn",
+    "mix_level": 0.41999998688697815,
+    "monophonic": true,
+    "name": "English Horn",
+    "pan": -0.18000000715255737,
+    "range": [
+      52,
+      84
+    ],
+    "role": "melody"
+  },
+  {
+    "attack_spacing": 0.5,
+    "description": "Bright singing reed; expressive upper-middle melody.",
+    "gate": 1.0,
+    "group": "Woodwinds",
+    "id": "soprano_sax",
+    "mix_level": 0.4000000059604645,
+    "monophonic": true,
+    "name": "Soprano Sax",
+    "pan": 0.25,
+    "range": [
+      56,
+      89
+    ],
+    "role": "melody"
+  },
+  {
+    "attack_spacing": 0.5,
+    "description": "Warm broad reed with a buzzy edge; middle-register phrases.",
+    "gate": 1.100000023841858,
+    "group": "Woodwinds",
+    "id": "tenor_sax",
+    "mix_level": 0.46000000834465027,
+    "monophonic": true,
+    "name": "Tenor Sax",
+    "pan": -0.25,
+    "range": [
+      44,
+      80
+    ],
+    "role": "melody"
+  },
+  {
+    "attack_spacing": 0.5,
+    "description": "Rounded low brass with a firm attack; broad answering phrases.",
+    "gate": 1.0499999523162842,
+    "group": "Brass",
+    "id": "trombone",
+    "mix_level": 0.46000000834465027,
+    "monophonic": true,
+    "name": "Trombone",
+    "pan": -0.20000000298023224,
+    "range": [
+      40,
+      77
+    ],
+    "role": "melody"
+  },
+  {
+    "attack_spacing": 1.0,
+    "description": "Dark low brass foundation; generous spacing between notes.",
+    "gate": 1.100000023841858,
+    "group": "Brass",
+    "id": "tuba",
+    "mix_level": 0.5199999809265137,
+    "monophonic": true,
+    "name": "Tuba",
+    "pan": 0.0,
+    "range": [
+      28,
+      65
+    ],
+    "role": "bass"
+  },
+  {
+    "attack_spacing": 0.5,
+    "description": "Soft trumpet-family brass; warm rounded legato calls.",
+    "gate": 1.149999976158142,
+    "group": "Brass",
+    "id": "flugelhorn",
+    "mix_level": 0.4399999976158142,
+    "monophonic": true,
+    "name": "Flugelhorn",
+    "pan": 0.20000000298023224,
+    "range": [
+      52,
+      84
+    ],
+    "role": "melody"
+  },
+  {
+    "attack_spacing": 1.0,
+    "description": "Layered brass chord colour; broad harmonic statements.",
+    "gate": 0.949999988079071,
+    "group": "Brass",
+    "id": "brass_ensemble",
+    "mix_level": 0.3199999928474426,
+    "monophonic": false,
+    "name": "Brass Ensemble",
+    "pan": 0.07999999821186066,
+    "range": [
+      41,
+      84
+    ],
+    "role": "harmony"
+  },
+  {
+    "attack_spacing": 0.0,
+    "description": "Warm wooden bars; rounded rhythmic melody and broken chords.",
+    "gate": 0.800000011920929,
+    "group": "Mallets",
+    "id": "marimba",
+    "mix_level": 0.5400000214576721,
+    "monophonic": false,
+    "name": "Marimba",
+    "pan": -0.23999999463558197,
+    "range": [
+      45,
+      89
+    ],
+    "role": "colour"
+  },
+  {
+    "attack_spacing": 0.0,
+    "description": "Hard short wooden mallet attack; bright rhythmic accents.",
+    "gate": 0.44999998807907104,
+    "group": "Mallets",
+    "id": "xylophone",
+    "mix_level": 0.4000000059604645,
+    "monophonic": false,
+    "name": "Xylophone",
+    "pan": 0.23999999463558197,
+    "range": [
+      60,
+      96
+    ],
+    "role": "colour"
+  },
+  {
+    "attack_spacing": 0.0,
+    "description": "High metal-bar sparkle; sparse ringing punctuation.",
+    "gate": 1.2000000476837158,
+    "group": "Mallets",
+    "id": "glockenspiel",
+    "mix_level": 0.36000001430511475,
+    "monophonic": false,
+    "name": "Glockenspiel",
+    "pan": -0.20000000298023224,
+    "range": [
+      72,
+      103
+    ],
+    "role": "colour"
+  },
+  {
+    "attack_spacing": 0.0,
+    "description": "Deep resonant chimes; widely spaced tonal strikes.",
+    "gate": 1.7999999523162842,
+    "group": "Mallets",
+    "id": "tubular_bells",
+    "mix_level": 0.36000001430511475,
+    "monophonic": false,
+    "name": "Tubular Bells",
+    "pan": 0.15000000596046448,
+    "range": [
+      48,
+      84
+    ],
+    "role": "colour"
+  },
+  {
+    "attack_spacing": 0.0,
+    "description": "Hammered-string shimmer; rippling melodic figures.",
+    "gate": 1.0,
+    "group": "Mallets",
+    "id": "dulcimer",
+    "mix_level": 0.4399999976158142,
+    "monophonic": false,
+    "name": "Dulcimer",
+    "pan": -0.18000000715255737,
+    "range": [
+      48,
+      91
+    ],
+    "role": "colour"
+  },
+  {
+    "attack_spacing": 0.5,
+    "description": "Singing electronic voice with pitch glide and vibrato; connected legato notes.",
+    "gate": 1.149999976158142,
+    "group": "Electronic",
+    "id": "theremin",
+    "mix_level": 0.41999998688697815,
+    "monophonic": true,
+    "name": "Theremin",
+    "pan": 0.05000000074505806,
+    "range": [
+      48,
+      96
+    ],
+    "role": "melody"
+  },
+  {
+    "attack_spacing": 1.0,
+    "description": "Vowel-coloured synthesized voices; slow sustained choral harmony.",
+    "gate": 1.600000023841858,
+    "group": "Electronic",
+    "id": "choir",
+    "mix_level": 0.3400000035762787,
+    "monophonic": false,
+    "name": "Choir",
+    "pan": 0.0,
+    "range": [
+      48,
+      84
+    ],
+    "role": "harmony"
+  },
+  {
+    "attack_spacing": 0.5,
+    "description": "Bright filtered brass-like synth chords; rhythmic swells.",
+    "gate": 0.800000011920929,
+    "group": "Electronic",
+    "id": "synth_brass",
+    "mix_level": 0.3799999952316284,
+    "monophonic": false,
+    "name": "Synth Brass",
+    "pan": 0.11999999731779099,
+    "range": [
+      43,
+      84
+    ],
+    "role": "harmony"
+  },
+  {
+    "attack_spacing": 1.0,
+    "description": "Dark soft sustained pad; quiet harmonic space under a melody.",
+    "gate": 1.899999976158142,
+    "group": "Electronic",
+    "id": "warm_pad",
+    "mix_level": 0.4000000059604645,
+    "monophonic": false,
+    "name": "Warm Pad",
+    "pan": -0.10000000149011612,
+    "range": [
+      43,
+      84
+    ],
+    "role": "harmony"
+  },
+  {
+    "attack_spacing": 0.5,
+    "description": "Tuned low kettle-drum-inspired strikes; write tonic or chord-tone degrees.",
+    "gate": 0.800000011920929,
+    "group": "Mallets",
+    "id": "timpani",
+    "mix_level": 0.550000011920929,
+    "monophonic": false,
+    "name": "Timpani",
+    "pan": 0.0,
+    "range": [
+      36,
+      60
+    ],
+    "role": "colour"
+  },
+  {
+    "attack_spacing": 0.0,
+    "description": "Soft high noise shakes; alternate accents and rests.",
+    "gate": 0.18000000715255737,
+    "group": "Percussion",
+    "id": "shaker",
+    "mix_level": 0.2800000011920929,
+    "monophonic": false,
+    "name": "Shaker",
+    "pan": -0.3499999940395355,
+    "range": [
+      72,
+      90
+    ],
+    "role": "percussion"
+  },
+  {
+    "attack_spacing": 0.0,
+    "description": "Rounded unpitched hand-drum hit; syncopated interlocking accents.",
+    "gate": 0.3199999928474426,
+    "group": "Percussion",
+    "id": "conga",
+    "mix_level": 0.5,
+    "monophonic": false,
+    "name": "Conga",
+    "pan": -0.2800000011920929,
+    "range": [
+      48,
+      72
+    ],
+    "role": "percussion"
+  },
+  {
+    "attack_spacing": 0.0,
+    "description": "Dry metallic unpitched strike; sparse rhythmic punctuation.",
+    "gate": 0.3499999940395355,
+    "group": "Percussion",
+    "id": "cowbell",
+    "mix_level": 0.30000001192092896,
+    "monophonic": false,
+    "name": "Cowbell",
+    "pan": 0.2800000011920929,
+    "range": [
+      60,
+      84
+    ],
+    "role": "percussion"
+  }
+]

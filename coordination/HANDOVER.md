@@ -1,5 +1,15 @@
 # Handover
 
+Latest conversation work: [2026-09-18 YouTube and podcast sessions](YOUTUBE_PODCAST_20260918.md).
+
+Speech and conversation update: [2026-09-17 noise and continuity](SPEECH_CONTINUITY_20260917.md).
+
+Latest: [2026-09-06 operational acceptance](OPERATIONAL_ACCEPTANCE.md).
+
+For the current implementation and verification, start with
+[the 2026-09-05 overhaul](ASTRA_OVERHAUL.md). The observations below are historical;
+composition now uses schema-constrained output and correction is bounded per turn.
+
 Written after a session spent running the court rather than reading it. Nearly
 everything below was found by watching the live transcript, the rendered audio,
 and the process table — not by inspecting source. The tests all passed the whole

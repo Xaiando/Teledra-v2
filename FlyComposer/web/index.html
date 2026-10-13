@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111716">
+  <meta name="description" content="Fly Composer: a local, standalone musical experiment with real fruit-fly connectivity, PyMusic synthesis, and blind listening comparisons.">
+  <title>Fly Composer — listening room</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to listening room</a>
+  <header class="site-header">
+    <a class="brand" href="#main" aria-label="Fly Composer home">
+      <svg class="brand-mark" viewBox="0 0 48 48" fill="none" aria-hidden="true"><path d="M23 28C3 26 5 8 14 10c7 2 10 11 10 18Zm2 0C45 26 43 8 34 10c-7 2-10 11-10 18Z" stroke="currentColor" stroke-width="1.5"/><path d="M24 19v20m-5-5 5-7 5 7m-9-21 4 6 4-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="24" cy="20" r="3" fill="currentColor"/></svg>
+      <span>Fly Composer<span class="brand-caption">A local music experiment</span></span>
+    </a>
+    <nav aria-label="Main navigation"><a href="#listening-room">Listen & compare</a><a href="#compose">Compose</a><a href="#library">Library</a></nav>
+    <span id="connection-status" class="status"><span class="status-dot"></span><span>Connecting</span></span>
+  </header>
+
+  <main id="main">
+    <section class="intro" aria-labelledby="page-title">
+      <div>
+        <div class="eyebrow"><span class="tiny-line"></span>Biological wiring. Musical exploration.</div>
+        <h1 id="page-title">A small circuit.<br><em>A complete piece.</em></h1>
+        <p class="intro-copy">Real fruit-fly connections guide a homemade composer. Keep the sound you enjoy, explore new musical directions, and let each listening session guide the next.</p>
+        <div class="intro-facts"><span>Fly circuit + local Organist model</span><span>PyMusic instruments</span><span>Playback starts with you</span></div>
+      </div>
+      <aside class="circuit-card" aria-label="Connectome data provenance">
+        <div class="circuit-heading"><span class="eyebrow">The circuit</span><span class="data-badge" id="graph-badge">Awaiting data</span></div>
+        <div class="circuit-art" aria-hidden="true">
+          <svg viewBox="0 0 350 120" fill="none"><g stroke="currentColor" stroke-opacity=".23"><path d="M30 60 80 23 128 60 80 98 30 60 174 20 221 61 270 24 319 60 270 98 221 61 174 100 128 60 174 20 270 98M80 23 174 100 270 24M80 98 174 20 319 60M30 60 128 60 221 61 319 60M80 23 80 98M270 24 270 98"/></g><g fill="currentColor"><circle cx="30" cy="60" r="3"/><circle cx="80" cy="23" r="4"/><circle cx="80" cy="98" r="3"/><circle cx="128" cy="60" r="5"/><circle cx="174" cy="20" r="3"/><circle cx="174" cy="100" r="4"/><circle cx="221" cy="61" r="5"/><circle cx="270" cy="24" r="4"/><circle cx="270" cy="98" r="3"/><circle cx="319" cy="60" r="3"/></g></svg>
+          <span>Conceptual illustration · not a circuit reconstruction</span>
+        </div>
+        <div class="graph-stats"><div><strong id="graph-nodes">—</strong><span>cell types</span></div><div><strong id="graph-edges">—</strong><span>observed links</span></div></div>
+        <p id="graph-region" class="region">Loading the selected circuit…</p>
+        <a id="graph-source" class="text-link" href="https://male-cns.janelia.org/download/" target="_blank" rel="noopener noreferrer">Published dataset <span aria-hidden="true">↗</span></a>
+      </aside>
+    </section>
+
+    <div id="global-error" class="notice error" role="alert" hidden></div>
+    <div id="toast" class="notice toast" role="status" aria-live="polite" hidden></div>
+
+    <section id="listening-room" class="section listening-section" aria-labelledby="listening-title">
+      <div class="section-heading"><div><div class="eyebrow">01 / Listening room</div><h2 id="listening-title">Listen before you look.</h2></div><div class="comparison-picker"><label for="comparison-select">Comparison</label><select id="comparison-select" aria-label="Choose a comparison"><option>No comparisons yet</option></select></div></div>
+      <p id="session-explanation" class="section-copy">Explore contrasting studies, or compare the wiring in a controlled session. Only one piece can play at a time.</p>
+      <div id="comparison-empty" class="empty-state"><span class="empty-glyph" aria-hidden="true">♫</span><h3>Your first listening session awaits.</h3><p>Compose a set below. Finished audio and its actual rendering checks will appear here.</p><a class="button secondary" href="#compose">Create a comparison <span aria-hidden="true">↓</span></a></div>
+      <div id="comparison-content" hidden>
+        <div class="session-bar"><div><strong id="comparison-title"></strong><span id="comparison-meta" class="muted"></span></div><span id="blind-status" class="pill"></span></div>
+        <div id="comparison-tracks" class="track-grid"></div>
+        <div class="comparison-bottom"><p id="comparison-hint">Choose a preference before revealing the identities. Technical completion is separate from musical quality.</p><button id="extend-session" class="button secondary" type="button" hidden>Extend both to 2 minutes</button><button id="retry-session" class="button secondary" type="button" hidden>Retry missing recording</button><button id="play-session" class="button secondary" type="button" hidden>Play recordings in sequence</button><button id="reveal-button" class="button secondary" type="button">Reveal identities <span aria-hidden="true">↗</span></button></div>
+        <details class="feedback-details" open><summary>Your listening notes <span>Optional · saved locally</span></summary>
+          <form id="comparison-feedback-form" class="listening-feedback">
+            <fieldset class="preference-field"><legend>Which would you return to?</legend><div id="preference-options" class="preference-options"></div></fieldset>
+            <div class="rating-fields"><label>Coherence<select name="coherence"><option value="">Not rated</option><option value="1">1 · Fragmented</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5 · Holds together</option></select></label><label>Motion<select name="motion"><option value="">Not rated</option><option value="1">1 · Static</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5 · Develops naturally</option></select></label><label>Fatigue<select name="fatigue"><option value="">Not rated</option><option value="1">1 · Easy to stay with</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5 · Tiring / repetitive</option></select></label></div>
+            <label class="note-field" for="comparison-note">What worked? What got in the way?<textarea id="comparison-note" name="note" rows="2" maxlength="2000" placeholder="Layers, phrasing, instrument balance, repeated patterns…"></textarea></label>
+            <div class="feedback-actions"><span id="feedback-state" class="muted"></span><button id="study-organist" class="button secondary" type="button" hidden>Rework Organist from these notes</button><button class="button secondary" type="submit">Save listening notes</button></div>
+          </form>
+        </details>
+      </div>
+    </section>
+
+    <section id="compose" class="section compose-section" aria-labelledby="compose-title">
+      <div class="compose-intro"><div class="eyebrow">02 / The workbench</div><h2 id="compose-title">Give the circuit<br>room to develop.</h2><p>Let Fly and the Organist persona independently author a recorded session. Listen while the next session develops, or return to the earlier study and wiring modes.</p><p id="preference-summary" class="preference-summary" role="status"></p><div id="catalog-summary" class="catalog-summary">Loading instrument catalog…</div><details class="catalog-details"><summary>Explore the instrument palette</summary><div id="catalog-list" class="catalog-list"></div></details></div>
+      <form id="compose-form" class="compose-form">
+        <label class="generation-mode" for="creation-mode">Session type<select id="creation-mode" name="generation"><option value="performance" selected>Independent Fly / Organist recordings</option><option value="development">Develop three new directions</option><option value="wiring">Compare wiring with matched controls</option></select></label>
+        <div id="arrangement-options" hidden><fieldset><legend>Choose an ensemble</legend><div class="ensemble-options"><label class="ensemble-option"><input type="radio" name="ensemble" value="luminous" checked><span><strong>Luminous</strong><small>Electric piano, theremin, cello & vibraphone</small></span><span class="radio-dot" aria-hidden="true"></span></label><label class="ensemble-option"><input type="radio" name="ensemble" value="chamber"><span><strong>Chamber</strong><small>Strings, woodwinds & warm space</small></span><span class="radio-dot" aria-hidden="true"></span></label><label class="ensemble-option"><input type="radio" name="ensemble" value="keys"><span><strong>Keys</strong><small>Classic keys, plucked notes & a soft foundation</small></span><span class="radio-dot" aria-hidden="true"></span></label></div></fieldset>
+        <details class="catalog-details"><summary>Choose instruments for each part</summary><p class="form-help">All 72 homemade voices are available, plus the seven classic PyMusic timbres. Presets choose suitable registers; custom combinations are experiments.</p><div id="voice-options" class="voice-options"></div></details>
+        </div><div class="seed-row"><label for="seed">Seed<input id="seed" name="seed" type="number" min="0" max="2147483647" step="1" required></label><button id="random-seed" class="button seed-button" type="button" aria-label="Choose a new random seed">New seed <span aria-hidden="true">⤮</span></button></div>
+        <p id="generation-help" class="form-help">A seed makes each session repeatable. Development varies the form, meter and layers while keeping your chosen instruments.</p>
+        <button id="compose-button" class="button primary" type="submit"><span>Develop three studies</span><span aria-hidden="true">→</span></button>
+        <div id="compose-progress" class="compose-progress" role="status" aria-live="polite" hidden><span class="working-dot" aria-hidden="true"></span><span id="progress-label">Preparing the next comparison…</span></div>
+      </form>
+    </section>
+
+    <section id="library" class="section library-section" aria-labelledby="library-title">
+      <div class="section-heading"><div><div class="eyebrow">03 / Saved music</div><h2 id="library-title">Keep what earns another listen.</h2></div><div class="library-filter"><label for="library-filter">Show</label><select id="library-filter"><option value="all">All pieces</option><option value="keep">Kept</option><option value="unrated">Not yet rated</option><option value="reject">Rejected</option></select></div></div>
+      <p class="section-copy">Finished pieces stay here with their rendering evidence. Keep and Reject record your preference; neither is inferred from a successful render.</p>
+      <div id="library-empty" class="empty-state compact"><p>No finished pieces yet. The next completed comparison will start your library.</p></div>
+      <div id="library-list" class="library-list"></div>
+      <button id="play-kept" class="button secondary" type="button" style="margin-top:18px">Play kept pieces in sequence</button>
+    </section>
+
+    <section class="method-note" aria-labelledby="method-title"><span class="method-icon" aria-hidden="true">↳</span><div><h2 id="method-title">What this experiment is testing</h2><p>The connection graph comes from a published male fruit-fly connectome. Neuron dynamics, musical interpretation and feedback rules are choices made for this experiment. This is not a claim that a fly brain composes or hears music. The shuffled network helps test whether the particular wiring contributes anything worth hearing.</p><p class="muted">Fly Composer is a standalone candidate for Buzzart. Replacing the court’s Organist depends on the music earning that place through listening.</p></div></section>
+  </main>
+
+  <footer class="site-footer"><span>Fly Composer <span class="muted">/ Local listening room</span></span><span>Real connections. Honest comparisons.</span></footer>
+  <aside id="player-dock" class="player-dock" aria-label="Shared audio player" hidden>
+    <div class="now-playing"><span class="eyebrow">Now listening</span><strong id="now-playing-title"></strong></div>
+    <audio id="audio-player" preload="none" hidden></audio>
+    <div class="transport"><button id="transport-play" class="button secondary" type="button" aria-label="Pause current piece">Pause</button><span id="elapsed">0:00</span><input id="seek" type="range" min="0" max="1" value="0" step="0.1" aria-label="Position in current piece"><span id="total-time">0:00</span><button id="transport-mute" class="button secondary" type="button" aria-label="Mute audio">Mute</button></div>
+    <button id="stop-audio" class="icon-button" type="button" aria-label="Stop audio and close player">×</button>
+  </aside>
+  <script src="/app.js" defer></script>
+</body>
+</html>

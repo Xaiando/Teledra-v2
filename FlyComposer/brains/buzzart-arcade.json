@@ -1,0 +1,67 @@
+{
+  "model": "buzzart_brain_v1",
+  "file": "buzzart-arcade.npz",
+  "npz_sha256": "a5a0c58de53023761651b3d5c53d7df6f31a4469f444e427dcfb72087f1c7cd1",
+  "brain_sha256": "2d322caacdb07c000cf1ad30fdaffcfb54d67a800a56fc0b7f5392cb3b431ef7",
+  "saved_at": "2026-09-15T15:14:29.744057+00:00",
+  "identity": {
+    "model": "buzzart_brain_v1",
+    "brain_sha256": "2d322caacdb07c000cf1ad30fdaffcfb54d67a800a56fc0b7f5392cb3b431ef7",
+    "trainable_parameters": 1074,
+    "leak": 0.3526505660822263,
+    "recurrent_gain": 0.9678834196083654,
+    "readout_gain": 2.189183379485968,
+    "generation": 110,
+    "fixed": "Connectome coupling, transmitter signs and normalization are unchanged; only engineered projections, per-type bias and bounded dynamics scalars are trained."
+  },
+  "metadata": {
+    "initialized_from": {
+      "controller": "leaky_tanh_rate_v1",
+      "seed": 2026,
+      "context_scale": 0.3
+    },
+    "generation": 110,
+    "validation": {
+      "fitness": 0.8516851017937159,
+      "critic_fitness": 0.8691000923161303,
+      "naturalness": 0.94283235804923,
+      "mean_reward": 0.8783701268110005,
+      "diversity": 0.9738970707068,
+      "components": {
+        "melody": 0.9442859367102234,
+        "breathing": 1.0,
+        "rhythm": 0.954442571854894,
+        "motif": 0.9209904077607909,
+        "harmony": 0.9283371715764779,
+        "texture": 0.9762330690065064,
+        "form": 0.747506790957017
+      },
+      "errors": []
+    },
+    "best_validation": {
+      "fitness": 0.8516851017937159,
+      "critic_fitness": 0.8691000923161303,
+      "naturalness": 0.94283235804923,
+      "mean_reward": 0.8783701268110005,
+      "diversity": 0.9738970707068,
+      "components": {
+        "melody": 0.9442859367102234,
+        "breathing": 1.0,
+        "rhythm": 0.954442571854894,
+        "motif": 0.9209904077607909,
+        "harmony": 0.9283371715764779,
+        "texture": 0.9762330690065064,
+        "form": 0.747506790957017
+      },
+      "errors": []
+    },
+    "published_from": "training/buzzart/drills-1/best.npz",
+    "test_seeds": {
+      "seeds": "70000-70031",
+      "fitness": 0.892,
+      "original_fly_fitness": 0.748
+    },
+    "note": "arcade-1 best held-out brain, console songbook and style",
+    "source_run": "training/buzzart/arcade-1"
+  }
+}

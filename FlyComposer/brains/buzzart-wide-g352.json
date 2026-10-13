@@ -1,0 +1,22 @@
+{
+  "model": "buzzart_brain_v1",
+  "file": "wide-000352.npz",
+  "npz_sha256": "b61cf90e280ef0805d568818191ca6dcb62156fcc68bc8c2f4dd1ddda3ad75a4",
+  "brain_sha256": "b4ee3a3e8f366a8daf2b3dbc2c1e14819f363ce717f02e2e5b8138c7b718a1f4",
+  "saved_at": "2026-09-17T11:24:44.981124+00:00",
+  "identity": {
+    "model": "buzzart_brain_v1",
+    "brain_sha256": "b4ee3a3e8f366a8daf2b3dbc2c1e14819f363ce717f02e2e5b8138c7b718a1f4",
+    "trainable_parameters": 1074,
+    "leak": 0.34138435264880956,
+    "recurrent_gain": 1.0692088063300351,
+    "readout_gain": 1.7738772380491703,
+    "generation": 352,
+    "fixed": "Connectome coupling, transmitter signs and normalization are unchanged; only engineered projections, per-type bias and bounded dynamics scalars are trained."
+  },
+  "metadata": {
+    "generation": 352,
+    "run": "local-practice-20260917-1250",
+    "lineage": "wide"
+  }
+}

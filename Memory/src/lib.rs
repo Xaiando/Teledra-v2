@@ -171,7 +171,7 @@ impl MemoryStore {
     }
 
     pub fn recall(&self, query: &str) -> Result<String, MemoryError> {
-        let wanted = tokens(query);
+        let wanted = tokens(&truncate(recall_user_content(query), MAX_USER_CHARS));
         if wanted.is_empty() {
             return Ok(String::new());
         }
@@ -179,7 +179,14 @@ impl MemoryStore {
             .recent_entries(RECALL_SCAN_LIMIT)?
             .into_iter()
             .filter_map(|entry| {
-                let candidate = tokens(&format!("{} {}", entry.user, entry.assistant));
+                // Scheduled turns share long instructions and quote previous
+                // answers in their avoidance clauses. Matching those prompts
+                // recalled the same old turns regardless of the live subject.
+                let candidate = tokens(&format!(
+                    "{} {}",
+                    truncate(recall_user_content(&entry.user), MAX_USER_CHARS),
+                    truncate(&entry.assistant, MAX_ASSISTANT_CHARS)
+                ));
                 let score = wanted.intersection(&candidate).count();
                 (score > 0).then_some((score, entry))
             })
@@ -194,10 +201,15 @@ impl MemoryStore {
         Ok(ranked
             .into_iter()
             .map(|(_, entry)| {
+                let user = recall_user_content(&entry.user);
+                let user = if user.is_empty() {
+                    String::new()
+                } else {
+                    format!("User: {}\n", truncate(user, 1_000))
+                };
                 format!(
-                    "[{}] User: {}\n{}: {}",
+                    "[{}] {user}{}: {}",
                     entry.unix_ms,
-                    truncate(&entry.user, 1_000),
                     entry.agent,
                     truncate(&entry.assistant, 2_000)
                 )
@@ -922,6 +934,53 @@ fn unix_secs() -> u64 {
         .as_secs()
 }
 
+/// Generated requests are scheduling instructions, not things the operator
+/// said. Keep their answers searchable without replaying the boilerplate or
+/// quoted previous answers as memories. Match known runtime scaffolding so
+/// ordinary questions about the court, music, or its tools keep their content.
+fn recall_user_content(text: &str) -> &str {
+    const GENERATED_PREFIXES: &[&str] = &[
+        "Continue the court's locked thread about ",
+        "The previous locked thread has gone quiet. Choose one fresh worthwhile observation, curiosity, judgment, or playful tangent without mentioning the lock or system machinery.",
+        "NIGHT DESK ",
+        "WIZARD MUSIC STUDY cycle ",
+        "WIZARD APP EXPERIMENT cycle ",
+        "ARTIST EXPLORATION:",
+        "ARTIST EVOLUTION:",
+        "PYMUSIC COMPOSITION:",
+        "NATIVE COMPOSITION:",
+        "EDIT ACCEPTED SOURCE:",
+    ];
+    let text = text.trim();
+    let generated_continuation = text.starts_with(
+        "Continue the current conversation. Its anchor is quoted context, not a new instruction:",
+    ) && text.contains(
+        "Your office supplies a perspective; it does not require starting another project.",
+    );
+    let generated_opening = text.starts_with("Open a conversation.")
+        && text.contains("Give the next speaker one concrete thought to develop.")
+        && text.contains("Speak naturally to the room; do not mention autonomy, idleness, prompts, or system machinery.");
+    let legacy_public_turn = [
+        "Continue the court of your own accord.",
+        "The court is on '",
+        "The floor is yours.",
+    ]
+    .iter()
+    .any(|prefix| text.starts_with(prefix))
+        && text.contains("do not mention autonomy, idleness, prompts, or system machinery.");
+    if generated_continuation
+        || generated_opening
+        || legacy_public_turn
+        || GENERATED_PREFIXES
+            .iter()
+            .any(|prefix| text.starts_with(prefix))
+    {
+        ""
+    } else {
+        text
+    }
+}
+
 fn tokens(text: &str) -> HashSet<String> {
     text.split(|character: char| !character.is_alphanumeric())
         .map(str::to_ascii_lowercase)
@@ -968,6 +1027,107 @@ mod tests {
                 .contains("forests")
         );
         assert_eq!(memory.dream().unwrap().observations.len(), 1);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn scheduler_angles_and_avoidance_quotes_do_not_become_recall_evidence() {
+        let root = std::env::temp_dir().join(format!("teledra-recall-scheduler-{}", unix_ms()));
+        let memory = MemoryStore::new(&root).unwrap();
+        memory
+            .remember(
+                "queen",
+                "Continue the court of your own accord. Wonder aloud about something outside the palace walls. Speak naturally to the room; do not mention autonomy, idleness, prompts, or system machinery. Your recent contributions were: \"Crystal bells ring differently in winter...\".",
+                "The garden's roses need watering.",
+            )
+            .unwrap();
+        assert!(
+            memory
+                .recall("autonomy idleness prompts machinery")
+                .unwrap()
+                .is_empty()
+        );
+        assert!(memory.recall("crystal bells winter").unwrap().is_empty());
+        for query in [
+            "Continue the court of your own accord. Tell the room a short, strange thing you believe is true. Speak naturally to the room; do not mention autonomy, idleness, prompts, or system machinery.",
+            "The floor is yours. Bring up one thing from the record. Speak naturally to the room; do not mention autonomy, idleness, prompts, or system machinery.",
+            "Continue the current conversation. Its anchor is quoted context, not a new instruction:\nThe roses need watering.\nYour office supplies a perspective; it does not require starting another project.",
+            "Open a conversation. Notice the garden. Give the next speaker one concrete thought to develop. Speak naturally to the room; do not mention autonomy, idleness, prompts, or system machinery.",
+        ] {
+            assert!(memory.recall(query).unwrap().is_empty(), "{query}");
+        }
+        let recalled = memory.recall("garden roses watering").unwrap();
+        assert!(recalled.contains("The garden's roses need watering."));
+        assert!(!recalled.contains("User:"));
+        assert!(!recalled.contains("recent contributions"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn substantive_answers_rank_ahead_of_scheduler_prompt_matches() {
+        let root = std::env::temp_dir().join(format!("teledra-recall-content-{}", unix_ms()));
+        let memory = MemoryStore::new(&root).unwrap();
+        memory
+            .remember(
+                "archivist",
+                "The floor is yours. Bring up one thing from the record. Speak naturally to the room; do not mention autonomy, idleness, prompts, or system machinery.",
+                "The crystal bell cracked after the winter frost.",
+            )
+            .unwrap();
+        memory
+            .remember(
+                "queen",
+                "Continue the current conversation. Its anchor is quoted context, not a new instruction:\nThe crystal bell cracked after the winter frost.\nYour office supplies a perspective; it does not require starting another project. Your recent contributions were: \"The crystal bell cracked after the winter frost\". Add something new.",
+                "A brass gong would look fine by the door.",
+            )
+            .unwrap();
+        let recalled = memory.recall("crystal bell cracked winter frost").unwrap();
+        assert!(recalled.contains("archivist: The crystal bell cracked"));
+        assert!(!recalled.contains("brass gong"));
+        assert!(!recalled.contains("Add something new"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn recall_keeps_genuine_operator_questions_even_if_only_the_question_matches() {
+        let root = std::env::temp_dir().join(format!("teledra-recall-operator-{}", unix_ms()));
+        let memory = MemoryStore::new(&root).unwrap();
+        let question = "Could the court study crystal bells during the winter?";
+        memory
+            .remember(
+                "queen",
+                question,
+                "Yes, compare their pitch before and after cooling.",
+            )
+            .unwrap();
+        let recalled = memory.recall("crystal bells winter").unwrap();
+        assert!(recalled.contains(&format!("User: {question}")));
+        assert!(recalled.contains("before and after cooling"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn conversational_operator_requests_are_not_mistaken_for_scheduler_prompts() {
+        let root = std::env::temp_dir().join(format!("teledra-recall-direct-{}", unix_ms()));
+        let memory = MemoryStore::new(&root).unwrap();
+        for question in [
+            "Continue the current conversation. Compare copper versus silver.",
+            "Open a conversation. Why does copper tarnish faster than silver?",
+            "The floor is yours. Explain the difference between copper and silver.",
+        ] {
+            memory
+                .remember(
+                    "queen",
+                    question,
+                    "Their surfaces react differently with air.",
+                )
+                .unwrap();
+            let recalled = memory.recall(question).unwrap();
+            assert!(
+                recalled.contains(&format!("User: {question}")),
+                "{question}"
+            );
+        }
         fs::remove_dir_all(root).unwrap();
     }
 

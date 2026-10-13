@@ -1,0 +1,560 @@
+{
+ "version": 1,
+ "about": "The Organist's genome tables. The court draws each round's frame from these; weights are learned by Music/organist_train.py, and a trained copy at <data>/music/organist_style.json takes precedence.",
+ "tonics": [
+  "C",
+  "Db",
+  "D",
+  "Eb",
+  "E",
+  "F",
+  "Gb",
+  "G",
+  "Ab",
+  "A",
+  "Bb",
+  "B"
+ ],
+ "modes": [
+  "major",
+  "minor",
+  "dorian"
+ ],
+ "tempi": [
+  72,
+  80,
+  84,
+  88,
+  92,
+  96,
+  100,
+  108,
+  112,
+  120,
+  128
+ ],
+ "pulses": [
+  "soft",
+  "syncopated",
+  "flowing"
+ ],
+ "rhythms": [
+  "question",
+  "answer",
+  "syncopated",
+  "arch",
+  "held_return",
+  "displaced"
+ ],
+ "progressions": {
+  "major": [
+   [
+    0,
+    5,
+    3,
+    4
+   ],
+   [
+    0,
+    3,
+    4,
+    3
+   ],
+   [
+    0,
+    4,
+    5,
+    3
+   ],
+   [
+    3,
+    4,
+    0,
+    5
+   ],
+   [
+    0,
+    2,
+    3,
+    4
+   ],
+   [
+    0,
+    3,
+    0,
+    4
+   ],
+   [
+    0,
+    5,
+    1,
+    4
+   ]
+  ],
+  "minor": [
+   [
+    0,
+    5,
+    2,
+    6
+   ],
+   [
+    0,
+    3,
+    4,
+    0
+   ],
+   [
+    0,
+    6,
+    5,
+    4
+   ],
+   [
+    0,
+    5,
+    3,
+    4
+   ],
+   [
+    5,
+    6,
+    0,
+    0
+   ],
+   [
+    0,
+    3,
+    6,
+    2
+   ]
+  ],
+  "dorian": [
+   [
+    0,
+    3,
+    0,
+    3
+   ],
+   [
+    0,
+    1,
+    3,
+    0
+   ],
+   [
+    0,
+    3,
+    6,
+    4
+   ],
+   [
+    0,
+    6,
+    3,
+    4
+   ],
+   [
+    0,
+    2,
+    3,
+    1
+   ]
+  ]
+ },
+ "ensembles": [
+  {
+   "name": "classic organ-loft",
+   "lead": [
+    "classic:keys",
+    "classic:pluck",
+    "classic:bell"
+   ],
+   "answer": [
+    "classic:bell",
+    "classic:triangle",
+    "classic:pluck"
+   ],
+   "harmony": [
+    "classic:pad",
+    "organ"
+   ],
+   "bass": [
+    "classic:bass"
+   ],
+   "texture": [
+    "classic:triangle",
+    "classic:sine"
+   ]
+  },
+  {
+   "name": "chamber",
+   "lead": [
+    "flute",
+    "clarinet",
+    "oboe",
+    "violin"
+   ],
+   "answer": [
+    "harp",
+    "pizzicato_strings",
+    "celesta",
+    "viola"
+   ],
+   "harmony": [
+    "string_ensemble",
+    "warm_pad"
+   ],
+   "bass": [
+    "cello",
+    "double_bass"
+   ],
+   "texture": [
+    "glockenspiel",
+    "harp"
+   ]
+  },
+  {
+   "name": "lounge keys",
+   "lead": [
+    "electric_piano",
+    "vibraphone"
+   ],
+   "answer": [
+    "jazz_guitar",
+    "marimba",
+    "flugelhorn"
+   ],
+   "harmony": [
+    "warm_pad",
+    "keys"
+   ],
+   "bass": [
+    "bass",
+    "double_bass"
+   ],
+   "texture": [
+    "shaker",
+    "hat"
+   ]
+  },
+  {
+   "name": "village folk",
+   "lead": [
+    "mandolin",
+    "recorder",
+    "harmonica"
+   ],
+   "answer": [
+    "guitar",
+    "banjo",
+    "ukulele",
+    "steel_guitar"
+   ],
+   "harmony": [
+    "accordion",
+    "organ"
+   ],
+   "bass": [
+    "bass",
+    "cello"
+   ],
+   "texture": [
+    "conga",
+    "shaker"
+   ]
+  },
+  {
+   "name": "brass and bells",
+   "lead": [
+    "flugelhorn",
+    "horn",
+    "trombone"
+   ],
+   "answer": [
+    "clarinet",
+    "tenor_sax",
+    "vibraphone"
+   ],
+   "harmony": [
+    "brass_ensemble",
+    "organ"
+   ],
+   "bass": [
+    "tuba",
+    "bassoon"
+   ],
+   "texture": [
+    "tubular_bells",
+    "timpani"
+   ]
+  },
+  {
+   "name": "far-shore",
+   "lead": [
+    "shakuhachi",
+    "pan_flute",
+    "sitar"
+   ],
+   "answer": [
+    "koto",
+    "oud",
+    "dulcimer"
+   ],
+   "harmony": [
+    "warm_pad",
+    "choir"
+   ],
+   "bass": [
+    "double_bass",
+    "sub_bass"
+   ],
+   "texture": [
+    "conga",
+    "perc"
+   ]
+  },
+  {
+   "name": "night synth",
+   "lead": [
+    "lead",
+    "theremin",
+    "arp"
+   ],
+   "answer": [
+    "pluck",
+    "bell",
+    "electric_piano"
+   ],
+   "harmony": [
+    "pad",
+    "choir",
+    "synth_brass"
+   ],
+   "bass": [
+    "sub_bass",
+    "bass"
+   ],
+   "texture": [
+    "hat",
+    "shaker"
+   ]
+  },
+  {
+   "name": "parlour",
+   "lead": [
+    "piano",
+    "celesta",
+    "english_horn"
+   ],
+   "answer": [
+    "harpsichord",
+    "harp",
+    "clarinet"
+   ],
+   "harmony": [
+    "string_ensemble",
+    "accordion",
+    "keys"
+   ],
+   "bass": [
+    "cello",
+    "bassoon"
+   ],
+   "texture": [
+    "glockenspiel",
+    "classic:triangle"
+   ]
+  }
+ ],
+ "forms": [
+  [
+   {
+    "name": "arrival",
+    "melody": "none",
+    "energy": 0.45
+   },
+   {
+    "name": "statement",
+    "melody": "theme",
+    "energy": 0.65
+   },
+   {
+    "name": "answer",
+    "melody": "answer",
+    "energy": 0.85
+   },
+   {
+    "name": "return",
+    "melody": "variation",
+    "energy": 0.55
+   }
+  ],
+  [
+   {
+    "name": "prelude",
+    "melody": "none",
+    "energy": 0.35
+   },
+   {
+    "name": "song",
+    "melody": "theme",
+    "energy": 0.55
+   },
+   {
+    "name": "bridge",
+    "melody": "variation",
+    "energy": 0.75
+   },
+   {
+    "name": "reprise",
+    "melody": "theme",
+    "energy": 0.65
+   }
+  ],
+  [
+   {
+    "name": "theme",
+    "melody": "theme",
+    "energy": 0.55
+   },
+   {
+    "name": "reply",
+    "melody": "answer",
+    "energy": 0.7
+   },
+   {
+    "name": "height",
+    "melody": "variation",
+    "energy": 1.0
+   },
+   {
+    "name": "coda",
+    "melody": "none",
+    "energy": 0.45
+   }
+  ],
+  [
+   {
+    "name": "call",
+    "melody": "theme",
+    "energy": 0.65
+   },
+   {
+    "name": "response",
+    "melody": "answer",
+    "energy": 0.55
+   },
+   {
+    "name": "interlude",
+    "melody": "none",
+    "energy": 0.45
+   },
+   {
+    "name": "homecoming",
+    "melody": "theme",
+    "energy": 0.85
+   }
+  ],
+  [
+   {
+    "name": "dawn",
+    "melody": "none",
+    "energy": 0.35
+   },
+   {
+    "name": "rising",
+    "melody": "answer",
+    "energy": 0.55
+   },
+   {
+    "name": "full light",
+    "melody": "theme",
+    "energy": 0.85
+   },
+   {
+    "name": "dusk",
+    "melody": "variation",
+    "energy": 0.45
+   }
+  ],
+  [
+   {
+    "name": "opening",
+    "melody": "theme",
+    "energy": 0.75
+   },
+   {
+    "name": "hush",
+    "melody": "none",
+    "energy": 0.35
+   },
+   {
+    "name": "turn",
+    "melody": "answer",
+    "energy": 0.65
+   },
+   {
+    "name": "return",
+    "melody": "theme",
+    "energy": 1.0
+   }
+  ]
+ ],
+ "steps": [
+  -4,
+  -3,
+  -2,
+  -1,
+  1,
+  2,
+  3,
+  4,
+  5
+ ],
+ "adjectives": [
+  "Lantern",
+  "Harbour",
+  "Amber",
+  "Quiet",
+  "Copper",
+  "Winter",
+  "Orchard",
+  "Tidal",
+  "Candle",
+  "Silver",
+  "Meadow",
+  "Ember",
+  "Northern",
+  "Velvet",
+  "Hollow",
+  "Painted",
+  "Distant",
+  "Morning",
+  "Hidden",
+  "Wandering"
+ ],
+ "nouns": [
+  "Waltz",
+  "Procession",
+  "Lullaby",
+  "Courtyard",
+  "Crossing",
+  "Serenade",
+  "Promenade",
+  "Refrain",
+  "Vigil",
+  "Carousel",
+  "Garden",
+  "Reverie",
+  "Ballad",
+  "Pavane",
+  "Nocturne",
+  "Gathering",
+  "Chronicle",
+  "Voyage",
+  "Air",
+  "Dance"
+ ],
+ "weights": {}
+}

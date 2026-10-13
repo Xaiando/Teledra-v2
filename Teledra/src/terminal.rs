@@ -30,6 +30,8 @@ pub struct TerminalReport {
     pub was_enabled: bool,
     /// Virtual terminal processing is on now.
     pub enabled: bool,
+    /// Crossterm's explicit colour opt-out, independent of console capability.
+    pub no_color: bool,
 }
 
 impl TerminalReport {
@@ -39,10 +41,13 @@ impl TerminalReport {
     /// whenever the bit is already set, so setting it before anything asks is
     /// what makes 24-bit colour available for the rest of the session.
     pub const fn truecolor(&self) -> bool {
-        self.enabled
+        self.enabled && !self.no_color
     }
 
     pub fn describe(&self) -> String {
+        if self.no_color {
+            return "colour disabled by NO_COLOR; remove that setting when launching to display the portrait in colour".to_owned();
+        }
         match (self.console, self.enabled, self.was_enabled) {
             (false, _, _) => {
                 "colour degraded: standard output is not a console, so 24-bit colour is unavailable and the portrait will render as blocks".to_owned()
@@ -76,7 +81,8 @@ impl TerminalSession {
     }
 
     fn enter_profile(size: Option<(u16, u16)>, title: Option<&str>) -> io::Result<Self> {
-        let report = enable_ansi();
+        let mut report = enable_ansi();
+        report.no_color = std::env::var("NO_COLOR").is_ok_and(|value| !value.is_empty());
         enable_raw_mode()?;
         let mut stdout = io::stdout();
         if let Some(title) = title {
@@ -155,6 +161,7 @@ fn enable_ansi() -> TerminalReport {
         console: false,
         was_enabled: false,
         enabled: false,
+        no_color: false,
     };
 
     unsafe {
@@ -181,6 +188,7 @@ fn enable_ansi() -> TerminalReport {
             console: true,
             was_enabled,
             enabled,
+            no_color: false,
         }
     }
 }
@@ -191,5 +199,26 @@ fn enable_ansi() -> TerminalReport {
         console: true,
         was_enabled: true,
         enabled: true,
+        no_color: false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TerminalReport;
+
+    #[test]
+    fn explicit_colour_opt_out_is_not_reported_as_a_colourful_terminal() {
+        let mut report = TerminalReport {
+            console: true,
+            was_enabled: true,
+            enabled: true,
+            no_color: true,
+        };
+        assert!(!report.truecolor());
+        assert!(report.describe().contains("NO_COLOR"));
+        report.no_color = false;
+        assert!(report.truecolor());
+        assert!(report.describe().contains("24-bit colour"));
     }
 }

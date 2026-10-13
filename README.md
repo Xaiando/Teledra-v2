@@ -102,12 +102,12 @@ the court.
 
 | Area | Commands |
 | --- | --- |
-| Presentation | `/Vertical`, `/Rundown`, `/Lock <topic>`, `/Unlock` |
+| Presentation | `/Vertical`, `/Rundown`, `/Say [voice] <words>` (speaks your exact words in the Queen's or a named court voice), `/VoiceDesk [on|off]` (typed lines are spoken verbatim and nothing runs on its own; start in it with `TELEDRA_VOICE_DESK=1`), `/Lock <topic>`, `/Podcast [60m..240m] <topic>`, `/Podcast status`, `/Unlock` |
 | Modes | `/Mode <normal|comedic|empathetic|dark|babble|streamer|copilot|night>`, `/Broadcast`, `/NightDesk`, `/CoPilot` |
-| Music | `/Music` (also reopens a closed Organist Studio), `/MusicOff`, `/MusicToggle`, `/Keep [note]`, `/MusicReject [note]`; Ctrl+U or DAW Evolve creates an immediate verified variation |
+| Music | `/Music` resumes the selected engine; `/PyMusic` and `/Synth` switch exclusively; `/MusicCompare` toggles automatic alternation; `/MusicOff`, `/MusicToggle`, `/Keep [note]`, `/MusicReject [note]`; Ctrl+U requests the next composition |
 | Visuals | `/Art [DSL]` for a living still; `/Fractus [DSL]` or `/FractusLive [DSL]` for an animated loop |
 | Memory/research | `/Dream`, `/Reflect` (behavior audit), `/Research <query|URL>`, `/Links`, `/Study [query]`, `/YouTube <URL>` |
-| Inputs | `/Mic`, `/Vision`, `/Somatic`, `/Stream`; paste a Restream embed link to connect live chat |
+| Inputs | `/Mic`, `/Vision`, `/Somatic`, `/Stream`; paste a Restream embed link or a Social Stream Ninja dock link (or `/ssn <session ID>`) to connect live chat. The key is saved in the data folder and reconnects on every launch. Social Stream needs "Enable remote API control" and "Send chat messages to API server" on under Global settings → Mechanics, and a fixed session ID under Session Options |
 | External | `/Diplomat [message]`, `/Agents`, `/Outreach`, `/Treasury` (ledger), `/Scout` (refresh), `/Mcp <server> [method] [JSON]` |
 | Work | `/Mission <objective>`, bare `/Mission` (status), `/MissionCancel`, `/Work`, `/Tasks`, `/Goals`, `/Innovate`, `/Tower` |
 | Governance | `/Proposals`, `/Approve <id|all>`, `/Reject <id|all>` |
@@ -117,6 +117,31 @@ the court.
 Original aliases such as `/PyMusic`, `/FindWork`, `/Suggestions`,
 `/ApproveAll`, `/WizardPull`, `/MemoryPolicy`, and `/Sleep` remain accepted.
 
+### Podcast sessions and shared videos
+
+Paste a YouTube video link directly into chat (optionally with a question),
+into the YouTube field, or use `/YouTube <URL>`. Teledra responds using retrieved
+captions, including non-English captions when English is unavailable. If
+captions cannot be retrieved, she reports that limitation and uses only any
+available title/channel metadata. This does not watch the video's images or
+listen to its audio. Long transcripts are sampled across the recording.
+
+`/Lock <topic>` starts Podcast mode with a 60-minute plan. For a longer show,
+use `/Podcast 90m <topic>` (60–240 minutes). Teledra and the court develop twelve
+timed angles with longer spoken contributions and bounded episode notes.
+The topic stays locked after the planned duration until you use `/Unlock`;
+model-generated topic, unlock, and stop tags cannot end the operator's lock.
+`/Podcast status` or `/Rundown` shows progress. `/Mode normal` pauses the show
+and its clock; bare `/Podcast` resumes it. `/Unlock` ends it and restores the
+mode used before the episode. Ordinary questions can interrupt the conversation
+without changing the locked subject. Sessions and episode notes last for the
+current app run; restarting starts fresh.
+
+Explicit Podcast mode schedules speech even when ordinary idle autonomy is
+disabled, while still respecting off-air test mode and the speech queue. Actual
+delivery depends on the local model and TTS; the timing plan does not guarantee
+an uninterrupted hour of audible speech if either service is unavailable.
+
 ## Configuration
 
 | Variable | Meaning |
@@ -125,15 +150,16 @@ Original aliases such as `/PyMusic`, `/FindWork`, `/Suggestions`,
 | `TELEDRA_DATA_DIR` | Durable runtime data root |
 | `TELEDRA_AUTONOMOUS_INTERVAL_SECS` | Court cadence; `0` disables it |
 | `TELEDRA_DISABLE_TTS` | Disable speech when set |
-| `TELEDRA_MUSIC_VARIATION_SECS` | Deterministic verified variation cadence; otherwise the current score duration, bounded to `20..45` seconds |
+| `TELEDRA_MUSIC_VARIATION_SECS` | Verified variation cadence, `60..900` seconds; default holds two passes of the piece, bounded to `120..600` seconds |
 | `TELEDRA_MUSIC_EVOLVE_SECS` | Separate model-composer creative nudge cadence; default `300`, `0` disables |
 | `TELEDRA_DISABLE_MUSIC` | Disable automatic Organist synthesis/playback at startup when set |
-| `TELEDRA_FRACTUS_EVOLVE_SECS` | Automatic animated-gallery cadence; default `150`, minimum `15` seconds |
+| `TELEDRA_FRACTUS_EVOLVE_SECS` | Variation within the current animated composition; default `150`, minimum `60` seconds |
+| `TELEDRA_FRACTUS_EXPLORE_SECS` | Artist research and invention cadence; default `180`, minimum `120` seconds |
 | `TELEDRA_DISABLE_FRACTUS` | Disable automatic Fractus gallery startup/evolution when set |
 | `TELEDRA_PYTHON` | Python used for TTS and sidecars |
 | `TELEDRA_LUXTTS` | Optional LuxTTS source checkout |
 | `TELEDRA_AUDIO_DEVICE` | Full or partial output device name, useful for OBS routing |
-| `TELEDRA_TTS_SPEED` | Speech pace from `0.55` to `1.10`; default `0.75`, lower is slower |
+| `TELEDRA_TTS_SPEED` | Speech pace from `0.55` to `1.10`; default `0.90`, lower is slower |
 | `TELEDRA_QUEEN_VOICE` | Teledra's reference recording: `custom` (default), `clean`, `sarcastic`, `analytical` |
 | `TELEDRA_PORTRAIT_DENSITY` | `half` (V1-compatible default, 2 pixels per cell), `quadrant` (4), or `sextant` (6) |
 | `TELEDRA_TESSERACT` | Optional path to a non-standard Tesseract OCR executable |
@@ -147,6 +173,17 @@ Original aliases such as `/PyMusic`, `/FindWork`, `/Suggestions`,
 Model actions that write files are confined to the V2 data directory.
 Diplomacy generated by the model is held as a pending proposal and is not
 sent until `/Approve` records the decision.
+
+`/Help` opens grouped command help. Ordinary question marks remain editable
+in chat. Pending proposals expire after seven days (Moltbook actions after
+48 hours); expired records remain on disk. Environment and portrait checks
+do not terminate an active court. The launcher stops only this checkout's
+executable and refuses to launch a stale build after compilation fails.
+
+See [the September overhaul](coordination/ASTRA_OVERHAUL.md) and the subsequent
+[operational acceptance](coordination/OPERATIONAL_ACCEPTANCE.md) for the music,
+agent, speech, launcher, and live process checks. `/MusicMute` also works where
+the terminal encodes Ctrl+M as Enter.
 
 ## Verify
 

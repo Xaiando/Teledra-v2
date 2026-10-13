@@ -29,6 +29,9 @@ teledra-tts = { path = "../TTS" }
 teledra-workshop = { path = "../Workshop" }
 tokio.workspace = true
 
+[dev-dependencies]
+tempfile = "3"
+
 # Console mode is set directly rather than left to the terminal backend's own
 # probe; see `terminal.rs` for why.
 [target.'cfg(windows)'.dependencies]

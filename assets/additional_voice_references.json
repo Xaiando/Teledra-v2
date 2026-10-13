@@ -1,0 +1,50 @@
+{
+  "generator": "TTS/worker/generate_character_references.py",
+  "model": {
+    "file": "kokoro-v1.0.onnx",
+    "sha256": "7d5df8ecf7d4b1878015a32686053fd0eebe2bc377234608764cc0ef3636a6c5"
+  },
+  "voice_bank": {
+    "file": "voices-v1.0.bin",
+    "sha256": "bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d"
+  },
+  "kokoro_onnx_version": "0.5.0",
+  "onnxruntime_version": "1.26.0",
+  "provider": "CPUExecutionProvider",
+  "source": "Kokoro v1.0 synthetic speaker presets; original reference text",
+  "model_source": "https://huggingface.co/hexgrad/Kokoro-82M",
+  "onnx_source": "https://github.com/thewh1teagle/kokoro-onnx",
+  "processing": "Remove DC, normalize peak to 0.72, 5 ms edge fade, 100 ms silence each end; mono PCM16",
+  "references": {
+    "malthus": {
+      "speaker": "am_eric",
+      "language": "en-us",
+      "speed": 0.8,
+      "text": "Every promise has a cost. Show me the evidence, name the weakest assumption, and choose a test that could prove us wrong.",
+      "file": "malthus_ref_clean.wav",
+      "sha256": "4c7a0e082b843bcbf3514e2b0c41a74832ada04de5f89d14088f0a302a206d83",
+      "sample_rate": 24000,
+      "duration_seconds": 7.688
+    },
+    "wizard": {
+      "speaker": "bm_lewis",
+      "language": "en-gb",
+      "speed": 0.92,
+      "text": "The pattern is clear, but the mechanism still needs a careful test. I will measure the result before bringing my findings to the court.",
+      "file": "wizard_ref_clean.wav",
+      "sha256": "48595786841cb3339910ef0608488a6c37895dbca0536621e2faff9852ecb8e6",
+      "sample_rate": 24000,
+      "duration_seconds": 8.8187
+    },
+    "treasurer": {
+      "speaker": "bm_george",
+      "language": "en-gb",
+      "speed": 0.86,
+      "text": "The accounts are balanced, but only just. Before we spend a single coin, tell me what it buys and what it will cost us next season.",
+      "file": "treasurer_ref_clean.wav",
+      "sha256": "6aa7af0a0ff86f744fcd1b9df4c1419fea371ac8fff200ba3273cc25948f30b3",
+      "sample_rate": 24000,
+      "duration_seconds": 9.2667
+    }
+  }
+}

@@ -63,6 +63,8 @@ pub fn inspect(data: &Path, python: &Path) -> EnvironmentReport {
         "artist_ref_clean.wav",
         "diplomat_ref_clean.wav",
         "treasurer_ref_clean.wav",
+        "malthus_ref_clean.wav",
+        "wizard_ref_clean.wav",
     ];
     let python_health = Command::new(python)
         .arg("--version")
@@ -137,7 +139,7 @@ pub fn inspect(data: &Path, python: &Path) -> EnvironmentReport {
                 } else if !tts_model_cache {
                     "LuxTTS or Whisper model cache is incomplete; run Setup-Python.ps1".to_owned()
                 } else if voice_assets {
-                    "worker, model caches, and nine reference voices found".to_owned()
+                    "worker, model caches, and eleven reference voices found".to_owned()
                 } else {
                     "one or more reference voices are missing".to_owned()
                 },

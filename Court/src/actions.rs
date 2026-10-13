@@ -161,7 +161,7 @@ fn unrecognised_heads(raw: &str, actions: &[CourtAction]) -> Vec<String> {
 }
 
 /// Every head the court can execute.
-const ALL_HEADS: [&str; 28] = [
+const ALL_HEADS: [&str; 29] = [
     "RESEARCH",
     "COURT_SCORE",
     "COURT_MUSIC_PATCH",
@@ -169,6 +169,7 @@ const ALL_HEADS: [&str; 28] = [
     "FRACTUS_LIVE",
     "PYTHON_ART",
     "PYTHON_MUSIC",
+    "PYTHON_MUSIC_EDIT",
     "STRUDEL_MUSIC",
     "DIPLOMACY",
     "SUGGESTION",
@@ -278,7 +279,7 @@ fn is_known_head(head: &str) -> bool {
 /// Deliberately a closed list. Scanning for any capitalised word before a colon
 /// would swallow ordinary prose like "Evidence:" or "Title:"; these are names
 /// the court invented, so finding one is unambiguous.
-const RECOVERABLE_HEADS: [&str; 16] = [
+const RECOVERABLE_HEADS: [&str; 17] = [
     "MOLTBOOK_COMMENT",
     "MOLTBOOK_UPVOTE",
     "COURT_SCORE",
@@ -287,6 +288,7 @@ const RECOVERABLE_HEADS: [&str; 16] = [
     "FRACTUS_LIVE",
     "PYTHON_ART",
     "PYTHON_MUSIC",
+    "PYTHON_MUSIC_EDIT",
     "STRUDEL_MUSIC",
     "RESEARCH",
     "DIPLOMACY",
@@ -694,7 +696,11 @@ fn into_action(head: &str, payload: &str) -> Option<CourtAction> {
             },
             content: payload.to_owned(),
         }),
-        "STRUDEL_MUSIC" | "PYTHON_MUSIC" => Some(CourtAction::CreativeArtifact {
+        "PYTHON_MUSIC" => Some(CourtAction::CreativeArtifact {
+            kind: "python_music".to_owned(),
+            content: python_source_payload(payload),
+        }),
+        "STRUDEL_MUSIC" | "PYTHON_MUSIC_EDIT" => Some(CourtAction::CreativeArtifact {
             kind: head.to_ascii_lowercase(),
             content: payload.to_owned(),
         }),
@@ -800,6 +806,21 @@ fn file_tag_with_trailing_body(
         CourtAction::ScribeWrite { path, content }
     };
     Some((action, offset + length))
+}
+
+/// A structured source envelope has exactly one string field, `code`. Preserve
+/// every other payload as legacy raw source for the normal runtime validator.
+fn python_source_payload(payload: &str) -> String {
+    serde_json::from_str::<serde_json::Value>(payload)
+        .ok()
+        .and_then(|value| {
+            let object = value.as_object()?;
+            if object.len() != 1 {
+                return None;
+            }
+            object.get("code")?.as_str().map(str::to_owned)
+        })
+        .unwrap_or_else(|| payload.to_owned())
 }
 
 fn parse_file_payload(payload: &str) -> Option<(String, String)> {
@@ -950,6 +971,52 @@ mod tests {
     }
 
     #[test]
+    fn python_source_envelope_preserves_every_python_quote_and_bracket() {
+        let code = "from teledra_synth import *\nlabel = ']'\n# A quote in a comment: \"\ndocumentation = '''single ' and \" and ]'''\nother = \"\"\"triple quotes: ] [ brackets\"\"\"\ntext = '[PYTHON_MUSIC_EDIT: only a string]'\nnotes = ['A4', 'E5']\nplay_sound(full_track, loop=True)\n";
+        let envelope = serde_json::json!({"code": code}).to_string();
+        let parsed = parse_response(&format!(
+            "The piece is prepared. [PYTHON_MUSIC: {envelope}]"
+        ));
+        assert_eq!(parsed.visible, "The piece is prepared.");
+        assert_eq!(
+            parsed.actions,
+            vec![CourtAction::CreativeArtifact {
+                kind: "python_music".to_owned(),
+                content: code.to_owned()
+            }]
+        );
+        assert!(parsed.unrecognised.is_empty());
+    }
+
+    #[test]
+    fn only_an_exact_source_envelope_is_decoded_and_legacy_python_still_works() {
+        let code =
+            "from teledra_synth import *\nnotes = ['A4', 'E5']\nplay_sound(full_track, loop=True)";
+        let parsed = parse_response(&format!("[PYTHON_MUSIC: {code}]"));
+        assert_eq!(
+            parsed.actions,
+            vec![CourtAction::CreativeArtifact {
+                kind: "python_music".to_owned(),
+                content: code.to_owned()
+            }]
+        );
+        for payload in [
+            r#"{"code":"pass", "unexpected":true}"#,
+            r#"{"code":123}"#,
+            "{invalid}",
+        ] {
+            let parsed = parse_response(&format!("[PYTHON_MUSIC: {payload}]"));
+            assert_eq!(
+                parsed.actions,
+                vec![CourtAction::CreativeArtifact {
+                    kind: "python_music".to_owned(),
+                    content: payload.to_owned()
+                }]
+            );
+        }
+    }
+
+    #[test]
     fn upstream_control_and_creation_tags_are_hidden_and_typed() {
         let parsed = parse_response(
             "Done. [TOPIC: modular court] [WORKSHOP_TOOL: helper.py\n```python\nprint('ok')\n```] [UNLOCK]",
@@ -961,6 +1028,31 @@ mod tests {
             parsed.actions[2],
             CourtAction::Control(CourtControl::Unlock)
         );
+    }
+
+    #[test]
+    fn python_music_edits_preserve_exact_json_and_stay_out_of_speech() {
+        let payload = serde_json::json!({
+            "base": "fnv1a64:0123456789abcdef",
+            "intent": "Give the answering phrase a longer breath",
+            "edits": [{"old": "motif = ['A4', 'C5']\n", "new": "motif = ['A4', None, 'C5']\n"}]
+        })
+        .to_string();
+        for raw in [
+            format!("A longer breath. [PYTHON_MUSIC_EDIT: {payload}]"),
+            format!("A longer breath.\n**PYTHON_MUSIC_EDIT: {payload}**"),
+        ] {
+            let parsed = parse_response(&raw);
+            assert_eq!(parsed.visible.trim(), "A longer breath.");
+            assert_eq!(
+                parsed.actions,
+                vec![CourtAction::CreativeArtifact {
+                    kind: "python_music_edit".to_owned(),
+                    content: payload.clone()
+                }]
+            );
+            assert!(parsed.unrecognised.is_empty());
+        }
     }
 
     #[test]

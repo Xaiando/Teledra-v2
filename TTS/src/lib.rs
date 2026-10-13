@@ -35,6 +35,8 @@ use std::collections::VecDeque;
 /// A line the court has committed to speaking.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Utterance {
+    /// Caller-assigned identity used to match captions to audible playback.
+    pub id: u64,
     pub voice: VoiceName,
     pub text: String,
 }
@@ -42,9 +44,15 @@ pub struct Utterance {
 impl Utterance {
     pub fn new(voice: VoiceName, text: impl Into<String>) -> Self {
         Self {
+            id: 0,
             voice,
             text: text.into(),
         }
+    }
+
+    pub fn with_id(mut self, id: u64) -> Self {
+        self.id = id;
+        self
     }
 }
 
@@ -52,9 +60,27 @@ impl Utterance {
 /// explained rather than merely quiet.
 #[derive(Clone, Debug, PartialEq)]
 pub enum SpeechEvent {
-    Started { voice: VoiceName },
-    Finished { voice: VoiceName, seconds: f64 },
-    Failed { voice: VoiceName, reason: String },
+    Started {
+        id: u64,
+        voice: VoiceName,
+        seconds: f64,
+    },
+    Progress {
+        id: u64,
+        voice: VoiceName,
+        elapsed: f64,
+        seconds: f64,
+    },
+    Finished {
+        id: u64,
+        voice: VoiceName,
+        seconds: f64,
+    },
+    Failed {
+        id: Option<u64>,
+        voice: VoiceName,
+        reason: String,
+    },
 }
 
 /// Orders utterances and keeps one rendered ahead of the one being heard.

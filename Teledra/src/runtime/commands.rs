@@ -19,6 +19,13 @@ impl RuntimeServices {
         tools: &mpsc::UnboundedSender<ToolReply>,
     ) {
         match command {
+            AppCommand::PythonMusicPlay => {
+                self.select_music_engine(app, tools, super::MusicEngine::Python)
+            }
+            AppCommand::MusicNativePlay => {
+                self.select_music_engine(app, tools, super::MusicEngine::Native)
+            }
+            AppCommand::MusicCompare => self.toggle_music_comparison(app),
             AppCommand::Vertical => match crate::session::launch_vertical_view(snapshot) {
                 Ok(()) => app.set_notice("Vertical OBS court opened"),
                 Err(error) => app.set_notice(format!("Could not open the vertical court: {error}")),
@@ -36,31 +43,38 @@ impl RuntimeServices {
                 self.evolve_music_now(app, tools, "operator");
             }
             AppCommand::MusicStop => {
+                self.cancel_music_composition(app);
                 app.set_music_enabled(false);
-                self.music_epoch = self.music_epoch.wrapping_add(1);
+                self.stop_music_work();
                 if let Some(player) = self.music_player.take() {
                     player.stop();
-                    let _ = self.daw.set_transport("stopped");
+                    self.music_transport("stopped");
                     app.set_notice("Court Synth stopped");
                 } else {
                     app.set_notice("Court Synth is already quiet");
                 }
             }
             AppCommand::MusicMute => {
-                // Pause and resume the running player rather than discarding
-                // it: the same piece continues from where it was, and silence
-                // arrives immediately instead of after a re-render.
+                // Mute changes volume without changing the transport clock.
                 let muted = !app.music_muted();
                 app.set_music_muted(muted);
                 match (&self.music_player, muted) {
                     (Some(player), true) => {
-                        player.pause();
-                        let _ = self.daw.set_transport("muted");
+                        player.set_muted(true);
+                        self.music_transport(if app.music_enabled() {
+                            "muted"
+                        } else {
+                            "paused"
+                        });
                         app.set_notice("Court Synth muted");
                     }
                     (Some(player), false) => {
-                        player.resume();
-                        let _ = self.daw.set_transport("playing");
+                        player.set_muted(false);
+                        self.music_transport(if app.music_enabled() {
+                            "playing"
+                        } else {
+                            "paused"
+                        });
                         app.set_notice("Court Synth unmuted");
                     }
                     (None, _) => {
@@ -74,12 +88,13 @@ impl RuntimeServices {
             }
             AppCommand::MusicToggle => {
                 if app.music_enabled() {
+                    self.cancel_music_composition(app);
                     app.set_music_enabled(false);
-                    self.music_epoch = self.music_epoch.wrapping_add(1);
+                    self.stop_music_work();
                     if let Some(player) = self.music_player.take() {
                         player.stop();
                     }
-                    let _ = self.daw.set_transport("stopped");
+                    self.music_transport("stopped");
                     app.set_notice("Court Synth stopped");
                 } else {
                     app.set_music_enabled(true);
@@ -94,23 +109,37 @@ impl RuntimeServices {
             }
             AppCommand::Fractus(dsl) => {
                 let dsl = if dsl.is_empty() {
-                    "version 2\ntype=particles\nwidth=900\nheight=1200\niterations=420\npalette=emerald"
-                        .to_owned()
+                    super::fractus::curated_fractus_scene(0)
                 } else {
-                    format!("version 2\n{}", dsl.replace(' ', "\n"))
+                    Self::normalize_fractus_payload(&dsl.replace(' ', "\n"))
                 };
                 let dsl = Self::strip_fractus_animation_directives(&dsl);
-                self.spawn_fractus(app, tools, dsl, false);
+                if let Err(error) = self.select_fractus_scene(
+                    app,
+                    tools,
+                    dsl,
+                    false,
+                    super::fractus::FractusOrigin::Operator,
+                ) {
+                    app.set_notice(format!("Fractus scene rejected: {error}"));
+                }
             }
             AppCommand::FractusLive(dsl) => {
                 let dsl = if dsl.is_empty() {
-                    "version 2\ntype=particles\nwidth=600\nheight=800\niterations=320\npalette=emerald"
-                        .to_owned()
+                    super::fractus::curated_fractus_scene(0)
                 } else {
-                    format!("version 2\n{}", dsl.replace(' ', "\n"))
+                    Self::normalize_fractus_payload(&dsl.replace(' ', "\n"))
                 };
                 let dsl = Self::strip_fractus_animation_directives(&dsl);
-                self.spawn_fractus(app, tools, dsl, true);
+                if let Err(error) = self.select_fractus_scene(
+                    app,
+                    tools,
+                    dsl,
+                    true,
+                    super::fractus::FractusOrigin::Operator,
+                ) {
+                    app.set_notice(format!("Fractus scene rejected: {error}"));
+                }
             }
             AppCommand::Dream => self.consolidate_dream(app),
             AppCommand::Sleep => {
@@ -239,6 +268,22 @@ impl RuntimeServices {
                 }
                 Err(error) => app.set_notice(format!("Restream connection failed: {error}")),
             },
+            AppCommand::SocialStreamConnect(session) => {
+                match self.social_stream.connect(&session, tools, true) {
+                    Ok(()) => {
+                        app.set_mode("Streamer");
+                        app.set_night_desk_enabled(true);
+                        app.set_notice("Social Stream chat connected; Streamer mode is active");
+                        app.push_private_event(
+                            "Social Stream",
+                            "Chat listener started and the session ID was saved privately; it reconnects on every launch",
+                        );
+                    }
+                    Err(error) => {
+                        app.set_notice(format!("Social Stream connection failed: {error}"))
+                    }
+                }
+            }
             AppCommand::Agents => {
                 app.set_notice("Court diplomacy profiles added to backstage activity");
                 for agent in teledra_agents::AgentId::ALL {
@@ -555,8 +600,37 @@ impl RuntimeServices {
                 if topic.trim().is_empty() {
                     app.set_notice("Use /Lock followed by the topic to hold");
                 } else {
-                    app.lock_topic(topic.clone());
-                    app.set_notice(format!("Court topic locked: {topic}"));
+                    app.start_podcast(&topic, 60);
+                    app.set_notice(format!(
+                        "Podcast locked for 60+ minutes: {topic}. /Unlock ends it."
+                    ));
+                }
+            }
+            AppCommand::Podcast(arguments) => {
+                if arguments.trim().eq_ignore_ascii_case("status") {
+                    let status = app
+                        .podcast_status()
+                        .unwrap_or_else(|| "No podcast active. Use /Podcast <topic>".to_owned());
+                    app.set_notice(status.clone());
+                    app.push_private_event("Podcast", status);
+                } else if arguments.trim().is_empty() {
+                    if app.podcast_status().is_some() {
+                        app.set_mode("Podcast");
+                        app.set_notice(app.podcast_status().unwrap());
+                    } else if let Some(topic) = app.locked_topic().map(str::to_owned) {
+                        app.start_podcast(&topic, 60);
+                        app.set_notice(app.podcast_status().unwrap());
+                    } else {
+                        app.set_notice("Use /Podcast <topic> or /Podcast 90m <topic>; /Podcast status shows progress");
+                    }
+                } else {
+                    match podcast_arguments(&arguments) {
+                        Ok((minutes, topic)) => {
+                            app.start_podcast(topic, minutes);
+                            app.set_notice(app.podcast_status().unwrap());
+                        }
+                        Err(error) => app.set_notice(error),
+                    }
                 }
             }
             AppCommand::Unlock => {
@@ -601,6 +675,17 @@ impl RuntimeServices {
                 self.decide(app, tools, &proposal, "rejected");
             }
             AppCommand::Mode(mode) => set_mode(app, &mode),
+            // Spoken directly by the main loop, which owns the speech runtime.
+            AppCommand::Say(_) => {}
+            AppCommand::VoiceDesk(requested) => {
+                let enabled = requested.unwrap_or(!app.is_voice_desk());
+                app.set_voice_desk(enabled);
+                app.set_notice(if enabled {
+                    "Voice Desk ON: typed lines are spoken as written; nothing runs on its own"
+                } else {
+                    "Voice Desk OFF: the court's own behavior is restored"
+                });
+            }
         }
     }
 
@@ -746,6 +831,9 @@ impl RuntimeServices {
             "Rundown",
             format!("Topic: {}", app.locked_topic().unwrap_or("unlocked")),
         );
+        if let Some(status) = app.podcast_status() {
+            app.push_private_event("Podcast", status);
+        }
         app.push_private_event(
             "Rundown",
             self.active_mission.as_ref().map_or_else(
@@ -1045,11 +1133,12 @@ fn set_mode(app: &mut App, requested: &str) {
         "dark" | "darkcomedic" | "dark-comedic" => "Dark Comedic",
         "babble" | "babbly" => "Babble",
         "stream" | "streamer" | "broadcast" => "Streamer",
+        "podcast" if app.podcast_status().is_some() => "Podcast",
         "copilot" | "co-pilot" | "game" => "Game Co-Pilot",
         "night" | "nightdesk" | "night-desk" => "Night Desk",
         _ => {
             app.set_notice(
-                "Modes: normal, comedic, empathetic, dark, babble, streamer, copilot, night",
+                "Modes: normal, comedic, empathetic, dark, babble, streamer, copilot, night. Start a podcast with /Podcast <topic>",
             );
             return;
         }
@@ -1059,6 +1148,32 @@ fn set_mode(app: &mut App, requested: &str) {
         app.set_night_desk_enabled(true);
     }
     app.set_notice(format!("Court mode changed to {mode}"));
+}
+
+fn podcast_arguments(arguments: &str) -> Result<(u64, &str), &'static str> {
+    let arguments = arguments.trim();
+    let (head, rest) = arguments
+        .split_once(char::is_whitespace)
+        .unwrap_or((arguments, ""));
+    if let Some(number) = head.strip_suffix('m')
+        && !number.is_empty()
+        && number.chars().all(|ch| ch.is_ascii_digit())
+    {
+        let minutes = number
+            .parse::<u64>()
+            .map_err(|_| "Podcast duration must be 60m to 240m")?;
+        if !(60..=240).contains(&minutes) {
+            return Err("Podcast duration must be 60m to 240m");
+        }
+        if rest.trim().is_empty() {
+            return Err(
+                "Add a topic after the duration, for example /Podcast 90m ocean exploration",
+            );
+        }
+        Ok((minutes, rest.trim()))
+    } else {
+        Ok((60, arguments))
+    }
 }
 
 fn toggle_night_desk(app: &mut App) {
@@ -1078,6 +1193,61 @@ mod tests {
     use teledra_court::Court;
 
     #[test]
+    fn operator_podcast_lock_survives_model_controls_and_resumes() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut services =
+            RuntimeServices::new(directory.path().to_owned(), "unused-python".into()).unwrap();
+        let mut app = App::new(
+            Court::default(),
+            BrainHealth {
+                endpoint: "http://localhost:11434".into(),
+                model: QWEN_MODEL,
+            },
+        );
+        app.set_mode("Normal");
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let path = directory.path().join("session.json");
+        services.handle_command(
+            AppCommand::Lock("ocean exploration".into()),
+            &mut app,
+            &path,
+            &tx,
+        );
+        assert!(app.is_podcasting());
+        for action in [
+            teledra_court::CourtAction::Topic("court housekeeping".into()),
+            teledra_court::CourtAction::Control(teledra_court::CourtControl::Unlock),
+            teledra_court::CourtAction::Control(teledra_court::CourtControl::StopBabble),
+        ] {
+            services.handle_court_action(action, &mut app, &tx);
+        }
+        assert_eq!(app.locked_topic(), Some("ocean exploration"));
+        assert!(app.is_podcasting());
+        services.handle_command(AppCommand::Mode("normal".into()), &mut app, &path, &tx);
+        assert!(!app.is_podcasting());
+        services.handle_command(AppCommand::Podcast(String::new()), &mut app, &path, &tx);
+        assert!(app.is_podcasting());
+        services.handle_command(AppCommand::Unlock, &mut app, &path, &tx);
+        assert_eq!(app.mode(), "Normal");
+        assert!(app.locked_topic().is_none());
+    }
+
+    #[test]
+    fn podcast_duration_is_explicit_and_validated() {
+        assert_eq!(
+            podcast_arguments("90m deep oceans"),
+            Ok((90, "deep oceans"))
+        );
+        assert_eq!(
+            podcast_arguments("2001 a space odyssey"),
+            Ok((60, "2001 a space odyssey"))
+        );
+        assert!(podcast_arguments("30m oceans").is_err());
+        assert!(podcast_arguments("900m oceans").is_err());
+        assert!(podcast_arguments("60m").is_err());
+    }
+
+    #[test]
     fn original_mcp_action_form_becomes_a_tools_call() {
         let (server, method, parameters) =
             parse_tagged_mcp_request(r#"server=embassy; tool=greet; args={"name":"Teledra"}"#)
@@ -1086,6 +1256,75 @@ mod tests {
         assert_eq!(method, "tools/call");
         assert_eq!(parameters["name"], "greet");
         assert_eq!(parameters["arguments"]["name"], "Teledra");
+    }
+
+    #[test]
+    fn operator_art_commands_select_the_lineage_and_cancel_obsolete_exploration() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut services =
+            RuntimeServices::new(directory.path().to_owned(), "python".into()).unwrap();
+        let mut app = App::new(
+            Court::default(),
+            BrainHealth {
+                endpoint: "http://localhost:11434".to_owned(),
+                model: QWEN_MODEL,
+            },
+        );
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        // Keep the worker occupied so this test inspects requested state
+        // without launching Python or an actual render thread.
+        services
+            .fractus_renders
+            .request("previous scene".to_owned(), true);
+        services.fractus_exploration_ready = Some("Obsolete prepared study".to_owned());
+        app.queue_backstage_turn(
+            teledra_agents::AgentId::Artist,
+            "ARTIST EXPLORATION: Obsolete queued study",
+        );
+        services.handle_command(
+            AppCommand::Fractus("type=star_mandala seed=144 symmetry=18".to_owned()),
+            &mut app,
+            &directory.path().join("session.json"),
+            &tx,
+        );
+        let selected = services.fractus_candidate_lineage.as_ref().unwrap();
+        assert!(!selected.live);
+        assert_eq!(
+            selected.origin,
+            super::super::fractus::FractusOrigin::Operator
+        );
+        let scene = teledra_fractus::Scene::parse(&selected.dsl).unwrap();
+        assert_eq!((scene.seed, scene.symmetry), (144, 18));
+        assert!(services.next_fractus_evolution.is_none());
+        assert!(services.next_fractus_exploration.is_none());
+        assert!(services.fractus_exploration_ready.is_none());
+        assert!(app.can_queue_artist_exploration());
+        let ticket = services.fractus_research_ticket;
+        services.handle_command(
+            AppCommand::FractusLive("julia".to_owned()),
+            &mut app,
+            &directory.path().join("session.json"),
+            &tx,
+        );
+        assert!(services.fractus_candidate_lineage.as_ref().unwrap().live);
+        assert!(services.next_fractus_exploration.is_some());
+        assert!(services.fractus_research_ticket > ticket);
+        let previous = services
+            .fractus_candidate_lineage
+            .as_ref()
+            .unwrap()
+            .dsl
+            .clone();
+        services.handle_command(
+            AppCommand::Fractus("type=not_a_family".to_owned()),
+            &mut app,
+            &directory.path().join("session.json"),
+            &tx,
+        );
+        assert_eq!(
+            services.fractus_candidate_lineage.as_ref().unwrap().dsl,
+            previous
+        );
     }
 
     #[test]

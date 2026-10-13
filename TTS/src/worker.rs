@@ -96,8 +96,7 @@ impl WarmWorker {
 
         let pipes = (child.stdin.take(), child.stdout.take(), child.stderr.take());
         let (Some(stdin), Some(stdout), Some(stderr)) = pipes else {
-            let _ = child.kill();
-            let _ = child.wait();
+            kill_and_reap(&mut child);
             return Err(SynthesisError::NeverReady);
         };
 
@@ -118,8 +117,7 @@ impl WarmWorker {
         // Model startup is slow, but it still needs a ceiling so an optional
         // voice can never leave an orphan or hold application shutdown.
         if ready_rx.recv_timeout(Duration::from_secs(180)).is_err() {
-            let _ = child.kill();
-            let _ = child.wait();
+            kill_and_reap(&mut child);
             return Err(SynthesisError::NeverReady);
         }
 
@@ -133,8 +131,13 @@ impl WarmWorker {
     pub fn shutdown(mut self) {
         // Closing stdin asks the worker to finish; killing is the fallback.
         drop(self.stdin);
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        let deadline = std::time::Instant::now() + Duration::from_millis(500);
+        while self.child.try_wait().is_ok_and(|status| status.is_none())
+            && std::time::Instant::now() < deadline
+        {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        kill_and_reap(&mut self.child);
     }
 
     pub fn is_running(&mut self) -> bool {
@@ -150,8 +153,12 @@ impl Synthesizer for WarmWorker {
             return Err(SynthesisError::MultilineUtterance);
         }
 
-        writeln!(self.stdin, "{}\t{}", voice.slug(), text).map_err(SynthesisError::Send)?;
-        self.stdin.flush().map_err(SynthesisError::Send)?;
+        if let Err(error) =
+            writeln!(self.stdin, "{}\t{}", voice.slug(), text).and_then(|_| self.stdin.flush())
+        {
+            kill_and_reap(&mut self.child);
+            return Err(SynthesisError::Send(error));
+        }
 
         // Anonymous-pipe reads have no portable timeout. Move the reader to a
         // short-lived drain thread; on expiry, killing the child closes the
@@ -164,12 +171,22 @@ impl Synthesizer for WarmWorker {
         });
         match result_rx.recv_timeout(Duration::from_secs(120)) {
             Ok((stdout, result)) => {
-                self.stdout = Some(stdout);
-                Ok(result?)
+                match result {
+                    Ok(audio) => {
+                        self.stdout = Some(stdout);
+                        Ok(audio)
+                    }
+                    Err(error) => {
+                        // EOF can precede the redirector's process-exit signal.
+                        // A malformed frame also leaves the pipe unaligned. In
+                        // both cases retire the worker before accepting a new line.
+                        kill_and_reap(&mut self.child);
+                        Err(SynthesisError::Audio(error))
+                    }
+                }
             }
             Err(_) => {
-                let _ = self.child.kill();
-                let _ = self.child.wait();
+                kill_and_reap(&mut self.child);
                 if let Ok((stdout, _)) = result_rx.recv_timeout(Duration::from_secs(2)) {
                     self.stdout = Some(stdout);
                 }
@@ -177,6 +194,25 @@ impl Synthesizer for WarmWorker {
             }
         }
     }
+}
+
+fn kill_and_reap(child: &mut Child) {
+    if child.try_wait().ok().flatten().is_some() {
+        return;
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let _ = Command::new("taskkill.exe")
+            .args(["/PID", &child.id().to_string(), "/T", "/F"])
+            .creation_flags(0x0800_0000)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+    let _ = child.kill();
+    let _ = child.wait();
 }
 
 #[cfg(test)]

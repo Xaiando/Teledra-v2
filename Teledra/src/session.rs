@@ -25,6 +25,47 @@ pub struct SnapshotEvent {
     pub text: String,
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MusicSnapshotEngine {
+    #[default]
+    Native,
+    Python,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MusicSnapshotTransport {
+    #[default]
+    Stopped,
+    Playing,
+    Paused,
+    Finished,
+}
+
+/// Cached identities and whole-second clocks keep read-only diagnostics cheap.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(default)]
+pub struct MusicSnapshot {
+    pub engine: MusicSnapshotEngine,
+    pub alternating: bool,
+    pub transport: MusicSnapshotTransport,
+    pub muted: bool,
+    pub accepted_artifact: Option<String>,
+    pub source_identity: Option<String>,
+    pub pcm_identity: Option<String>,
+    pub composer_pending: bool,
+    pub pending_turn: Option<u64>,
+    pub rendering_ticket: Option<u64>,
+    pub ready_ticket: Option<u64>,
+    pub switch_after_seconds: Option<u64>,
+    /// Total consumed time across playback passes, frozen while paused.
+    pub position_seconds: u64,
+    pub duration_seconds: u64,
+    /// None means no deadline is armed; zero means it is due.
+    pub next_evolution_seconds: Option<u64>,
+}
+
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct SessionSnapshot {
     pub active_slug: String,
@@ -47,6 +88,8 @@ pub struct SessionSnapshot {
     /// What the console granted this session, in plain words.
     #[serde(default)]
     pub terminal: String,
+    #[serde(default)]
+    pub music: Option<MusicSnapshot>,
 }
 
 #[derive(Debug)]
@@ -179,9 +222,23 @@ mod tests {
             pending_proposals: 2,
             workshop_experiments: 3,
             terminal: String::new(),
+            music: Some(MusicSnapshot {
+                engine: MusicSnapshotEngine::Python,
+                ready_ticket: Some(7),
+                switch_after_seconds: Some(176),
+                ..MusicSnapshot::default()
+            }),
         };
         let json = serde_json::to_vec(&snapshot).unwrap();
         let restored: SessionSnapshot = serde_json::from_slice(&json).unwrap();
         assert_eq!(restored.turns[0].assistant, "Welcome.");
+        assert_eq!(restored.music, snapshot.music);
+    }
+
+    #[test]
+    fn legacy_snapshot_without_music_still_loads() {
+        let legacy = r#"{"active_slug":"queen","active_title":"Teledra","notice":"Ready","pending":null,"turns":[]}"#;
+        let restored: SessionSnapshot = serde_json::from_str(legacy).unwrap();
+        assert_eq!(restored.music, None);
     }
 }

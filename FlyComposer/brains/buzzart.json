@@ -1,0 +1,61 @@
+{
+  "model": "buzzart_brain_v1",
+  "file": "buzzart.npz",
+  "npz_sha256": "50a826b87644cc6944de7c5812945ea54309afb75f62a4baded90e785fe9e67b",
+  "brain_sha256": "8884b643a3775838186b55c121d92c2220a4d82f00459f04fcab404d47234620",
+  "saved_at": "2026-09-14T07:37:52.139267+00:00",
+  "identity": {
+    "model": "buzzart_brain_v1",
+    "brain_sha256": "8884b643a3775838186b55c121d92c2220a4d82f00459f04fcab404d47234620",
+    "trainable_parameters": 1074,
+    "leak": 0.30981550727569496,
+    "recurrent_gain": 0.9802552354463842,
+    "readout_gain": 2.031184446942034,
+    "generation": 230,
+    "fixed": "Connectome coupling, transmitter signs and normalization are unchanged; only engineered projections, per-type bias and bounded dynamics scalars are trained."
+  },
+  "metadata": {
+    "initialized_from": {
+      "controller": "leaky_tanh_rate_v1",
+      "seed": 2026,
+      "context_scale": 0.3
+    },
+    "generation": 230,
+    "validation": {
+      "fitness": 0.8898470338549531,
+      "mean_reward": 0.8972912093442353,
+      "diversity": 0.9792206972192894,
+      "components": {
+        "melody": 0.8706788924512903,
+        "breathing": 0.9880044645841997,
+        "rhythm": 0.856895604786958,
+        "motif": 0.927294106467845,
+        "harmony": 0.9976851851851851,
+        "texture": 0.9609375,
+        "form": 0.8582180043889828
+      },
+      "errors": []
+    },
+    "best_validation": {
+      "fitness": 0.8898470338549531,
+      "mean_reward": 0.8972912093442353,
+      "diversity": 0.9792206972192894,
+      "components": {
+        "melody": 0.8706788924512903,
+        "breathing": 0.9880044645841997,
+        "rhythm": 0.856895604786958,
+        "motif": 0.927294106467845,
+        "harmony": 0.9976851851851851,
+        "texture": 0.9609375,
+        "form": 0.8582180043889828
+      },
+      "errors": []
+    },
+    "published_from": "training/buzzart/drills-1/best.npz",
+    "test_seeds": {
+      "seeds": "70000-70031",
+      "fitness": 0.892,
+      "original_fly_fitness": 0.748
+    }
+  }
+}

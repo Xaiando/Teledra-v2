@@ -1,0 +1,38 @@
+{
+  "model": "buzzart_brain_v1",
+  "file": "buzzart-wide-candidate.npz",
+  "npz_sha256": "d319da14d882c4f743f3887b55cfb3cc6583671b162e81513115023f42ed84bc",
+  "brain_sha256": "3946b0f98f658ef2feb9a144a43b2a46621cf275ffcdfdb0c317b431ee0920eb",
+  "saved_at": "2026-09-17T09:45:26.326357+00:00",
+  "identity": {
+    "model": "buzzart_brain_v1",
+    "brain_sha256": "3946b0f98f658ef2feb9a144a43b2a46621cf275ffcdfdb0c317b431ee0920eb",
+    "trainable_parameters": 1074,
+    "leak": 0.34526771584410726,
+    "recurrent_gain": 1.0766034639091069,
+    "readout_gain": 1.8319749246344479,
+    "generation": 56,
+    "fixed": "Connectome coupling, transmitter signs and normalization are unchanged; only engineered projections, per-type bias and bounded dynamics scalars are trained."
+  },
+  "metadata": {
+    "parent": {
+      "model": "buzzart_brain_v1",
+      "brain_sha256": "73312d7583f00e51e67a0c139b0bd37af75e68d1b9ae225fa8da57c01ad906d2",
+      "trainable_parameters": 1074,
+      "leak": 0.34778274327191466,
+      "recurrent_gain": 1.0846806214730913,
+      "readout_gain": 1.8449560524866095,
+      "generation": 1750,
+      "fixed": "Connectome coupling, transmitter signs and normalization are unchanged; only engineered projections, per-type bias and bounded dynamics scalars are trained."
+    },
+    "run": "listener-width-20260917",
+    "generation": 56,
+    "fine_tune_generations": 56,
+    "eligible_validation": true,
+    "source_run": "training\\buzzart\\listener-width-20260917",
+    "status": "candidate awaiting listening",
+    "parent_checkpoint": "brains/buzzart-indie-long.npz",
+    "test_objective_delta": 0.01950727335396829,
+    "test_listener_delta": 0.00017730816744365718
+  }
+}

@@ -9,215 +9,15 @@
 
 use std::f32::consts::{PI, TAU};
 
-use serde::{Deserialize, Serialize};
+pub use crate::Instrument;
 
 use crate::{SAMPLE_RATE, Waveform};
 
 const SR: f32 = SAMPLE_RATE as f32;
 
-/// The role a track plays, which selects its patch and its arrangement rules.
-///
-/// V1 carried 74 named patches. The court does not need that many to sound
-/// professional; it needs each part to occupy its own register, envelope, and
-/// stereo position so the mix has depth instead of a single crowded midrange.
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, Hash, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Instrument {
-    SubBass,
-    Bass,
-    Pad,
-    #[default]
-    Keys,
-    Pluck,
-    Lead,
-    Bell,
-    Arp,
-    Organ,
-    Piano,
-    Flute,
-    Reed,
-    Cello,
-    Harp,
-    Kick,
-    Snare,
-    Hat,
-    Perc,
-}
+mod presets;
 
 impl Instrument {
-    /// The role implied by a track's name.
-    ///
-    /// Scores arrive from the model as free text, so the name is the only hint
-    /// available. Matching on it means an Organist who writes "Throne Bass"
-    /// gets a bass patch without having to know the schema.
-    pub fn from_name(name: &str) -> Self {
-        let name = name.to_ascii_lowercase();
-        for (needle, instrument) in [
-            ("sub", Self::SubBass),
-            ("kick", Self::Kick),
-            ("snare", Self::Snare),
-            ("clap", Self::Snare),
-            ("hat", Self::Hat),
-            ("cymbal", Self::Hat),
-            ("shaker", Self::Hat),
-            ("perc", Self::Perc),
-            ("drum", Self::Perc),
-            ("tom", Self::Perc),
-            ("bass", Self::Bass),
-            ("pad", Self::Pad),
-            ("string", Self::Pad),
-            ("choir", Self::Pad),
-            ("harmony", Self::Pad),
-            ("organ", Self::Organ),
-            ("piano", Self::Piano),
-            ("keyboard", Self::Piano),
-            ("flute", Self::Flute),
-            ("piccolo", Self::Flute),
-            ("whistle", Self::Flute),
-            ("clarinet", Self::Reed),
-            ("oboe", Self::Reed),
-            ("reed", Self::Reed),
-            ("bassoon", Self::Reed),
-            ("cello", Self::Cello),
-            ("viola", Self::Cello),
-            ("violin", Self::Cello),
-            ("harp", Self::Harp),
-            ("lyre", Self::Harp),
-            ("chord", Self::Keys),
-            ("key", Self::Keys),
-            ("arp", Self::Arp),
-            ("pluck", Self::Pluck),
-            ("bell", Self::Bell),
-            ("glass", Self::Bell),
-            ("chime", Self::Bell),
-            ("lead", Self::Lead),
-            ("motif", Self::Lead),
-            ("melody", Self::Lead),
-        ] {
-            if name.contains(needle) {
-                return instrument;
-            }
-        }
-        Self::Keys
-    }
-
-    pub const fn is_percussive(self) -> bool {
-        matches!(self, Self::Kick | Self::Snare | Self::Hat | Self::Perc)
-    }
-
-    /// Percussion is unpitched, so it must not be transposed by the harmony.
-    pub const fn follows_harmony(self) -> bool {
-        !self.is_percussive()
-    }
-
-    /// How much of its step a note holds, before the release tail.
-    pub const fn gate(self) -> f32 {
-        match self {
-            Self::Pad => 1.7,
-            Self::Keys => 0.95,
-            Self::SubBass => 0.9,
-            Self::Bass => 0.72,
-            Self::Lead => 0.85,
-            Self::Bell => 1.2,
-            Self::Organ => 1.0,
-            Self::Piano => 1.6,
-            Self::Flute => 1.1,
-            Self::Reed => 1.0,
-            Self::Cello => 1.9,
-            Self::Harp => 1.5,
-            Self::Arp | Self::Pluck => 0.5,
-            Self::Kick | Self::Snare | Self::Perc => 0.3,
-            Self::Hat => 0.16,
-        }
-    }
-
-    /// The range this voice actually lives in, as MIDI note numbers.
-    ///
-    /// An ensemble stays legible because each instrument occupies its own part
-    /// of the register. Nothing enforced that here, so a cello could be written
-    /// an octave above a flute and the mix became a crowd of parts competing
-    /// for the same few hundred hertz. Notes outside the range are folded back
-    /// by octaves rather than refused, which keeps the written line intact.
-    pub const fn natural_range(self) -> (u8, u8) {
-        match self {
-            Self::SubBass => (24, 48),
-            Self::Bass => (28, 55),
-            Self::Cello => (36, 69),
-            Self::Organ => (36, 84),
-            Self::Piano => (33, 91),
-            Self::Harp => (36, 91),
-            Self::Pad => (45, 79),
-            Self::Keys => (48, 84),
-            Self::Reed => (50, 84),
-            Self::Pluck => (55, 91),
-            Self::Lead => (60, 91),
-            Self::Flute => (72, 98),
-            Self::Bell => (72, 100),
-            Self::Arp => (67, 98),
-            // Percussion is unpitched and its patch fixes the sound.
-            Self::Kick => (30, 42),
-            Self::Snare => (56, 68),
-            Self::Hat => (78, 90),
-            Self::Perc => (50, 80),
-        }
-    }
-
-    /// The name this voice goes by, for track labels and reports.
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::SubBass => "Sub Bass",
-            Self::Bass => "Bass",
-            Self::Pad => "Pad",
-            Self::Keys => "Keys",
-            Self::Pluck => "Pluck",
-            Self::Lead => "Lead",
-            Self::Bell => "Bell",
-            Self::Arp => "Arp",
-            Self::Organ => "Organ",
-            Self::Piano => "Piano",
-            Self::Flute => "Flute",
-            Self::Reed => "Reed",
-            Self::Cello => "Cello",
-            Self::Harp => "Harp",
-            Self::Kick => "Kick",
-            Self::Snare => "Snare",
-            Self::Hat => "Hat",
-            Self::Perc => "Perc",
-        }
-    }
-
-    /// Voices that can take over this one's job in an arrangement.
-    ///
-    /// A part written for keys is a middle voice whether an organ or a reed
-    /// plays it; what changes is the colour, not the function. Grouping voices
-    /// by role lets the runtime re-orchestrate a piece — swap the timbre while
-    /// leaving the register, the rhythm, and the harmony exactly where they
-    /// are. Percussion has no family: a kick that became a snare would be a
-    /// different groove, not a different sound.
-    pub const fn family(self) -> &'static [Self] {
-        const LOW: &[Instrument] = &[Instrument::Bass, Instrument::Cello, Instrument::SubBass];
-        const MIDDLE: &[Instrument] = &[
-            Instrument::Keys,
-            Instrument::Organ,
-            Instrument::Pad,
-            Instrument::Reed,
-        ];
-        const COLOUR: &[Instrument] = &[
-            Instrument::Pluck,
-            Instrument::Harp,
-            Instrument::Piano,
-            Instrument::Bell,
-        ];
-        const TOP: &[Instrument] = &[Instrument::Lead, Instrument::Flute, Instrument::Arp];
-        match self {
-            Self::SubBass | Self::Bass | Self::Cello => LOW,
-            Self::Keys | Self::Organ | Self::Pad | Self::Reed => MIDDLE,
-            Self::Pluck | Self::Harp | Self::Piano | Self::Bell => COLOUR,
-            Self::Lead | Self::Flute | Self::Arp => TOP,
-            Self::Kick | Self::Snare | Self::Hat | Self::Perc => &[],
-        }
-    }
-
     /// A one-line description of the patch's envelope, for auditing.
     pub fn patch_summary(self) -> (String, &'static str) {
         let patch = self.patch();
@@ -525,6 +325,186 @@ impl Instrument {
                 delay: 0.18,
                 ..Patch::DEFAULT
             },
+            // Solo bowed strings keep a single pitch centre. Harmonics supply
+            // the bow's brightness without the beating of a detuned synth pad.
+            Self::Violin => Patch {
+                waveform: Waveform::Sine,
+                partials: [
+                    (2.0, 0.55),
+                    (3.0, 0.34),
+                    (4.0, 0.21),
+                    (5.0, 0.15),
+                    (6.0, 0.10),
+                    (8.0, 0.05),
+                ],
+                noise: 0.012,
+                noise_decay: 0.20,
+                amp: Adsr::new(0.085, 0.24, 0.78, 0.20),
+                filter: Adsr::new(0.11, 0.30, 0.70, 0.19),
+                cutoff_hz: 1_700.0,
+                env_octaves: 0.9,
+                resonance: 0.7,
+                vibrato_cents: 8.0,
+                vibrato_hz: 5.5,
+                vibrato_delay: 0.32,
+                drive: 0.8,
+                width: 0.36,
+                reverb: 0.23,
+                delay: 0.05,
+                ..Patch::DEFAULT
+            },
+            // The chalumeau colour is dominated by the fundamental and odd
+            // partials, with less bite and vibrato than the generic reed.
+            Self::Clarinet => Patch {
+                waveform: Waveform::Sine,
+                partials: [
+                    (3.0, 0.46),
+                    (5.0, 0.20),
+                    (7.0, 0.07),
+                    (9.0, 0.025),
+                    (2.0, 0.025),
+                    (0.0, 0.0),
+                ],
+                noise: 0.015,
+                noise_decay: 0.15,
+                amp: Adsr::new(0.048, 0.16, 0.83, 0.11),
+                filter: Adsr::new(0.045, 0.22, 0.68, 0.11),
+                cutoff_hz: 1_450.0,
+                env_octaves: 0.65,
+                resonance: 0.7,
+                drive: 0.85,
+                width: 0.30,
+                reverb: 0.20,
+                delay: 0.04,
+                ..Patch::DEFAULT
+            },
+            // The oboe has strong even as well as odd partials and a narrower,
+            // nasal spectrum. It remains distinct from the hollow clarinet.
+            Self::Oboe => Patch {
+                waveform: Waveform::Sine,
+                partials: [
+                    (2.0, 0.70),
+                    (3.0, 0.48),
+                    (4.0, 0.32),
+                    (5.0, 0.19),
+                    (6.0, 0.10),
+                    (7.0, 0.05),
+                ],
+                noise: 0.015,
+                noise_decay: 0.12,
+                amp: Adsr::new(0.040, 0.13, 0.79, 0.12),
+                filter: Adsr::new(0.035, 0.22, 0.75, 0.12),
+                cutoff_hz: 2_000.0,
+                env_octaves: 0.65,
+                resonance: 0.75,
+                vibrato_cents: 5.0,
+                vibrato_hz: 5.1,
+                vibrato_delay: 0.38,
+                drive: 0.70,
+                width: 0.28,
+                reverb: 0.21,
+                delay: 0.04,
+                ..Patch::DEFAULT
+            },
+            // Rounded brass: the filter opens behind a soft attack, so the
+            // horn blooms into its upper partials without a pitch scoop.
+            Self::Horn => Patch {
+                waveform: Waveform::Sine,
+                partials: [
+                    (2.0, 0.58),
+                    (3.0, 0.28),
+                    (4.0, 0.12),
+                    (5.0, 0.06),
+                    (6.0, 0.025),
+                    (0.0, 0.0),
+                ],
+                amp: Adsr::new(0.095, 0.24, 0.82, 0.21),
+                filter: Adsr::new(0.16, 0.30, 0.60, 0.20),
+                cutoff_hz: 800.0,
+                env_octaves: 1.15,
+                resonance: 0.7,
+                drive: 0.90,
+                width: 0.34,
+                reverb: 0.25,
+                delay: 0.04,
+                ..Patch::DEFAULT
+            },
+            Self::Trumpet => Patch {
+                waveform: Waveform::Sine,
+                partials: [
+                    (2.0, 0.66),
+                    (3.0, 0.48),
+                    (4.0, 0.35),
+                    (5.0, 0.24),
+                    (6.0, 0.16),
+                    (8.0, 0.07),
+                ],
+                noise: 0.025,
+                noise_decay: 0.045,
+                amp: Adsr::new(0.025, 0.15, 0.75, 0.12),
+                filter: Adsr::new(0.020, 0.23, 0.55, 0.11),
+                cutoff_hz: 1_550.0,
+                env_octaves: 1.3,
+                resonance: 0.7,
+                vibrato_cents: 4.0,
+                vibrato_hz: 5.3,
+                vibrato_delay: 0.40,
+                drive: 0.75,
+                width: 0.30,
+                reverb: 0.18,
+                delay: 0.04,
+                ..Patch::DEFAULT
+            },
+            // A nylon-style pluck: strong fundamental, brief pick noise, and
+            // brightness that decays sooner than the body of the note.
+            Self::Guitar => Patch {
+                waveform: Waveform::Sine,
+                partials: [
+                    (2.0, 0.42),
+                    (3.0, 0.24),
+                    (4.0, 0.11),
+                    (5.0, 0.065),
+                    (6.0, 0.035),
+                    (0.0, 0.0),
+                ],
+                noise: 0.045,
+                noise_decay: 0.008,
+                amp: Adsr::new(0.003, 1.15, 0.0, 0.22),
+                filter: Adsr::new(0.002, 0.23, 0.06, 0.18),
+                cutoff_hz: 1_100.0,
+                env_octaves: 1.7,
+                resonance: 0.7,
+                drive: 0.90,
+                width: 0.40,
+                reverb: 0.16,
+                delay: 0.07,
+                ..Patch::DEFAULT
+            },
+            // Tuned bars: the first overtone sits two octaves above the
+            // fundamental. Tremolo moves amplitude, leaving tuning intact.
+            Self::Vibraphone => Patch {
+                waveform: Waveform::Sine,
+                partials: [
+                    (4.0, 0.18),
+                    (10.0, 0.035),
+                    (0.0, 0.0),
+                    (0.0, 0.0),
+                    (0.0, 0.0),
+                    (0.0, 0.0),
+                ],
+                amp: Adsr::new(0.004, 2.25, 0.0, 0.40),
+                filter: Adsr::new(0.003, 0.65, 0.08, 0.35),
+                cutoff_hz: 2_700.0,
+                env_octaves: 1.0,
+                resonance: 0.7,
+                tremolo_depth: 0.13,
+                tremolo_hz: 5.0,
+                drive: 0.75,
+                width: 0.60,
+                reverb: 0.23,
+                delay: 0.12,
+                ..Patch::DEFAULT
+            },
             Self::Kick => Patch {
                 waveform: Waveform::Sine,
                 voices: 1,
@@ -596,6 +576,7 @@ impl Instrument {
                 delay: 0.18,
                 ..Patch::DEFAULT
             },
+            _ => presets::patch(self),
         }
     }
 }
@@ -625,27 +606,32 @@ impl Adsr {
     /// like a volume knob being turned; ears hear loudness roughly
     /// logarithmically, so the curved fall is what reads as a natural decay.
     pub fn level(&self, time: f32, gate: f32) -> f32 {
-        if time < 0.0 {
+        if time < 0.0 || gate <= 0.0 {
             return 0.0;
         }
+        // A short articulation still needs to reach its intended level. V1
+        // fitted its attack inside the note; a fixed 550ms pad attack on a
+        // 34ms written gate only reached 6% before fading away. Keep the patch's
+        // normal attack for longer notes, and a smooth ramp for shorter ones.
+        let attack = self.attack.min(gate.max(0.0) * 0.30);
         if time < gate {
-            return self.held(time);
+            return self.held(time, attack);
         }
         let released = time - gate;
         if released >= self.release {
             return 0.0;
         }
-        let from = self.held(gate);
+        let from = self.held(gate, attack);
         let remaining = 1.0 - released / self.release.max(1e-4);
         from * remaining * remaining
     }
 
     /// The level while the key is still down.
-    fn held(&self, time: f32) -> f32 {
-        if time < self.attack {
-            return time / self.attack.max(1e-4);
+    fn held(&self, time: f32, attack: f32) -> f32 {
+        if time < attack {
+            return time / attack.max(1e-4);
         }
-        let decayed = time - self.attack;
+        let decayed = time - attack;
         if decayed >= self.decay {
             return self.sustain;
         }
@@ -663,7 +649,10 @@ impl Adsr {
 #[derive(Clone, Copy, Debug)]
 pub struct Patch {
     pub waveform: Waveform,
-    /// Detuned copies of the oscillator, which is what gives a patch width.
+    /// Fundamental oscillator level; noise-only percussion sets this to zero.
+    pub oscillator_level: f32,
+    /// Unison width: one centred oscillator, or a centred oscillator supported
+    /// by a quiet symmetric detuned pair. Two is narrower than three.
     pub voices: u8,
     pub detune_cents: f32,
     /// A sine an octave down, for weight the filter will not remove.
@@ -680,6 +669,8 @@ pub struct Patch {
     /// breath on top. Those cannot be reached by filtering a saw, so they are
     /// specified directly. A zero level is an unused slot.
     pub partials: [(f32, f32); 6],
+    /// Optional extra decay for upper partials, in seconds. Zero sustains them.
+    pub partial_decay_seconds: f32,
     pub noise: f32,
     pub noise_decay: f32,
     pub amp: Adsr,
@@ -695,6 +686,11 @@ pub struct Patch {
     pub vibrato_cents: f32,
     pub vibrato_hz: f32,
     pub vibrato_delay: f32,
+    /// Suggested glide between adjacent monophonic notes, in seconds.
+    pub portamento_seconds: f32,
+    /// Amplitude modulation, independent of vibrato so tuned bars stay in tune.
+    pub tremolo_depth: f32,
+    pub tremolo_hz: f32,
     pub drive: f32,
     pub width: f32,
     pub reverb: f32,
@@ -704,12 +700,14 @@ pub struct Patch {
 impl Patch {
     pub const DEFAULT: Self = Self {
         waveform: Waveform::Saw,
+        oscillator_level: 1.0,
         voices: 1,
         detune_cents: 0.0,
         sub: 0.0,
         ring: 0.0,
         ring_level: 0.0,
         partials: [(0.0, 0.0); 6],
+        partial_decay_seconds: 0.0,
         noise: 0.0,
         noise_decay: 0.05,
         amp: Adsr::new(0.01, 0.3, 0.6, 0.2),
@@ -723,6 +721,9 @@ impl Patch {
         vibrato_cents: 0.0,
         vibrato_hz: 5.0,
         vibrato_delay: 0.0,
+        portamento_seconds: 0.0,
+        tremolo_depth: 0.0,
+        tremolo_hz: 5.0,
         drive: 1.0,
         width: 0.5,
         reverb: 0.3,
@@ -753,14 +754,22 @@ impl Oscillator {
     }
 
     pub fn next(&mut self, waveform: Waveform, frequency: f32) -> f32 {
-        let increment = (frequency / SR).clamp(0.0, 0.45);
+        // An overtone beyond the safe band must disappear. Clamping its
+        // frequency would turn unrelated high partials into one false pitch.
+        if !frequency.is_finite() || frequency <= 0.0 || frequency >= SR * 0.45 {
+            return 0.0;
+        }
+        let increment = frequency / SR;
         let phase = self.phase;
         self.phase = (self.phase + increment).fract();
         match waveform {
-            // Sine has one partial and triangle's fall off as 1/n squared, so
-            // neither needs correcting at any pitch the court will play.
+            // The triangle's corners also produce harmonics above Nyquist.
+            // PolyBLAMP rounds those slope changes without a moving filter.
             Waveform::Sine => (phase * TAU).sin(),
-            Waveform::Triangle => 1.0 - 4.0 * (phase - 0.5).abs(),
+            Waveform::Triangle => {
+                1.0 - 4.0 * (phase - 0.5).abs() + 4.0 * poly_blamp(phase, increment)
+                    - 4.0 * poly_blamp((phase + 0.5).fract(), increment)
+            }
             Waveform::Saw => 2.0 * phase - 1.0 - poly_blep(phase, increment),
             Waveform::Square => {
                 let naive = if phase < 0.5 { 1.0 } else { -1.0 };
@@ -781,6 +790,22 @@ fn poly_blep(phase: f32, increment: f32) -> f32 {
     } else if phase > 1.0 - increment {
         let t = (phase - 1.0) / increment;
         t * t + t + t + 1.0
+    } else {
+        0.0
+    }
+}
+
+/// Integral of PolyBLEP, correcting a triangle's slope discontinuities.
+fn poly_blamp(phase: f32, increment: f32) -> f32 {
+    if increment <= 0.0 {
+        return 0.0;
+    }
+    if phase < increment {
+        let remaining = 1.0 - phase / increment;
+        increment * remaining * remaining * remaining / 3.0
+    } else if phase > 1.0 - increment {
+        let progress = (phase - 1.0) / increment + 1.0;
+        increment * progress * progress * progress / 3.0
     } else {
         0.0
     }
@@ -866,14 +891,18 @@ pub struct Voice {
     filter: Svf,
     high_pass: Svf,
     vibrato: Oscillator,
-    elapsed: f32,
+    tremolo: Oscillator,
+    frame: usize,
+    end_frame: Option<usize>,
+    glide_from_frequency: f32,
+    glide_seconds: f32,
 }
 
 impl Voice {
     pub fn new(patch: Patch, frequency: f32, velocity: f32, gate_seconds: f32, seed: u32) -> Self {
-        // Each voice starts its oscillators at a different point in the cycle.
-        // Identical phases make every note begin with the same transient click
-        // and make detuned copies cancel instead of beat.
+        // Notes have deterministic phase variation, while copies within one
+        // note start together. The old nearly equidistant unison phases erased
+        // the fundamental, leaving additive upper harmonics to dominate.
         let offset = (seed % 997) as f32 / 997.0;
         Self {
             patch,
@@ -882,8 +911,8 @@ impl Voice {
             gate_seconds,
             oscillators: [
                 Oscillator::with_phase(offset),
-                Oscillator::with_phase(offset + 0.37),
-                Oscillator::with_phase(offset + 0.71),
+                Oscillator::with_phase(offset),
+                Oscillator::with_phase(offset),
             ],
             sub: Oscillator::with_phase(offset * 0.5),
             ring: Oscillator::with_phase(offset * 0.25),
@@ -894,18 +923,59 @@ impl Voice {
             filter: Svf::default(),
             high_pass: Svf::default(),
             vibrato: Oscillator::default(),
-            elapsed: 0.0,
+            tremolo: Oscillator::default(),
+            frame: 0,
+            end_frame: None,
+            glide_from_frequency: frequency,
+            glide_seconds: 0.0,
         }
+    }
+
+    /// Glide from a preceding note in semitone space, reaching the written
+    /// pitch within the note's gate. Invalid inputs leave the note unchanged.
+    pub fn with_glide_from(mut self, frequency: f32, seconds: f32) -> Self {
+        if frequency.is_finite()
+            && frequency > 0.0
+            && self.frequency.is_finite()
+            && self.frequency > 0.0
+            && seconds.is_finite()
+            && seconds > 0.0
+        {
+            self.glide_from_frequency = frequency;
+            self.glide_seconds = seconds.min(self.gate_seconds.max(0.0));
+        }
+        self
+    }
+
+    fn frequency_at(&self, time: f32) -> f32 {
+        if self.glide_seconds > 0.0 && time < self.glide_seconds {
+            let progress = (time / self.glide_seconds).clamp(0.0, 1.0);
+            let smooth = progress * progress * (3.0 - 2.0 * progress);
+            self.glide_from_frequency * (self.frequency / self.glide_from_frequency).powf(smooth)
+        } else {
+            self.frequency
+        }
+    }
+
+    /// End this voice at a harmonic boundary, measured from its own onset.
+    /// The last eight milliseconds fade smoothly, including a sustained patch
+    /// whose ordinary release would otherwise carry a wrong chord tone over.
+    pub fn with_end_frames(mut self, frames: usize) -> Self {
+        if frames < self.frames() {
+            self.end_frame = Some(frames);
+        }
+        self
     }
 
     /// How many frames this voice will keep producing sound.
     pub fn frames(&self) -> usize {
         let seconds = self.gate_seconds + self.patch.amp.tail();
-        (seconds * SR) as usize + 1
+        let natural = (seconds * SR) as usize + 1;
+        self.end_frame.map_or(natural, |end| natural.min(end))
     }
 
     pub fn finished(&self) -> bool {
-        self.elapsed > self.gate_seconds + self.patch.amp.tail()
+        self.frame >= self.frames()
     }
 
     /// The next sample, before panning. `cutoff_scale` is the arrangement's
@@ -914,15 +984,18 @@ impl Voice {
         if self.finished() {
             return 0.0;
         }
-        let time = self.elapsed;
-        self.elapsed += 1.0 / SR;
+        // Derive time from the frame counter: repeated f32 additions drift by
+        // milliseconds on long held notes and miss precise chord boundaries.
+        let frame = self.frame;
+        let time = frame as f32 / SR;
+        self.frame += 1;
 
         let amplitude = self.patch.amp.level(time, self.gate_seconds);
         if amplitude <= 0.0 {
             return 0.0;
         }
 
-        let mut frequency = self.frequency;
+        let mut frequency = self.frequency_at(time);
         if self.patch.pitch_octaves > 0.0 && time < self.patch.pitch_time {
             let remaining = 1.0 - time / self.patch.pitch_time.max(1e-4);
             frequency *= 2.0_f32.powf(self.patch.pitch_octaves * remaining * remaining);
@@ -934,22 +1007,36 @@ impl Voice {
         }
 
         let voices = self.patch.voices.clamp(1, 3);
-        let mut raw = 0.0;
-        for index in 0..voices {
-            // Spread the detuning symmetrically so the centre of the stack
-            // stays on pitch: -d, 0, +d rather than 0, +d, +2d.
-            let offset = index as f32 - (voices as f32 - 1.0) * 0.5;
-            let detuned = frequency * 2.0_f32.powf(offset * self.patch.detune_cents / 1_200.0);
-            raw += self.oscillators[index as usize].next(self.patch.waveform, detuned);
+        let mut raw = self.oscillators[0].next(self.patch.waveform, frequency);
+        if voices > 1 && self.patch.detune_cents > 0.0 {
+            // Keep a strong oscillator exactly on the written pitch. Quiet
+            // detuned neighbours add motion without being able to cancel the
+            // centre as their phases separate during a sustained note.
+            let neighbour_level = if voices == 2 { 0.14 } else { 0.20 };
+            let spread = if voices == 2 { 0.5 } else { 1.0 };
+            let detune = 2.0_f32.powf(spread * self.patch.detune_cents / 1_200.0);
+            raw += neighbour_level
+                * (self.oscillators[1].next(self.patch.waveform, frequency / detune)
+                    + self.oscillators[2].next(self.patch.waveform, frequency * detune));
+            raw /= 1.0 + 2.0 * neighbour_level;
         }
-        raw /= voices as f32;
+        raw *= self.patch.oscillator_level;
+
+        let partial_envelope = if self.patch.partial_decay_seconds > 0.0 {
+            (-time / self.patch.partial_decay_seconds).exp()
+        } else {
+            1.0
+        };
 
         if self.patch.sub > 0.0 {
             raw += self.sub.next(Waveform::Sine, frequency * 0.5) * self.patch.sub;
         }
         if self.patch.ring_level > 0.0 {
-            raw +=
-                self.ring.next(Waveform::Sine, frequency * self.patch.ring) * self.patch.ring_level;
+            let ring_frequency = frequency * self.patch.ring;
+            raw += self.ring.next(Waveform::Sine, ring_frequency)
+                * self.patch.ring_level
+                * partial_envelope
+                * partial_band_gain(ring_frequency);
         }
         // The additive partials: the drawbars of the organ, the odd harmonics
         // of the reed, the two faint overtones that make a flute a flute.
@@ -957,7 +1044,11 @@ impl Voice {
             if *level <= 0.0 || *ratio <= 0.0 {
                 continue;
             }
-            raw += self.partials[index].next(Waveform::Sine, frequency * ratio) * level;
+            let partial_frequency = frequency * ratio;
+            raw += self.partials[index].next(Waveform::Sine, partial_frequency)
+                * level
+                * partial_envelope
+                * partial_band_gain(partial_frequency);
         }
         if self.patch.noise > 0.0 {
             let decay = (-time / self.patch.noise_decay.max(1e-4)).exp();
@@ -981,6 +1072,460 @@ impl Voice {
         // loud ones get the harmonic thickening — the way a real signal path
         // behaves, and the reason velocity ends up changing timbre, not volume.
         let driven = (value * self.patch.drive).tanh();
-        driven * amplitude * self.velocity
+        let tremolo = if self.patch.tremolo_depth > 0.0 {
+            let wave = self.tremolo.next(Waveform::Sine, self.patch.tremolo_hz);
+            1.0 - self.patch.tremolo_depth.clamp(0.0, 1.0) * (0.5 + 0.5 * wave)
+        } else {
+            1.0
+        };
+        let boundary_fade = self.end_frame.map_or(1.0, |end| {
+            let remaining = end.saturating_sub(frame + 1) as f32;
+            let fade_frames = (SR * 0.008).min(end as f32).max(1.0);
+            (remaining / fade_frames).clamp(0.0, 1.0)
+        });
+        driven * amplitude * self.velocity * tremolo * boundary_fade
+    }
+}
+
+/// Roll additive harmonics off before the oscillator's safe upper limit.
+fn partial_band_gain(frequency: f32) -> f32 {
+    ((SR * 0.45 - frequency) / (SR * 0.05)).clamp(0.0, 1.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const NEW_VOICES: &[Instrument] = &[
+        Instrument::Violin,
+        Instrument::Clarinet,
+        Instrument::Oboe,
+        Instrument::Horn,
+        Instrument::Trumpet,
+        Instrument::Guitar,
+        Instrument::Vibraphone,
+    ];
+
+    fn frequency(midi: u8) -> f32 {
+        440.0 * 2.0_f32.powf((midi as f32 - 69.0) / 12.0)
+    }
+
+    fn render(instrument: Instrument, midi: u8, seconds: f32) -> Vec<f32> {
+        let mut voice = Voice::new(instrument.patch(), frequency(midi), 0.7, seconds, 42);
+        (0..(seconds * SR) as usize)
+            .map(|_| voice.next(1.0))
+            .collect()
+    }
+
+    #[test]
+    fn short_notes_reach_audible_level_across_the_complete_catalog() {
+        // The shortest legal authored gate at the fastest supported tempo.
+        let gate = 0.125 * 60.0 / 220.0;
+        for &instrument in Instrument::ALL {
+            let patch = instrument.patch();
+            let (low, high) = instrument.natural_range();
+            for midi in [low, low + (high - low) / 2, high] {
+                let mut voice = Voice::new(patch, frequency(midi), 0.7, gate, 42);
+                let samples: Vec<_> = (0..voice.frames()).map(|_| voice.next(1.0)).collect();
+                assert!(samples.iter().all(|sample| sample.is_finite()));
+                assert_eq!(
+                    samples[0], 0.0,
+                    "{instrument:?}: the attack must start smoothly"
+                );
+                let onset = &samples[..(gate * SR) as usize];
+                let peak = onset
+                    .iter()
+                    .map(|sample| sample.abs())
+                    .fold(0.0_f32, f32::max);
+                assert!(
+                    peak > 0.02,
+                    "{instrument:?} MIDI {midi}: short onset is too weak ({peak})"
+                );
+                let envelope_peak = (0..onset.len())
+                    .map(|frame| patch.amp.level(frame as f32 / SR, gate))
+                    .fold(0.0_f32, f32::max);
+                assert!(
+                    envelope_peak > 0.98,
+                    "{instrument:?}: its short attack never reached full level"
+                );
+                let before = patch.amp.level(gate - 1.0 / SR, gate);
+                let after = patch.amp.level(gate + 1.0 / SR, gate);
+                assert!(
+                    (before - after).abs() < 0.01,
+                    "{instrument:?}: gate release discontinuity"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn longer_notes_keep_each_patches_original_envelope_stages() {
+        for &instrument in Instrument::ALL {
+            for envelope in [instrument.patch().amp, instrument.patch().filter] {
+                let gate = (envelope.attack + envelope.decay + 1.0).max(envelope.attack / 0.30);
+                assert!((envelope.level(envelope.attack * 0.5, gate) - 0.5).abs() < 0.001);
+                assert!((envelope.level(envelope.attack, gate) - 1.0).abs() < 0.001);
+                let middle_decay = envelope.attack + envelope.decay * 0.5;
+                let expected = envelope.sustain + (1.0 - envelope.sustain) * 0.25;
+                assert!((envelope.level(middle_decay, gate) - expected).abs() < 0.001);
+                assert!(
+                    (envelope.level(gate + envelope.release * 0.5, gate) - envelope.sustain * 0.25)
+                        .abs()
+                        < 0.001
+                );
+                assert_eq!(envelope.level(0.0, 0.0), 0.0);
+            }
+        }
+    }
+
+    // Autocorrelation measures the rendered waveform's repeating period,
+    // including harmonics and the filter, rather than inspecting patch data.
+    fn measured_frequency(samples: &[f32], expected: f32) -> f32 {
+        let nominal_lag = SR / expected;
+        let first = (nominal_lag * 0.90).floor().max(2.0) as usize;
+        let last = (nominal_lag * 1.10).ceil() as usize;
+        let window = samples.len() - last - 1;
+        let error = |lag: usize| -> f64 {
+            samples[..window]
+                .iter()
+                .zip(&samples[lag..lag + window])
+                .map(|(a, b)| (*a as f64 - *b as f64).powi(2))
+                .sum::<f64>()
+                / window as f64
+        };
+        let lag = (first..=last)
+            .min_by(|a, b| error(*a).total_cmp(&error(*b)))
+            .unwrap();
+        let left = error(lag - 1);
+        let centre = error(lag);
+        let right = error(lag + 1);
+        let correction = 0.5 * (left - right) / (left - 2.0 * centre + right);
+        SR / (lag as f32 + correction as f32)
+    }
+
+    #[test]
+    fn additional_instruments_render_in_tune_across_their_ranges() {
+        for instrument in NEW_VOICES {
+            let (low, high) = instrument.natural_range();
+            for midi in [low, (low + high) / 2, high] {
+                let samples = render(*instrument, midi, 0.32);
+                assert!(samples.iter().all(|sample| sample.is_finite()));
+                let steady = &samples[(SR * 0.12) as usize..(SR * 0.30) as usize];
+                let rms = (steady.iter().map(|v| v * v).sum::<f32>() / steady.len() as f32).sqrt();
+                assert!(
+                    rms > 0.012,
+                    "{instrument:?} MIDI {midi} is too quiet: {rms}"
+                );
+                let actual = measured_frequency(steady, frequency(midi));
+                let cents = 1_200.0 * (actual / frequency(midi)).log2();
+                assert!(
+                    cents.abs() < 14.0,
+                    "{instrument:?} MIDI {midi} drifted {cents:.2} cents"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn named_parts_select_their_actual_instrument_before_generic_roles() {
+        for (name, expected) in [
+            ("Violin Lead", Instrument::Violin),
+            ("Bass Clarinet", Instrument::Clarinet),
+            ("Oboe Melody", Instrument::Oboe),
+            ("French Horn Harmony", Instrument::Horn),
+            ("Trumpet Motif", Instrument::Trumpet),
+            ("Nylon Guitar Arp", Instrument::Guitar),
+            ("Vibraphone Chords", Instrument::Vibraphone),
+            ("Bassoon", Instrument::Bassoon),
+        ] {
+            assert_eq!(Instrument::from_name(name), expected);
+        }
+    }
+
+    #[test]
+    fn inaudible_partials_do_not_turn_into_a_clamped_false_pitch() {
+        let mut patch = Patch {
+            waveform: Waveform::Sine,
+            cutoff_hz: 12_000.0,
+            ..Patch::DEFAULT
+        };
+        let mut clean = Voice::new(patch, 5_000.0, 0.7, 0.1, 42);
+        patch.partials[0] = (5.0, 0.9);
+        patch.ring = 6.0;
+        patch.ring_level = 0.5;
+        let mut with_ultrasonic_partials = Voice::new(patch, 5_000.0, 0.7, 0.1, 42);
+        for _ in 0..4_000 {
+            assert_eq!(clean.next(1.0), with_ultrasonic_partials.next(1.0));
+        }
+    }
+
+    #[test]
+    fn harmony_boundary_ends_a_sustained_voice_exactly_with_a_smooth_fade() {
+        let frames = SAMPLE_RATE as usize / 2;
+        let patch = Instrument::Organ.patch();
+        let mut voice = Voice::new(patch, 220.0, 0.7, 3.0, 42).with_end_frames(frames);
+        assert_eq!(voice.frames(), frames);
+        let samples: Vec<f32> = (0..frames).map(|_| voice.next(1.0)).collect();
+        assert!(voice.finished());
+        assert_eq!(samples[frames - 1], 0.0);
+        assert_eq!(voice.next(1.0), 0.0);
+        let last_two_ms = &samples[frames - (SR * 0.002) as usize..];
+        assert!(
+            last_two_ms
+                .windows(2)
+                .all(|pair| (pair[1] - pair[0]).abs() < 0.04)
+        );
+        assert!(samples[frames / 2].abs() > 0.001);
+    }
+
+    #[test]
+    fn boundary_cap_does_not_extend_short_notes_or_leave_one_frame_sounding() {
+        let make = || Voice::new(Instrument::Guitar.patch(), 220.0, 0.7, 0.1, 42);
+        let natural_frames = make().frames();
+        assert_eq!(
+            make().with_end_frames(natural_frames + 1_000).frames(),
+            natural_frames
+        );
+        let mut empty = make().with_end_frames(0);
+        assert!(empty.finished());
+        assert_eq!(empty.next(1.0), 0.0);
+        let mut single = make().with_end_frames(1);
+        assert_eq!(single.next(1.0), 0.0);
+        assert!(single.finished());
+    }
+
+    #[test]
+    fn complete_catalog_renders_finite_audible_notes_at_each_register() {
+        let mut problems = Vec::new();
+        for instrument in Instrument::ALL {
+            let (low, high) = instrument.natural_range();
+            for midi in [low, low + (high - low) / 2, high] {
+                let mut voice = Voice::new(instrument.patch(), frequency(midi), 0.7, 0.35, 42);
+                let mut peak = 0.0_f32;
+                while !voice.finished() {
+                    let sample = voice.next(1.0);
+                    assert!(
+                        sample.is_finite(),
+                        "{instrument:?} MIDI {midi}: invalid sample"
+                    );
+                    peak = peak.max(sample.abs());
+                }
+                if peak < 0.007 {
+                    problems.push(format!("{instrument:?} MIDI {midi}: inaudible peak {peak}"));
+                }
+                assert_eq!(voice.next(1.0), 0.0);
+            }
+        }
+        assert!(problems.is_empty(), "{}", problems.join("\n"));
+    }
+
+    #[test]
+    fn complete_pitched_catalog_preserves_the_written_note() {
+        let mut problems = Vec::new();
+        for instrument in Instrument::ALL
+            .iter()
+            .filter(|voice| voice.follows_harmony())
+        {
+            let patch = instrument.patch();
+            let (low, high) = instrument.natural_range();
+            for midi in [low, low + (high - low) / 2, high] {
+                let samples = render(*instrument, midi, 0.34);
+                // Damped plucks are measured before their intended decay to
+                // silence; sustained instruments are measured after the onset.
+                let (start, end) = if patch.amp.sustain < 0.02 && patch.amp.decay < 0.7 {
+                    (0.025, 0.14)
+                } else {
+                    (0.12, 0.30)
+                };
+                let steady = &samples[(SR * start) as usize..(SR * end) as usize];
+                let actual = measured_frequency(steady, frequency(midi));
+                let cents = 1_200.0 * (actual / frequency(midi)).log2();
+                let tolerance = if patch.voices > 1 && patch.detune_cents > 0.0 {
+                    30.0
+                } else {
+                    14.0
+                };
+                if !cents.is_finite() || cents.abs() >= tolerance {
+                    problems.push(format!("{instrument:?} MIDI {midi}: {cents:.2} cents"));
+                }
+            }
+        }
+        assert!(problems.is_empty(), "{}", problems.join("\n"));
+    }
+
+    #[test]
+    fn instrument_names_do_not_alias_identical_audio() {
+        // Render identical input, remove loudness differences, and compare the
+        // waveforms. Changing only a name, pan, send, or gain cannot pass this.
+        let voices: Vec<_> = Instrument::ALL
+            .iter()
+            .map(|instrument| {
+                let samples = render(*instrument, 69, 0.42);
+                let rms = (samples.iter().map(|sample| sample * sample).sum::<f32>()
+                    / samples.len() as f32)
+                    .sqrt();
+                (
+                    *instrument,
+                    samples
+                        .into_iter()
+                        .map(|sample| sample / rms)
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .collect();
+        for (index, (instrument, samples)) in voices.iter().enumerate() {
+            for (other, other_samples) in &voices[index + 1..] {
+                let difference = (samples
+                    .iter()
+                    .zip(other_samples)
+                    .map(|(a, b)| (a - b).powi(2))
+                    .sum::<f32>()
+                    / samples.len() as f32)
+                    .sqrt();
+                assert!(
+                    difference > 0.01,
+                    "{instrument:?} and {other:?} have indistinguishable recipes ({difference})"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn theremin_glides_smoothly_to_the_target_then_stays_in_tune() {
+        let patch = Instrument::Theremin.patch();
+        assert!(patch.portamento_seconds > 0.0);
+        assert!((4.0..=12.0).contains(&patch.vibrato_cents));
+        let mut voice =
+            Voice::new(patch, 440.0, 0.7, 0.8, 42).with_glide_from(220.0, patch.portamento_seconds);
+        assert_eq!(voice.frequency_at(0.0), 220.0);
+        assert!(
+            (voice.frequency_at(patch.portamento_seconds / 2.0) - (220.0_f32 * 440.0).sqrt()).abs()
+                < 0.01
+        );
+        assert_eq!(voice.frequency_at(patch.portamento_seconds), 440.0);
+        let mut previous = 220.0;
+        for frame in 0..(patch.portamento_seconds * SR) as usize {
+            let current = voice.frequency_at(frame as f32 / SR);
+            assert!(current >= previous);
+            assert!(current - previous < 0.10);
+            previous = current;
+        }
+        let samples: Vec<_> = (0..(SR * 0.8) as usize).map(|_| voice.next(1.0)).collect();
+        assert!(
+            samples
+                .windows(2)
+                .all(|pair| (pair[1] - pair[0]).abs() < 0.07)
+        );
+        let stable = &samples[(SR * 0.18) as usize..(SR * 0.28) as usize];
+        let cents = 1_200.0 * (measured_frequency(stable, 440.0) / 440.0).log2();
+        assert!(cents.abs() < 2.0, "glide did not settle: {cents:.2} cents");
+    }
+
+    #[test]
+    fn short_glides_arrive_within_the_gate_and_invalid_values_are_ignored() {
+        let make = || Voice::new(Instrument::Theremin.patch(), 440.0, 0.7, 0.04, 42);
+        let voice = make().with_glide_from(880.0, 1.0);
+        assert_eq!(voice.frequency_at(0.0), 880.0);
+        assert_eq!(voice.frequency_at(0.04), 440.0);
+        for (from, seconds) in [
+            (f32::NAN, 0.1),
+            (f32::INFINITY, 0.1),
+            (0.0, 0.1),
+            (-1.0, 0.1),
+            (220.0, -1.0),
+            (220.0, f32::NAN),
+        ] {
+            assert_eq!(
+                make().with_glide_from(from, seconds).frequency_at(0.0),
+                440.0
+            );
+        }
+    }
+
+    fn spectral_amplitude(samples: &[f32], frequency: f32) -> f64 {
+        let (mut real, mut imaginary) = (0.0, 0.0);
+        let length = samples.len();
+        for (index, &sample) in samples.iter().enumerate() {
+            let position = index as f64;
+            let window = 0.5 - 0.5 * (std::f64::consts::TAU * position / (length - 1) as f64).cos();
+            let angle = std::f64::consts::TAU * f64::from(frequency) * position / f64::from(SR);
+            real += f64::from(sample) * window * angle.cos();
+            imaginary += f64::from(sample) * window * angle.sin();
+        }
+        (real * real + imaginary * imaginary).sqrt()
+    }
+
+    #[test]
+    fn ensemble_patches_retain_a_stronger_fundamental_than_any_upper_partial() {
+        // A pitch detector still reports the right period when an ensemble's
+        // fundamental cancels. Check the actual harmonic balance as well.
+        for instrument in [
+            Instrument::StringEnsemble,
+            Instrument::BrassEnsemble,
+            Instrument::Choir,
+            Instrument::WarmPad,
+        ] {
+            for midi in [48, 69] {
+                let samples = render(instrument, midi, 0.30);
+                let onset = &samples[(0.03 * SR) as usize..(0.22 * SR) as usize];
+                let fundamental = spectral_amplitude(onset, frequency(midi));
+                for harmonic in 2..=8 {
+                    let overtone = spectral_amplitude(onset, frequency(midi) * harmonic as f32);
+                    assert!(
+                        fundamental > overtone * 1.25,
+                        "{instrument:?} MIDI {midi}: harmonic {harmonic} overwhelms the pitch centre"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn detuned_neighbours_cannot_cancel_a_held_notes_pitch_centre() {
+        let patch = Patch {
+            waveform: Waveform::Sine,
+            voices: 3,
+            detune_cents: 9.0,
+            amp: Adsr::new(0.005, 0.01, 1.0, 0.05),
+            filter: Adsr::new(0.005, 0.01, 1.0, 0.05),
+            cutoff_hz: 4_000.0,
+            env_octaves: 0.0,
+            ..Patch::DEFAULT
+        };
+        let mut voice = Voice::new(patch, 440.0, 0.7, 2.0, 42);
+        let samples: Vec<_> = (0..(2.0 * SR) as usize).map(|_| voice.next(1.0)).collect();
+        for window in samples.chunks_exact((0.025 * SR) as usize).skip(1) {
+            let rms = (window.iter().map(|sample| sample * sample).sum::<f32>()
+                / window.len() as f32)
+                .sqrt();
+            assert!(rms > 0.15, "unison phase cancellation reduced RMS to {rms}");
+        }
+    }
+
+    #[test]
+    fn triangle_corner_correction_reduces_folded_upper_harmonics() {
+        let pitch = 3_520.0;
+        // The seventh harmonic is above Nyquist and folds back to 23,360Hz.
+        let folded_seventh = SR - 7.0 * pitch;
+        let mut corrected = Oscillator::with_phase(0.125);
+        let mut naive_phase = 0.125_f32;
+        let mut fixed = Vec::new();
+        let mut naive = Vec::new();
+        for _ in 0..SAMPLE_RATE / 2 {
+            fixed.push(corrected.next(Waveform::Triangle, pitch));
+            naive.push(1.0 - 4.0 * (naive_phase - 0.5).abs());
+            naive_phase = (naive_phase + pitch / SR).fract();
+        }
+        let before = spectral_amplitude(&naive, folded_seventh) / spectral_amplitude(&naive, pitch);
+        let after = spectral_amplitude(&fixed, folded_seventh) / spectral_amplitude(&fixed, pitch);
+        assert!(
+            after < before * 0.45,
+            "triangle alias ratio: {before:.5} -> {after:.5}"
+        );
+        eprintln!(
+            "triangle folded seventh relative to fundamental: {:.2}dB -> {:.2}dB",
+            20.0 * before.log10(),
+            20.0 * after.log10()
+        );
     }
 }

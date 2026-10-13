@@ -1,0 +1,248 @@
+{
+  "file": "amiga.json",
+  "sha256": "f35fcbba8f985ce08ce036d3d4953ff33fb54299d87af15b95cacf226eedd636",
+  "bytes": 33648,
+  "source": {
+    "corpora": {
+      "The Mod Archive public-domain ProTracker modules": 45
+    },
+    "works": 45,
+    "melodies": 45,
+    "notes": 16922,
+    "credits": {
+      "absolute xtc": {
+        "module_id": 32703,
+        "license": "Public Domain (The Mod Archive license listing)",
+        "page": "https://modarchive.org/index.php?request=view_by_moduleid&query=32703"
+      },
+      "allsorts!": {
+        "module_id": 33325,
+        "license": "Public Domain (The Mod Archive license listing)",
+        "page": "https://modarchive.org/index.php?request=view_by_moduleid&query=33325"
+      },
+      "Can Can": {
+        "module_id": 35056,
+        "license": "Public Domain (The Mod Archive license listing)",
+        "page": "https://modarchive.org/index.php?request=view_by_moduleid&query=35056"
+      },
+      "everone go m21": {
+        "module_id": 41778,
+        "license": "Public Domain (The Mod Archive license listing)",
+        "page": "https://modarchive.org/index.php?request=view_by_moduleid&query=41778"
+      },
+      "happy": {
+        "module_id": 52296,
+        "license": "Public Domain (The Mod Archive license listing)",
+        "page": "https://modarchive.org/index.php?request=view_by_moduleid&query=52296"
+      },
+      "lets jump <a little": {
+        "module_id": 53213,
+        "license": "Public Domain (The Mod Archive license listing)",
+        "page": "https://modarchive.org/index.php?request=view_by_moduleid&query=53213"
+      },
+      "spo": {
+        "module_id": 53261,
+        "license": "Public Domain (The Mod Archive license listing)",
+        "page": "https://modarchive.org/index.php?request=view_by_moduleid&query=53261"
+      },
+      "spare-a-j": {
+        "module_id": 53265,
+        "license": "Public Domain (The Mod Archive license listing)",
+        "page": "https://modarchive.org/index.php?request=view_by_moduleid&query=53265"
+      },
+      "funny tune ((grt))": {
+        "module_id": 53271,
+        "license": "Public Domain (The Mod Archive license listing)",
+        "page": "https://modarchive.org/index.php?request=view_by_moduleid&query=53271"
+      },
+      "cute october": {
+        "module_id": 53273,
+        "license": "Public Domain (The Mod Archive license listing)",
+        "page": "https://modarchive.org/index.php?request=view_by_moduleid&query=53273"
+      },
+      "heavens open": {
+        "module_id": 53282,
+        "license": "Public Domain (The Mod Archive license listing)",
+        "page": "https://modarchive.org/index.php?request=view_by_moduleid&query=53282"
+      },
+      "vince mix": {
+        "module_id": 53285,
+        "license": "Public Domain (The Mod Archive license listing)",
+        "page": "https://modarchive.org/index.php?request=view_by_moduleid&query=53285"
+      },
+      "kids": {
+        "module_id": 53288,
+        "license": "Public Domain (The Mod Archive license listing)",
+        "page": "https://modarchive.org/index.php?request=view_by_moduleid&query=53288"
+      },
+      "musix-1234": {
+        "module_id": 53296,
+        "license": "Public Domain (The Mod Archive license listing)",
+        "page": "https://modarchive.org/index.php?request=view_by_moduleid&query=53296"
+      },
+      "pleasant2": {
+        "module_id": 53299,
+        "license": "Public Domain (The Mod Archive license listing)",
+        "page": "https://modarchive.org/index.php?request=view_by_moduleid&query=53299"
+      },
+      "pointless": {
+        "module_id": 53301,
+        "license": "Public Domain (The Mod Archive license listing)",
+        "page": "https://modarchive.org/index.php?request=view_by_moduleid&query=53301"
+      },
+      "rm 2": {
+        "module_id": 53304,
+        "license": "Public Domain (The Mod Archive license listing)",
+        "page": "https://modarchive.org/index.php?request=view_by_moduleid&query=53304"
+      },
+      "rubbish2": {
+        "module_id": 53308,
+        "license": "Public Domain (The Mod Archive license listing)",
+        "page": "https://modarchive.org/index.php?request=view_by_moduleid&query=53308"
+      },
+      "sjhine": {
+        "module_id": 53315,
+        "license": "Public Domain (The Mod Archive license listing)",
+        "page": "https://modarchive.org/index.php?request=view_by_moduleid&query=53315"
+      },
+      "insi spider": {
+        "module_id": 53321,
+        "license": "Public Domain (The Mod Archive license listing)",
+        "page": "https://modarchive.org/index.php?request=view_by_moduleid&query=53321"
+      },
+      "the messageman": {
+        "module_id": 53324,
+        "license": "Public Domain (The Mod Archive license listing)",
+        "page": "https://modarchive.org/index.php?request=view_by_moduleid&query=53324"
+      },
+      "the-red-one": {
+        "module_id": 53326,
+        "license": "Public Domain (The Mod Archive license listing)",
+        "page": "https://modarchive.org/index.php?request=view_by_moduleid&query=53326"
+      },
+      "wild perspective": {
+        "module_id": 53329,
+        "license": "Public Domain (The Mod Archive license listing)",
+        "page": "https://modarchive.org/index.php?request=view_by_moduleid&query=53329"
+      },
+      "wormology": {
+        "module_id": 53333,
+        "license": "Public Domain (The Mod Archive license listing)",
+        "page": "https://modarchive.org/index.php?request=view_by_moduleid&query=53333"
+      },
+      "x-out": {
+        "module_id": 53335,
+        "license": "Public Domain (The Mod Archive license listing)",
+        "page": "https://modarchive.org/index.php?request=view_by_moduleid&query=53335"
+      },
+      "retrospective": {
+        "module_id": 65133,
+        "license": "Public Domain (The Mod Archive license listing)",
+        "page": "https://modarchive.org/index.php?request=view_by_moduleid&query=65133"
+      },
+      "calling 4 dx?!": {
+        "module_id": 66153,
+        "license": "Public Domain (The Mod Archive license listing)",
+        "page": "https://modarchive.org/index.php?request=view_by_moduleid&query=66153"
+      },
+      "untitled": {
+        "module_id": 171888,
+        "license": "Public Domain (The Mod Archive license listing)",
+        "page": "https://modarchive.org/index.php?request=view_by_moduleid&query=171888"
+      },
+      "HIT THE CHEEK": {
+        "module_id": 173931,
+        "license": "Public Domain (The Mod Archive license listing)",
+        "page": "https://modarchive.org/index.php?request=view_by_moduleid&query=173931"
+      },
+      "DancinOnAmiga-KC-": {
+        "module_id": 175731,
+        "license": "Public Domain (The Mod Archive license listing)",
+        "page": "https://modarchive.org/index.php?request=view_by_moduleid&query=175731"
+      },
+      "Rainbow factory simp": {
+        "module_id": 176882,
+        "license": "Public Domain (The Mod Archive license listing)",
+        "page": "https://modarchive.org/index.php?request=view_by_moduleid&query=176882"
+      },
+      "stranger_-_run.mod": {
+        "module_id": 177387,
+        "license": "Public Domain (The Mod Archive license listing)",
+        "page": "https://modarchive.org/index.php?request=view_by_moduleid&query=177387"
+      },
+      "Neon Techno": {
+        "module_id": 178172,
+        "license": "Public Domain (The Mod Archive license listing)",
+        "page": "https://modarchive.org/index.php?request=view_by_moduleid&query=178172"
+      },
+      "Mom's Hometown": {
+        "module_id": 184799,
+        "license": "Public Domain (The Mod Archive license listing)",
+        "page": "https://modarchive.org/index.php?request=view_by_moduleid&query=184799"
+      },
+      "8-bit Castle": {
+        "module_id": 195782,
+        "license": "Public Domain (The Mod Archive license listing)",
+        "page": "https://modarchive.org/index.php?request=view_by_moduleid&query=195782"
+      },
+      "Ievan Polkka": {
+        "module_id": 195783,
+        "license": "Public Domain (The Mod Archive license listing)",
+        "page": "https://modarchive.org/index.php?request=view_by_moduleid&query=195783"
+      },
+      "May is 4 Her": {
+        "module_id": 197296,
+        "license": "Public Domain (The Mod Archive license listing)",
+        "page": "https://modarchive.org/index.php?request=view_by_moduleid&query=197296"
+      },
+      "The Hawk's Claw": {
+        "module_id": 197917,
+        "license": "Public Domain (The Mod Archive license listing)",
+        "page": "https://modarchive.org/index.php?request=view_by_moduleid&query=197917"
+      },
+      "AI Renaissance": {
+        "module_id": 200847,
+        "license": "Public Domain (The Mod Archive license listing)",
+        "page": "https://modarchive.org/index.php?request=view_by_moduleid&query=200847"
+      },
+      "Stardust Jam": {
+        "module_id": 201039,
+        "license": "Public Domain (The Mod Archive license listing)",
+        "page": "https://modarchive.org/index.php?request=view_by_moduleid&query=201039"
+      },
+      "XLR8": {
+        "module_id": 205968,
+        "license": "Public Domain (The Mod Archive license listing)",
+        "page": "https://modarchive.org/index.php?request=view_by_moduleid&query=205968"
+      },
+      "late night coffee": {
+        "module_id": 208532,
+        "license": "Public Domain (The Mod Archive license listing)",
+        "page": "https://modarchive.org/index.php?request=view_by_moduleid&query=208532"
+      },
+      "heatwave cruise": {
+        "module_id": 208535,
+        "license": "Public Domain (The Mod Archive license listing)",
+        "page": "https://modarchive.org/index.php?request=view_by_moduleid&query=208535"
+      },
+      "Silicon Dancer": {
+        "module_id": 209692,
+        "license": "Public Domain (The Mod Archive license listing)",
+        "page": "https://modarchive.org/index.php?request=view_by_moduleid&query=209692"
+      },
+      "Highway Encounter": {
+        "module_id": 211660,
+        "license": "Public Domain (The Mod Archive license listing)",
+        "page": "https://modarchive.org/index.php?request=view_by_moduleid&query=211660"
+      }
+    },
+    "licensing": "Every module is listed under the Public Domain license on The Mod Archive; see sources.json for pages and hashes.",
+    "built_at": "2026-09-15T12:14:09.718149+00:00"
+  },
+  "reference": {
+    "interval_logprob": -2.0893,
+    "ioi_logprob": -1.9992,
+    "root_logprob": -1.3928,
+    "scope": "Leave-one-module-out mean log-probability per token over 45 modules"
+  }
+}

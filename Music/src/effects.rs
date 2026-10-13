@@ -215,80 +215,35 @@ pub fn sidechain_envelope(frames: usize, onsets: &[usize], bpm: u16, depth: f32)
     envelope
 }
 
-/// Master tone: removes inaudible rumble and lifts the top.
+/// Remove subsonic rumble and ultrasonic content without burying upper parts.
 ///
-/// Everything below about 30 Hz is felt by a limiter and by nothing else, so
-/// leaving it in spends headroom on content no listener hears. The air shelf is
-/// the counterpart: a filtered synth mix is naturally dark, and a stream needs
-/// the top octave present or it reads as muffled through small speakers.
-pub fn master_tone(samples: &mut [f32], air: f32) {
+/// Patch filters provide each instrument's tone. The former fixed tilt and
+/// phase-subtracted presence band reduced 2–6kHz by 12–21dB on every score,
+/// masking percussion and melodic detail even in an already balanced mix.
+pub fn master_tone(samples: &mut [f32]) {
     use crate::synth::{Pass, Svf};
 
-    // The court's music is a bed, not a foreground track. V1's renders peak at
-    // 63-125 Hz and fall away steeply above it: roughly -20 dB by 1-2 kHz and
-    // -36 dB by 2-4 kHz. V2 arrived flat to 8 kHz, which is why it demanded
-    // attention and became tiring over a long stream rather than merely bright.
-    //
-    // Three stages shape it: rumble below hearing is removed, everything above
-    // the tilt corner is progressively lowered, and the band the ear is most
-    // sensitive to is lowered further still.
     let mut rumble = [Svf::default(), Svf::default()];
-    let mut tilt = [Svf::default(), Svf::default()];
-    let mut lower = [Svf::default(), Svf::default()];
-    let mut upper = [Svf::default(), Svf::default()];
-    let mut shelf = [Svf::default(), Svf::default()];
-
-    // The filters are warmed on the end of the piece before the real pass
-    // begins. Started cold they settle over the first few milliseconds, and
-    // since the loop joins the end to the beginning that settling is a step
-    // exactly at the seam: the discontinuity measure climbed from 1.0 to 12.7
-    // when this stage was added, against a limit of 14.
+    let mut ultrasonic = [Svf::default(), Svf::default()];
+    // Warm the filters on the loop's tail so their startup transient does not
+    // create a discontinuity at the wrap. No gain boost or broad spectral tilt.
     let warmup = (SR * 0.25) as usize;
     if samples.len() / 2 > warmup {
-        let tail: Vec<f32> = samples[samples.len() - warmup * 2..].to_vec();
+        let tail = &samples[samples.len() - warmup * 2..];
         for frame in tail.chunks_exact(2) {
             for (channel, sample) in frame.iter().enumerate() {
-                let cleaned = rumble[channel].process(*sample, 30.0, 0.7, Pass::High);
-                let warm = tilt[channel].process(cleaned, TILT_HZ, 0.6, Pass::Low);
-                let tilted = cleaned * (1.0 - TILT) + warm * TILT;
-                let above_two = lower[channel].process(tilted, 2_000.0, 0.7, Pass::High);
-                let above_six = upper[channel].process(above_two, 6_000.0, 0.7, Pass::High);
-                let softened = tilted - (above_two - above_six) * PRESENCE_DIP;
-                let _ = shelf[channel].process(softened, 9_000.0, 0.7, Pass::High);
+                let cleaned = rumble[channel].process(*sample, 30.0, 0.707, Pass::High);
+                ultrasonic[channel].process(cleaned, 18_000.0, 0.707, Pass::Low);
             }
         }
     }
-
     for frame in samples.chunks_exact_mut(2) {
         for (channel, sample) in frame.iter_mut().enumerate() {
-            let cleaned = rumble[channel].process(*sample, 30.0, 0.7, Pass::High);
-
-            // Blending a low-pass against the dry signal tilts the whole top
-            // end down without a corner the ear can locate.
-            let warm = tilt[channel].process(cleaned, TILT_HZ, 0.6, Pass::Low);
-            let tilted = cleaned * (1.0 - TILT) + warm * TILT;
-
-            // Two corners isolate 2-6 kHz; a share of it is removed.
-            let above_two = lower[channel].process(tilted, 2_000.0, 0.7, Pass::High);
-            let above_six = upper[channel].process(above_two, 6_000.0, 0.7, Pass::High);
-            let softened = tilted - (above_two - above_six) * PRESENCE_DIP;
-
-            // A little air well above the dip, so the bed still breathes.
-            let top = shelf[channel].process(softened, 9_000.0, 0.7, Pass::High);
-            *sample = softened + top * air;
+            let cleaned = rumble[channel].process(*sample, 30.0, 0.707, Pass::High);
+            *sample = ultrasonic[channel].process(cleaned, 18_000.0, 0.707, Pass::Low);
         }
     }
 }
-
-/// Where the master starts falling away.
-const TILT_HZ: f32 = 1_100.0;
-
-/// How much of the tilted signal replaces the flat one, 0..1.
-const TILT: f32 = 0.72;
-
-/// How much of the 2-6 kHz band the master removes.
-const PRESENCE_DIP: f32 = 0.55;
-
 /// Soft saturation. Gentle enough to add harmonics without audible distortion.
 pub fn saturate(sample: f32, drive: f32) -> f32 {
     (sample * drive).tanh() / drive.max(1e-4).tanh()
@@ -337,17 +292,61 @@ pub fn limit(samples: &mut [f32], ceiling: f32) {
     }
 }
 
-/// Scales the render so its loudest point sits at `target`.
-pub fn normalise(samples: &mut [f32], target: f32) {
+/// Attenuates an overloaded render without turning a quiet performance up.
+///
+/// Peak normalization erased the score's dynamics: lowering every track gain
+/// made the final mix just as loud, and a sparse bell duet was boosted to the
+/// same peak as a full ensemble. The master is a ceiling, not a loudness target.
+pub fn attenuate_to_peak(samples: &mut [f32], target: f32) {
     let peak = samples
         .iter()
         .map(|sample| sample.abs())
         .fold(0.0_f32, f32::max);
-    if peak <= 1e-6 {
+    if peak <= target || peak <= 1e-6 {
         return;
     }
     let gain = target / peak;
     for sample in samples {
         *sample *= gain;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tone_gain_db(frequency: f32) -> f32 {
+        let mut samples: Vec<_> = (0..SAMPLE_RATE)
+            .flat_map(|frame| {
+                let value = 0.1 * (std::f32::consts::TAU * frequency * frame as f32 / SR).sin();
+                [value, value]
+            })
+            .collect();
+        let rms = |samples: &[f32]| {
+            (samples.iter().map(|sample| sample * sample).sum::<f32>() / samples.len() as f32)
+                .sqrt()
+        };
+        let skip = SAMPLE_RATE as usize / 2;
+        let before = rms(&samples[skip..]);
+        master_tone(&mut samples);
+        assert!(samples.iter().all(|sample| sample.is_finite()));
+        20.0 * (rms(&samples[skip..]) / before).log10()
+    }
+
+    #[test]
+    fn master_preserves_musical_layers_without_the_old_presence_notch() {
+        for frequency in [100.0, 440.0, 1_000.0, 2_000.0, 3_500.0, 6_000.0, 10_000.0] {
+            let change = tone_gain_db(frequency);
+            assert!(
+                (-0.75..0.15).contains(&change),
+                "{frequency} Hz changed by {change:.2} dB"
+            );
+        }
+    }
+
+    #[test]
+    fn master_still_removes_rumble_and_ultrasonic_energy() {
+        assert!(tone_gain_db(10.0) < -15.0);
+        assert!(tone_gain_db(22_000.0) < -12.0);
     }
 }
