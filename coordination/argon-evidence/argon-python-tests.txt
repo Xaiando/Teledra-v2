@@ -1,0 +1,14 @@
+COMMAND: -m unittest discover -s Sidecars/scripts -p test_youtube.py
+................
+----------------------------------------------------------------------
+Ran 16 tests in 0.623s
+
+OK
+EXIT: 0
+COMMAND: -m unittest discover -s Music -p test_pymusic_score.py
+s........
+----------------------------------------------------------------------
+Ran 9 tests in 0.511s
+
+OK (skipped=1)
+EXIT: 0

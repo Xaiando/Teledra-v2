@@ -1,0 +1,1108 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.58s
+     Running unittests src\main.rs (target\debug\deps\teledra-87499d2c87a8e356.exe)
+
+running 291 tests
+test app::tests::a_direct_public_url_enters_bounded_research ... ok
+test app::tests::a_social_stream_dock_link_becomes_a_private_connection_command ... ok
+test app::tests::a_restream_embed_link_becomes_a_private_connection_command ... ok
+test app::tests::a_short_acknowledgement_may_repeat ... ok
+test app::tests::a_completed_reply_is_recorded_for_its_originating_agent ... ok
+test app::tests::a_locked_thread_is_a_subject_not_a_monologue ... ok
+test app::tests::a_fair_backstage_slot_survives_a_continuous_audience_queue ... ok
+test app::tests::a_line_that_only_varies_its_tail_is_still_a_repetition ... ok
+test app::tests::an_operator_message_replaces_pending_inference_and_rejects_its_late_reply ... ok
+test app::tests::arrows_move_between_the_original_dual_input_fields ... ok
+test app::tests::a_line_the_court_just_spoke_is_not_spoken_again ... ok
+test app::tests::bracketed_multiline_paste_stays_in_one_input ... ok
+test app::tests::a_minister_is_asked_for_the_work_of_their_office ... ok
+test app::tests::an_operator_interrupt_prepares_against_only_the_heard_thought ... ok
+test app::tests::backstage_work_does_not_advance_the_public_rota ... ok
+test app::tests::captions_wait_for_playback_and_follow_the_correct_utterance ... ok
+test app::tests::commands_remain_available_during_inference ... ok
+test app::tests::conversational_followups_remember_each_roles_own_contributions ... ok
+test app::tests::a_conversation_keeps_its_subject_beyond_the_shared_history_window ... ok
+test app::tests::escape_keeps_the_v1_exit_contract ... ok
+test app::tests::delegated_court_replies_remain_visible_in_the_shared_feed ... ok
+test app::tests::direct_operator_speech_always_enters_the_shared_teledra_channel ... ok
+test app::tests::changed_openings_and_reordered_sentences_do_not_replay_the_same_body ... ok
+test app::tests::delegation_is_bounded_and_backstage_work_stays_quiet ... ok
+test app::tests::exhausted_automatic_anchor_moves_to_the_latest_thought_without_a_subject_reset ... ok
+test app::tests::every_v1_command_head_still_routes ... ok
+test app::tests::failed_speech_keeps_the_answer_readable_and_releases_waiting_captions ... ok
+test app::tests::failed_duplicate_and_backstage_turns_do_not_age_the_thread ... ok
+test app::tests::help_is_discoverable_and_question_marks_can_be_typed ... ok
+test app::tests::live_podcast_conversation ... ignored, requires running local Ollama
+test app::tests::consecutive_idle_turns_do_not_ask_the_same_question ... ok
+test app::tests::music_commands_keep_engine_selection_and_alternation_distinct ... ok
+test app::tests::mute_silences_without_discarding_the_piece ... ok
+test app::tests::interrupted_unheard_speech_cannot_anchor_the_next_conversation ... ok
+test app::tests::idle_chatter_is_sampled_more_loosely_than_purposeful_work ... ok
+test app::tests::interrupted_captions_never_release_stale_unheard_text ... ok
+test app::tests::legacy_command_aliases_keep_the_original_operator_surface ... ok
+test app::tests::overdue_public_speech_keeps_backstage_jobs_queued_in_order ... ok
+test app::tests::night_desk_can_run_backstage_while_streamer_stays_foreground ... ok
+test app::tests::night_desk_maintenance_stays_backstage ... ok
+test app::tests::night_desk_uses_every_office_and_only_the_treasury_update_is_audible ... ok
+test app::tests::queued_audience_speech_outranks_older_backstage_work ... ok
+test app::tests::shared_context_contains_the_previous_ministers_actual_words ... ok
+test app::tests::podcast_notes_only_keep_completed_spoken_contributions ... ok
+test app::tests::shared_context_is_bounded_and_preserves_a_long_replies_final_question ... ok
+test app::tests::podcast_keeps_nightdesk_updates_backstage_and_test_mode_pauses ... ok
+test app::tests::tab_cycles_the_v1_performance_modes ... ok
+test app::tests::speech_backpressure_allows_quiet_work_without_spending_an_audible_turn ... ok
+test app::tests::short_operator_followups_keep_the_subject_and_literal_prompts_remain_searchable ... ok
+test app::tests::podcast_speaks_from_normal_mode_and_keeps_its_anchor_after_interruption ... ok
+test app::tests::two_lines_that_merely_start_alike_still_both_speak ... ok
+test app::tests::video_results_take_priority_and_remain_available_for_a_podcast ... ok
+test app::tests::the_open_floor_goes_round_the_court ... ok
+test app::tests::youtube_links_in_chat_use_video_ingestion_and_preserve_the_question ... ok
+test app::tests::voice_desk_speaks_typed_text_verbatim_and_pauses_autonomy ... ok
+test app::tests::wizard_backstage_work_alternates_without_spending_public_or_explicit_turns ... ok
+test composition::tests::a_second_invalid_draft_stops_without_a_third_inference ... ok
+test composition::tests::failed_regeneration_stops_after_two_inferences_without_accepting_fragments ... ok
+test composition::tests::all_expression_counts_and_missing_plan_are_reported_together ... ok
+test composition::tests::only_the_actual_brain_truncation_signal_maps_to_regeneration ... ok
+test composition::tests::a_truncated_first_draft_regenerates_once_without_shortening_required_patterns ... ok
+test composition::tests::ordinary_initial_inference_errors_are_not_retried ... ok
+test composition::tests::atomic_note_events_reach_storage_without_losing_expression_or_rests ... ok
+test composition::tests::duplicated_out_of_range_draft_gets_one_specific_repair_before_acceptance ... ok
+test composition::tests::one_repair_preserves_the_original_request_and_invalid_draft ... ok
+test composition::tests::normal_score_context_retains_notes_and_complete_palette_knowledge ... ok
+test composition::tests::rejected_scale_context_keeps_settings_but_omits_its_note_arrays ... ok
+test composition::tests::a_review_that_introduces_duplicated_out_of_range_lines_retains_the_valid_draft ... ok
+test composition::tests::partial_new_scores_do_not_inherit_legacy_harmony_or_default_parts ... ok
+test composition::tests::musical_review_uses_measured_draft_facts_and_the_original_brief ... ok
+test organist_genome::tests::every_ensemble_voice_is_accepted_in_its_role ... ok
+test podcast::tests::delayed_speech_keeps_its_chapter_and_does_not_advance_the_new_chapter ... ok
+test podcast::tests::failed_requests_do_not_skip_chapters ... ok
+test composition::tests::failed_musical_review_retains_the_valid_draft_within_two_calls ... ok
+test composition::tests::scalar_repair_preserves_operator_request_without_replaying_rejected_notes ... ok
+test composition::tests::unplayable_attack_density_uses_one_repair_with_precise_grid_evidence ... ok
+test podcast::tests::malformed_or_non_podcast_prompts_do_not_record_speech ... ok
+test podcast::tests::pause_excludes_wall_time_and_resume_preserves_progress ... ok
+test podcast::tests::prefetched_turn_does_not_repeat_the_opening ... ok
+test app::tests::a_locked_topic_survives_twenty_turns_and_releases_only_when_unlocked ... ok
+test podcast::tests::public_pause_and_prompt_helpers_are_usable ... ok
+test podcast::tests::lasts_beyond_an_hour_without_unlocking_or_restarting ... ok
+test podcast::tests::replaced_session_ignores_stale_speech_even_for_the_same_topic ... ok
+test podcast::tests::prompts_vary_without_requesting_another_opening ... ok
+test podcast::tests::spoken_validation_preserves_valid_prose_exactly ... ok
+test podcast::tests::spoken_generation_rejects_zero_budget_before_contacting_the_model ... ok
+test podcast::tests::spoken_validation_detects_copy_after_a_new_lead_in ... ok
+test podcast::tests::target_is_clamped_and_lenses_are_spread_across_it ... ok
+test podcast::tests::spoken_validation_rejects_copied_paragraph_despite_new_numeric_tail ... ok
+test podcast::tests::spoken_validation_rejects_nearly_identical_opening ... ok
+test portrait::tests::a_collapsed_panel_renders_nothing ... ok
+test podcast::tests::spoken_validation_rejects_ramblings_short_answers_and_bad_envelopes ... ok
+test portrait::tests::a_half_block_cell_cannot_carry_a_vertical_stripe ... ok
+test portrait::tests::a_smooth_region_keeps_its_colour_in_the_foreground ... ok
+test portrait::tests::a_sextant_cell_carries_six_pixels ... ok
+test podcast::tests::spoken_validation_rejects_actions_and_unfinished_speech_without_salvaging ... ok
+test portrait::tests::every_density_maps_all_of_its_patterns_to_a_glyph ... ok
+test organist_genome::tests::the_frame_travels_in_the_prompt_and_overrides_only_fixed_fields ... ok
+test portrait::tests::one_cell_carries_two_vertical_pixels ... ok
+test portrait::tests::rescaling_happens_once_per_size ... ok
+test podcast::tests::episode_memory_is_bounded_and_keeps_early_chapter_anchors ... ok
+test python_composition::tests::mock_request_requires_complete_framing_and_valid_json ... ok
+test python_composition::tests::numbered_edit_preserves_mixed_crlf_unicode_and_original_indentation ... ok
+test python_composition::tests::exact_edit_uses_real_schema_and_runtime_identity_without_a_prose_critic ... FAILED
+test python_composition::tests::numbered_schema_is_source_derived_and_rejects_invalid_lines_and_no_op ... ok
+test python_composition::tests::invented_base_and_no_op_never_escape_validation ... ok
+test python_composition::tests::real_validation_failure_gets_one_repair_against_the_original_source ... ok
+test python_composition::tests::a_proposal_identical_to_the_playing_piece_is_sent_back_for_a_new_song ... ok
+test python_composition::tests::protected_lead_controls_are_excluded_and_rejected_before_bounded_repair ... ok
+test python_composition::tests::recognized_music_uses_numeric_controls_without_reprinting_python_source ... ok
+test python_composition::tests::truncation_regenerates_once_and_source_json_preserves_indentation ... ok
+test python_parameters::tests::invalid_controls_never_produce_a_partial_edit ... ok
+test composition::tests::deadline_during_musical_review_retains_the_valid_complete_draft ... ok
+test python_parameters::tests::actual_v1_values_and_coupled_gates_are_detected_without_fixed_defaults ... ok
+test python_parameters::tests::unsupported_or_ambiguous_music_does_not_acquire_v1_controls ... ok
+test python_parameters::tests::period_and_phase_merge_transactionally_and_recursive_offsets_keep_raw_newlines ... ok
+test python_score::tests::malformed_proposals_are_rejected_before_expansion ... ok
+test python_parameters::tests::preserving_the_lead_excludes_and_rejects_its_timing_controls ... ok
+test python_score::tests::proposal_adapter_keeps_contour_and_contrast_validation ... ok
+test python_score::tests::proposal_inverse_does_not_quantize_existing_custom_phrases ... ok
+test python_score::tests::proposal_schema_preserves_controls_and_uses_roles_for_classic_voices ... ok
+test python_composition::tests::optional_diagnostics_are_bounded_valid_json ... ok
+test composition::tests::incomplete_or_unstarted_compositions_cannot_outlive_the_request_deadline ... ok
+test python_score::tests::recipe_roundtrips_and_rejects_tiny_scalar_or_unformed_tracks ... ok
+test runtime::art_learning::tests::legacy_accepted_lineage_is_a_parent_without_invented_render_measurements ... ok
+test runtime::art_learning::tests::a_real_successful_revision_links_to_its_previous_accepted_parent ... ok
+test runtime::art_learning::tests::malformed_optional_state_does_not_break_startup_and_original_is_preserved ... ok
+test runtime::artifacts::tests::a_composition_that_turns_away_from_the_last_one_keeps_its_own_subject ... ok
+test organist_genome::tests::genomes_range_widely_and_stay_apart_from_recent_pieces ... ok
+test runtime::artifacts::tests::a_one_line_artist_payload_is_cleaned_like_a_multi_line_one ... ok
+test runtime::artifacts::tests::a_reply_that_only_recalls_earlier_work_is_not_invented_into_art ... ok
+test runtime::artifacts::tests::a_family_recalled_from_earlier_work_is_not_drawn_into_the_new_one ... ok
+test runtime::artifacts::tests::a_subtle_accent_does_not_displace_the_form_it_accents ... ok
+test runtime::art_learning::tests::equivalent_failures_are_counted_and_recent_history_stays_bounded ... ok
+test runtime::artifacts::tests::animation_intent_is_recovered_without_becoming_a_layer ... ok
+test runtime::artifacts::tests::artist_prose_becomes_the_named_scene_and_layers ... ok
+test runtime::artifacts::tests::live_dimensions_preserve_portrait_landscape_and_panorama_within_budget ... ok
+test runtime::artifacts::tests::longer_family_names_are_not_reduced_to_mandala ... ok
+test runtime::artifacts::tests::numeric_motion_survives_animation_directive_cleanup ... ok
+test runtime::artifacts::tests::ordinary_artist_prose_without_a_family_is_not_invented_into_art ... ok
+test runtime::artifacts::tests::python_feedback_needs_an_accepted_local_render ... ok
+test runtime::artifacts::tests::python_feedback_uses_accepted_source_and_report_instead_of_edited_draft ... ok
+test runtime::art_learning::tests::accepted_work_failed_revision_and_progress_survive_restart_as_distinct_evidence ... ok
+test runtime::artifacts::tests::retention_keeps_the_newest_window_and_deduplicates_it ... ok
+test runtime::artifacts::tests::retention_removes_only_stale_orphan_images ... ok
+test runtime::artifacts::tests::stale_proposals_expire_without_treating_new_or_undated_work_as_old ... ok
+test runtime::audience::tests::one_line_through_two_relays_is_answered_once ... ok
+test runtime::audience::tests::relayed_discord_lines_belong_to_their_real_author ... ok
+test runtime::chat_listener::tests::audience_lines_keep_the_platform_with_the_author ... ok
+test runtime::chat_listener::tests::social_stream_sessions_are_url_safe ... ok
+test runtime::chat_listener::tests::each_service_keeps_its_own_saved_secret ... ok
+test runtime::commands::tests::night_desk_toggle_preserves_the_foreground_mode ... ok
+test runtime::commands::tests::original_mcp_action_form_becomes_a_tools_call ... ok
+test runtime::commands::tests::podcast_duration_is_explicit_and_validated ... ok
+test runtime::daw::tests::child_actions_keep_their_session_when_a_window_is_replaced ... ignored, requires installed Python; uses a hidden protocol child without audio or a window
+test runtime::daw::tests::operational_studio_hot_reload_dismissal_restart_and_shutdown ... ignored, requires installed Python and Tk; opens a hidden workstation
+test runtime::daw::tests::protocol_accepts_only_typed_bounded_shapes ... ok
+test python_score::tests::every_rhythm_pair_expands_without_overlap_or_lost_notes_and_roundtrips_exactly ... ok
+test python_composition::tests::cancellation_drops_the_single_request_without_a_later_repair ... ok
+test runtime::fractus::tests::a_prose_guess_or_an_unrecorded_composition_is_not_restored_at_launch ... ok
+test runtime::fractus::tests::art_research_rejects_empty_stubs_and_bot_challenges ... ok
+test runtime::fractus::tests::curated_gallery_starts_with_mandala_and_fractal_studies_without_overlays ... ok
+test runtime::fractus::tests::immediate_and_queued_gallery_requests_both_remove_unrelated_families ... ok
+test runtime::fractus::tests::loading_the_current_tagged_overlay_is_clean_and_does_not_rewrite_the_original ... ok
+test runtime::fractus::tests::native_variation_preserves_explicitly_frozen_geometry ... ok
+test runtime::fractus::tests::rapid_art_requests_render_once_and_publish_only_the_newest ... ok
+test python_composition::tests::repair_shares_the_total_deadline_and_zero_budget_sends_nothing ... ok
+test runtime::commands::tests::operator_art_commands_select_the_lineage_and_cancel_obsolete_exploration ... ok
+test runtime::commands::tests::operator_podcast_lock_survives_model_controls_and_resumes ... ok
+test runtime::guest::tests::a_real_guest_set_is_verified_and_replaces_the_playing_music ... ignored, requires the FlyComposer venv and an audio output; playback is muted
+test runtime::guest::tests::a_round_that_produces_nothing_new_falls_back_once ... ok
+test runtime::guest::tests::genome_stand_ins_render_as_verified_library_pieces ... ignored, renders one genome piece per ensemble through the real PyMusic worker
+test runtime::guest::tests::introductions_are_occasional_and_rotate_through_the_court ... ok
+test runtime::fractus::tests::saved_artist_lineage_preserves_subject_without_reviving_overlays ... ok
+test runtime::guest::tests::old_takes_are_pruned_to_the_newest ... ok
+test runtime::guest::tests::organist_genomes_stay_apart_from_his_recent_pieces ... ok
+test runtime::guest::tests::outcomes_outside_an_organist_round_change_nothing ... ok
+test runtime::guest::tests::recently_played_titles_are_remembered_and_bounded ... ok
+test runtime::guest::tests::the_performers_alternate_every_round ... ok
+test runtime::music_edits::tests::line_edits_reject_invalid_addresses_overlaps_ambiguous_targets_and_noops ... ok
+test runtime::music_edits::tests::focused_edit_preserves_every_unmodified_note_and_playback_call ... ok
+test runtime::music_edits::tests::no_op_empty_and_excessive_edits_are_rejected ... ok
+test runtime::music_edits::tests::numbered_lines_preserve_raw_baseline_indentation_endings_and_other_notes ... ok
+test runtime::music_edits::tests::replacements_share_one_baseline_and_fail_transactionally ... ok
+test runtime::music_edits::tests::multiline_indentation_cannot_expand_beyond_the_source_limit ... ok
+test runtime::music_edits::tests::stale_baseline_and_ambiguous_passages_are_rejected ... ok
+test runtime::music_learning::tests::accepted_parent_failures_and_progress_survive_restart_without_claiming_taste ... ok
+test runtime::fractus::tests::stale_research_cannot_clear_a_new_research_request ... ok
+test runtime::fractus::tests::stale_success_and_current_failure_cannot_promote_an_unaccepted_lineage ... ok
+test runtime::music_learning::tests::failed_new_piece_stays_requested_until_one_is_accepted ... ok
+test runtime::artifacts::tests::simple_art_is_rejected_before_publication_and_existing_art_is_preserved ... ok
+test runtime::music_learning::tests::legacy_global_counter_migrates_known_engine_requests_without_inventing_history ... ok
+test runtime::music_learning::tests::request_examples_never_reenter_generation_as_outcome_evidence ... ok
+test runtime::music_library::tests::duplicate_title_versions_are_stable_across_new_entries_and_reload_without_renaming_artifacts ... ok
+test runtime::music_learning::tests::bounded_evidence_preserves_counter_and_separates_engines ... ok
+test organist_genome::tests::learned_weights_steer_the_draw_and_a_broken_style_falls_back ... ok
+test runtime::music_library::tests::rotation_pick_offers_a_different_unrejected_title ... ok
+test runtime::music_learning::tests::alternating_engines_each_reach_new_piece_cadence_in_both_starting_phases ... ok
+test portrait::tests::an_unreadable_override_falls_back_to_the_embedded_likeness ... ok
+test runtime::music_study::tests::bounded_unicode_history_remains_readable_after_many_cycles ... ok
+test runtime::music_study::tests::direct_requests_duplicates_and_unstarted_replies_do_not_spend_work_slots ... ok
+test portrait::tests::the_embedded_likeness_decodes_and_renders ... ok
+test runtime::music_study::tests::persisted_dispatch_rotation_and_hypothesis_do_not_claim_verification ... ok
+test runtime::music_study::tests::python_report_distinguishes_helpers_metadata_and_missing_evidence ... ok
+test runtime::music_study::tests::recipe_study_reads_actual_notes_and_summarizes_trusted_placement_evidence ... ok
+test organist_genome::tests::every_drawn_genome_expands_into_a_valid_song ... ok
+test runtime::pymusic::lifecycle_tests::engines_switch_exclusively_and_reject_stale_work ... ignored, requires local Python, Tk and audio output; playback is muted
+test runtime::music_study::tests::dispatched_study_survives_restart_and_reaches_next_organist_request ... ok
+test runtime::pymusic::tests::cleaned_bundled_v1_enters_library_and_reloads_verified_audio ... ignored, real cleaned bundled V1 worker and isolated library proof; requires local Python/NumPy and release synth, opens no player or UI
+test runtime::pymusic::lifecycle_tests::automatic_comparison_queues_the_other_engine_and_can_be_disabled ... ok
+test runtime::pymusic::lifecycle_tests::python_model_repair_uses_actual_error_and_is_bounded_per_accepted_piece ... ok
+test runtime::pymusic::tests::composition_routing_preserves_explicit_native_and_python_requests ... ok
+test runtime::pymusic::tests::failed_python_commit_preserves_accepted_state_and_rearms_improvement ... ok
+test runtime::pymusic::tests::generated_short_sketch_never_replaces_the_complete_piece ... ok
+test runtime::pymusic::tests::historical_python_feedback_is_bounded_evidence_without_old_source_code ... ok
+test runtime::pymusic::tests::generated_duplicate_keeps_the_accepted_artifact_and_rearms_improvement ... ok
+test runtime::pymusic::tests::inactive_editor_controls_cannot_save_or_stop_the_selected_engine ... ok
+test runtime::pymusic::tests::listener_feedback_uses_live_selection_when_recovery_pointer_is_stale ... ok
+test runtime::pymusic::tests::python_current_manifest_loads_accepted_provenance_and_keeps_unsent_draft ... ok
+test runtime::music_library::tests::incomplete_audits_and_mismatched_verified_reports_do_not_publish ... ok
+test runtime::pymusic::tests::music_snapshot_exposes_cached_baseline_and_outstanding_work_without_a_device ... ok
+test runtime::music_library::tests::only_explicit_verified_publication_enters_catalog_and_reload_preserves_it ... ok
+test runtime::pymusic::tests::python_wav_reader_rejects_truncated_wrong_format_and_silent_artifacts ... ok
+test runtime::pymusic::tests::real_model_composes_two_complete_library_tracks ... ignored, two real configured local model songs and full PyMusic renders; no devices, AppData writes or UI
+test runtime::pymusic::tests::real_python_worker_verifies_full_example_and_rejects_incomplete_replacements ... ignored, real local Python/NumPy and built native note bridge; writes only isolated proof artifacts, opens no device
+test runtime::pymusic::tests::python_wav_reader_preserves_completed_stereo_frames ... ok
+test runtime::pymusic::tests::submitted_v1_reference_is_recognized_without_accepting_source_changes ... ok
+test runtime::pymusic::tests::recursive_python_context_uses_the_accepted_source_key_and_tempo ... ok
+test runtime::pymusic::tests::unchanged_v1_python_score_renders_and_verifies ... ignored, requires the user's V1 score and local Python/NumPy; produces only isolated verified audio, opens no device
+test runtime::pymusic::tests::the_composition_context_stays_inside_the_model_window ... ok
+test runtime::runtime_facts::tests::facts_name_the_local_model_and_refuse_hosted_claims ... ok
+test runtime::sidecars::tests::youtube_success_and_failure_both_ask_for_an_honest_response ... ok
+test runtime::runtime_facts::placement_tests::every_request_gets_the_facts_early_and_the_check_last ... ok
+test runtime::tests::a_scene_recovered_from_prose_plays_now_but_is_not_restored_at_launch ... ok
+test runtime::tests::a_tagged_revision_of_a_prose_guess_is_still_not_restored_at_launch ... ok
+test runtime::tests::complete_pass_boundaries_are_independent_of_composer_arrival_time ... ok
+test runtime::tests::art_research_waits_for_artist_capacity_and_stale_evidence_is_ignored ... ok
+test runtime::tests::composer_requests_are_bounded_and_receive_the_fresh_score_with_theory ... ok
+test runtime::pymusic::tests::complete_artifact_fingerprints_distinguish_source_edits_from_audio_changes ... ok
+test runtime::tests::composition_plan_is_musical_identity_but_titles_and_seeds_are_not ... ok
+test runtime::tests::explicitly_disabling_default_ducking_is_an_audible_mix_change ... ok
+test runtime::tests::composer_retry_budget_follows_musical_content_instead_of_title ... ok
+test runtime::tests::only_accepted_arrangement_mixer_edits_preserve_the_playhead ... ok
+test runtime::tests::operational_render_transport_persistence_and_stop_play ... ignored, requires installed audio device, Python and Tk; all playback is muted
+test runtime::tests::native_automatic_evolution_waits_for_the_composer ... ok
+test runtime::tests::music_patch_cannot_bypass_complete_score_or_scalar_validation ... ok
+test runtime::tests::rapid_mix_edits_compose_and_stop_cancels_the_pending_render ... ok
+test runtime::pymusic::tests::python_stop_invalidates_queued_and_late_results_without_opening_audio ... ok
+test runtime::tests::python_development_prepares_before_a_repeat_and_can_queue_behind_public_speech ... ok
+test runtime::tests::renamed_parts_are_not_new_music ... ok
+test runtime::tests::scalar_startup_is_archived_and_recomposed_before_it_can_loop ... ok
+test runtime::tests::reported_saved_score_problem_requests_one_repair_without_overwriting_it ... ok
+test runtime::tests::unrelated_court_speech_cannot_complete_a_mission ... ok
+test session::tests::a_snapshot_survives_json_round_trip ... ok
+test session::tests::legacy_snapshot_without_music_still_loads ... ok
+test terminal::tests::explicit_colour_opt_out_is_not_reported_as_a_colourful_terminal ... ok
+test runtime::tests::stale_art_result_cannot_open_a_studio_and_failure_releases_current_render ... ok
+test tests::an_art_exploration_does_not_research_its_supplied_source_again ... ok
+test tests::an_explicit_still_request_is_not_turned_into_a_gif ... ok
+test runtime::tests::stream_audience_replies_are_teledras_even_when_another_office_is_speaking ... ok
+test tests::continuously_queued_music_and_art_share_slots_until_both_wizard_jobs_dispatch ... ok
+test tests::a_composition_timeout_records_the_error_without_a_fake_missing_score_retry ... ok
+test tests::court_priority_offers_backstage_a_bounded_opportunity_after_three_public_turns ... ok
+test tests::every_court_member_has_their_own_matching_voice ... ok
+test tests::maintenance_has_a_shorter_budget_without_cutting_complete_compositions_short ... ok
+test tests::nightdesk_sharing_preserves_audience_priority_and_does_not_start_before_due ... ok
+test tests::only_untagged_artist_prose_is_salvaged ... ok
+test tests::python_composition_counts_as_music_without_counting_legacy_or_unrelated_artifacts ... ok
+test tests::python_requests_can_recover_one_complete_code_fence_without_guessing_at_prose ... ok
+test tests::replacing_inference_drops_the_old_worker_before_starting_the_next ... ok
+test tests::completed_audio_and_text_fallback_are_saved_to_durable_memory ... ok
+test tests::say_defaults_to_the_queen_and_accepts_a_named_voice ... ok
+test tests::interrupted_audio_cannot_return_as_complete_durable_recollection ... ok
+test tests::stale_replies_cannot_write_files_and_current_replies_execute_at_most_four_actions ... ok
+test ui::tests::dashboard_renders_operational_and_court_state ... ok
+test runtime::music_library::tests::listener_verdict_targets_exact_id_without_mutating_artifact_facts ... ok
+test ui::tests::the_protocol_panel_holds_every_row_on_a_real_terminal ... ok
+test tests::spawn_turn_routes_accepted_python_edits_through_the_artifact_schema ... FAILED
+test ui::tests::wide_tui_preserves_the_v1_contract ... ok
+test ui::tests::work_board_sorts_missions_and_leads_into_lanes ... ok
+test tests::stopping_music_cancels_inference_and_discards_its_late_reply_before_actions ... ok
+test runtime::fractus::tests::automatic_studies_satisfy_the_richness_floor_without_overlays ... ok
+test runtime::pymusic::tests::quiet_renders_are_lifted_to_court_loudness_without_clipping ... ok
+test runtime::music_library::tests::unrelated_roots_and_corrupted_or_traversing_indexes_are_preserved_and_rejected ... ok
+test runtime::fractus::tests::a_gallery_action_stores_and_renders_the_clean_subject_through_evolution ... ok
+test ui::tests::wide_tui_keeps_the_half_block_portrait_and_rgb_palette ... ok
+test ui::tests::vertical_tui_uses_the_shared_public_feed ... ok
+test runtime::tests::persisted_score_replaces_complete_files_and_rejects_a_failed_write ... ok
+test runtime::music_library::tests::source_or_pcm_duplicates_share_one_piece_and_retain_aliases ... ok
+test runtime::music_library::tests::playback_refuses_unknown_ids_and_changed_source_audio_or_report ... ok
+test runtime::artifacts::tests::live_artifact_is_full_color_apng_and_still_remains_single_png ... ok
+
+failures:
+
+---- python_composition::tests::exact_edit_uses_real_schema_and_runtime_identity_without_a_prose_critic stdout ----
+
+thread 'python_composition::tests::exact_edit_uses_real_schema_and_runtime_identity_without_a_prose_critic' (50600) panicked at Teledra\src\python_composition.rs:672:9:
+assertion `left == right` failed
+  left: String("qwen2.5-coder:14b")
+ right: "qwen2.5:7b"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- tests::spawn_turn_routes_accepted_python_edits_through_the_artifact_schema stdout ----
+
+thread 'tests::spawn_turn_routes_accepted_python_edits_through_the_artifact_schema' (54532) panicked at Teledra\src\main.rs:1716:9:
+assertion `left == right` failed
+  left: String("qwen2.5-coder:14b")
+ right: "qwen2.5:7b"
+
+
+failures:
+    python_composition::tests::exact_edit_uses_real_schema_and_runtime_identity_without_a_prose_critic
+    tests::spawn_turn_routes_accepted_python_edits_through_the_artifact_schema
+
+test result: FAILED. 278 passed; 2 failed; 11 ignored; 0 measured; 0 filtered out; finished in 16.39s
+
+error: test failed, to rerun pass `-p teledra --bin teledra`
+     Running tests\agent_contracts.rs (target\debug\deps\agent_contracts-26b849a0f1859309.exe)
+
+running 3 tests
+test live_offices ... ignored, requires local Ollama and qwen2.5:7b
+test the_artist_and_alchemist_examples_reach_their_real_parsers ... ok
+test the_compact_organist_contract_uses_executable_note_events_and_grid ... ok
+
+test result: ok. 2 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\correction_loop.rs (target\debug\deps\correction_loop-faadd3740c6b3d0e.exe)
+
+running 2 tests
+test a_markdown_score_reaches_the_runtime_as_an_attempt ... ok
+test a_markdown_score_does_not_parse_as_music ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\fractus_exploration.rs (target\debug\deps\fractus_exploration-2c6dc9773d416d5d.exe)
+
+running 1 test
+test live_research_becomes_an_original_animated_study ... ignored, requires public research and the installed Ollama model; writes only isolated proof artifacts
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\live_python_evolution.rs (target\debug\deps\live_python_evolution-f95f5832bf6da3a9.exe)
+
+running 37 tests
+test music_edits::tests::stale_baseline_and_ambiguous_passages_are_rejected ... ok
+test music_edits::tests::focused_edit_preserves_every_unmodified_note_and_playback_call ... ok
+test music_edits::tests::replacements_share_one_baseline_and_fail_transactionally ... ok
+test music_edits::tests::numbered_lines_preserve_raw_baseline_indentation_endings_and_other_notes ... ok
+test music_edits::tests::line_edits_reject_invalid_addresses_overlaps_ambiguous_targets_and_noops ... ok
+test organist_genome::tests::every_ensemble_voice_is_accepted_in_its_role ... ok
+test python_composition::tests::numbered_edit_preserves_mixed_crlf_unicode_and_original_indentation ... ok
+test python_composition::tests::numbered_schema_is_source_derived_and_rejects_invalid_lines_and_no_op ... ok
+test music_edits::tests::no_op_empty_and_excessive_edits_are_rejected ... ok
+test python_composition::tests::mock_request_requires_complete_framing_and_valid_json ... ok
+test organist_genome::tests::the_frame_travels_in_the_prompt_and_overrides_only_fixed_fields ... ok
+test music_edits::tests::multiline_indentation_cannot_expand_beyond_the_source_limit ... ok
+test python_composition::tests::exact_edit_uses_real_schema_and_runtime_identity_without_a_prose_critic ... FAILED
+test python_composition::tests::invented_base_and_no_op_never_escape_validation ... ok
+test python_composition::tests::real_validation_failure_gets_one_repair_against_the_original_source ... ok
+test python_composition::tests::truncation_regenerates_once_and_source_json_preserves_indentation ... ok
+test python_parameters::tests::invalid_controls_never_produce_a_partial_edit ... ok
+test python_composition::tests::a_proposal_identical_to_the_playing_piece_is_sent_back_for_a_new_song ... ok
+test python_composition::tests::protected_lead_controls_are_excluded_and_rejected_before_bounded_repair ... ok
+test python_composition::tests::recognized_music_uses_numeric_controls_without_reprinting_python_source ... ok
+test python_parameters::tests::actual_v1_values_and_coupled_gates_are_detected_without_fixed_defaults ... ok
+test python_score::tests::malformed_proposals_are_rejected_before_expansion ... ok
+test python_parameters::tests::unsupported_or_ambiguous_music_does_not_acquire_v1_controls ... ok
+test python_score::tests::proposal_schema_preserves_controls_and_uses_roles_for_classic_voices ... ok
+test python_score::tests::proposal_adapter_keeps_contour_and_contrast_validation ... ok
+test two_model_revisions_develop_the_actual_accepted_python_source ... ignored, two real qwen2.5:7b evolution transactions and three full worker renders; no playback
+test python_score::tests::proposal_inverse_does_not_quantize_existing_custom_phrases ... ok
+test python_parameters::tests::period_and_phase_merge_transactionally_and_recursive_offsets_keep_raw_newlines ... ok
+test python_score::tests::recipe_roundtrips_and_rejects_tiny_scalar_or_unformed_tracks ... ok
+test python_parameters::tests::preserving_the_lead_excludes_and_rejects_its_timing_controls ... ok
+test python_composition::tests::optional_diagnostics_are_bounded_valid_json ... ok
+test python_score::tests::every_rhythm_pair_expands_without_overlap_or_lost_notes_and_roundtrips_exactly ... ok
+test organist_genome::tests::genomes_range_widely_and_stay_apart_from_recent_pieces ... ok
+test python_composition::tests::cancellation_drops_the_single_request_without_a_later_repair ... ok
+test python_composition::tests::repair_shares_the_total_deadline_and_zero_budget_sends_nothing ... ok
+test organist_genome::tests::learned_weights_steer_the_draw_and_a_broken_style_falls_back ... ok
+test organist_genome::tests::every_drawn_genome_expands_into_a_valid_song ... ok
+
+failures:
+
+---- python_composition::tests::exact_edit_uses_real_schema_and_runtime_identity_without_a_prose_critic stdout ----
+
+thread 'python_composition::tests::exact_edit_uses_real_schema_and_runtime_identity_without_a_prose_critic' (58740) panicked at Teledra\tests\..\src\python_composition.rs:672:9:
+assertion `left == right` failed
+  left: String("qwen2.5-coder:14b")
+ right: "qwen2.5:7b"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    python_composition::tests::exact_edit_uses_real_schema_and_runtime_identity_without_a_prose_critic
+
+test result: FAILED. 35 passed; 1 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.90s
+
+error: test failed, to rerun pass `-p teledra --test live_python_evolution`
+     Running tests\organist_composition.rs (target\debug\deps\organist_composition-a8c5c1767180ac7f.exe)
+
+running 20 tests
+test composition::tests::failed_regeneration_stops_after_two_inferences_without_accepting_fragments ... ok
+test composition::tests::a_second_invalid_draft_stops_without_a_third_inference ... ok
+test composition::tests::only_the_actual_brain_truncation_signal_maps_to_regeneration ... ok
+test composition::tests::ordinary_initial_inference_errors_are_not_retried ... ok
+test composition::tests::all_expression_counts_and_missing_plan_are_reported_together ... ok
+test composition::tests::normal_score_context_retains_notes_and_complete_palette_knowledge ... ok
+test composition::tests::a_truncated_first_draft_regenerates_once_without_shortening_required_patterns ... ok
+test composition::tests::one_repair_preserves_the_original_request_and_invalid_draft ... ok
+test live_organist_composes_a_theory_guided_original_study ... ignored, requires the installed Ollama model; writes isolated proof artifacts and never starts playback
+test composition::tests::partial_new_scores_do_not_inherit_legacy_harmony_or_default_parts ... ok
+test composition::tests::rejected_scale_context_keeps_settings_but_omits_its_note_arrays ... ok
+test composition::tests::atomic_note_events_reach_storage_without_losing_expression_or_rests ... ok
+test composition::tests::duplicated_out_of_range_draft_gets_one_specific_repair_before_acceptance ... ok
+test composition::tests::a_review_that_introduces_duplicated_out_of_range_lines_retains_the_valid_draft ... ok
+test composition::tests::musical_review_uses_measured_draft_facts_and_the_original_brief ... ok
+test composition::tests::scalar_repair_preserves_operator_request_without_replaying_rejected_notes ... ok
+test composition::tests::unplayable_attack_density_uses_one_repair_with_precise_grid_evidence ... ok
+test composition::tests::failed_musical_review_retains_the_valid_draft_within_two_calls ... ok
+test composition::tests::deadline_during_musical_review_retains_the_valid_complete_draft ... ok
+test composition::tests::incomplete_or_unstarted_compositions_cannot_outlive_the_request_deadline ... ok
+
+test result: ok. 19 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+     Running tests\organist_palette.rs (target\debug\deps\organist_palette-8a75ec31cbce419e.exe)
+
+running 20 tests
+test composition::tests::failed_regeneration_stops_after_two_inferences_without_accepting_fragments ... ok
+test composition::tests::a_second_invalid_draft_stops_without_a_third_inference ... ok
+test composition::tests::only_the_actual_brain_truncation_signal_maps_to_regeneration ... ok
+test composition::tests::all_expression_counts_and_missing_plan_are_reported_together ... ok
+test composition::tests::ordinary_initial_inference_errors_are_not_retried ... ok
+test composition::tests::normal_score_context_retains_notes_and_complete_palette_knowledge ... ok
+test composition::tests::a_truncated_first_draft_regenerates_once_without_shortening_required_patterns ... ok
+test composition::tests::one_repair_preserves_the_original_request_and_invalid_draft ... ok
+test live_organist_uses_new_instruments_in_a_complete_study ... ignored, requires the installed Ollama model; writes isolated audio without starting playback
+test composition::tests::partial_new_scores_do_not_inherit_legacy_harmony_or_default_parts ... ok
+test composition::tests::rejected_scale_context_keeps_settings_but_omits_its_note_arrays ... ok
+test composition::tests::atomic_note_events_reach_storage_without_losing_expression_or_rests ... ok
+test composition::tests::duplicated_out_of_range_draft_gets_one_specific_repair_before_acceptance ... ok
+test composition::tests::a_review_that_introduces_duplicated_out_of_range_lines_retains_the_valid_draft ... ok
+test composition::tests::musical_review_uses_measured_draft_facts_and_the_original_brief ... ok
+test composition::tests::scalar_repair_preserves_operator_request_without_replaying_rejected_notes ... ok
+test composition::tests::unplayable_attack_density_uses_one_repair_with_precise_grid_evidence ... ok
+test composition::tests::failed_musical_review_retains_the_valid_draft_within_two_calls ... ok
+test composition::tests::deadline_during_musical_review_retains_the_valid_complete_draft ... ok
+test composition::tests::incomplete_or_unstarted_compositions_cannot_outlive_the_request_deadline ... ok
+
+test result: ok. 19 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.10s
+
+     Running tests\organist_python_music.rs (target\debug\deps\organist_python_music-ee96cf58a72f09ee.exe)
+
+running 1 test
+test live_organist_python_piece_reaches_the_real_worker_and_audio_verifier ... ignored, requires installed Ollama, Python and release synth; writes isolated proof files without playback
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\organist_repair.rs (target\debug\deps\organist_repair-41e7ce6201553ef9.exe)
+
+running 20 tests
+test composition::tests::failed_regeneration_stops_after_two_inferences_without_accepting_fragments ... ok
+test composition::tests::a_second_invalid_draft_stops_without_a_third_inference ... ok
+test composition::tests::only_the_actual_brain_truncation_signal_maps_to_regeneration ... ok
+test composition::tests::ordinary_initial_inference_errors_are_not_retried ... ok
+test composition::tests::all_expression_counts_and_missing_plan_are_reported_together ... ok
+test composition::tests::normal_score_context_retains_notes_and_complete_palette_knowledge ... ok
+test composition::tests::one_repair_preserves_the_original_request_and_invalid_draft ... ok
+test composition::tests::a_truncated_first_draft_regenerates_once_without_shortening_required_patterns ... ok
+test live_organist_replaces_the_reported_scale_with_authored_phrases ... ignored, requires installed Ollama and captured rejected-score.json; never starts playback
+test composition::tests::duplicated_out_of_range_draft_gets_one_specific_repair_before_acceptance ... ok
+test composition::tests::atomic_note_events_reach_storage_without_losing_expression_or_rests ... ok
+test composition::tests::partial_new_scores_do_not_inherit_legacy_harmony_or_default_parts ... ok
+test composition::tests::rejected_scale_context_keeps_settings_but_omits_its_note_arrays ... ok
+test composition::tests::a_review_that_introduces_duplicated_out_of_range_lines_retains_the_valid_draft ... ok
+test composition::tests::musical_review_uses_measured_draft_facts_and_the_original_brief ... ok
+test composition::tests::scalar_repair_preserves_operator_request_without_replaying_rejected_notes ... ok
+test composition::tests::unplayable_attack_density_uses_one_repair_with_precise_grid_evidence ... ok
+test composition::tests::failed_musical_review_retains_the_valid_draft_within_two_calls ... ok
+test composition::tests::deadline_during_musical_review_retains_the_valid_complete_draft ... ok
+test composition::tests::incomplete_or_unstarted_compositions_cannot_outlive_the_request_deadline ... ok
+
+test result: ok. 19 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.10s
+
+     Running tests\python_music_contract.rs (target\debug\deps\python_music_contract-723a06a0805b74b2.exe)
+
+running 2 tests
+test complete_python_source_with_arrays_and_unicode_survives_action_parsing ... ok
+test python_music_is_an_executable_option_in_the_actual_organist_prompt ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\recursive_python_edits.rs (target\debug\deps\recursive_python_edits-ef7badb71d095c5d.exe)
+
+running 8 tests
+test two_recursive_edits_preserve_v1_layers_and_render_distinct_complete_audio ... ignored, renders three full V1 compositions using the local Python runtime, without an audio device
+test music_edits::tests::focused_edit_preserves_every_unmodified_note_and_playback_call ... ok
+test music_edits::tests::stale_baseline_and_ambiguous_passages_are_rejected ... ok
+test music_edits::tests::replacements_share_one_baseline_and_fail_transactionally ... ok
+test music_edits::tests::numbered_lines_preserve_raw_baseline_indentation_endings_and_other_notes ... ok
+test music_edits::tests::line_edits_reject_invalid_addresses_overlaps_ambiguous_targets_and_noops ... ok
+test music_edits::tests::no_op_empty_and_excessive_edits_are_rejected ... ok
+test music_edits::tests::multiline_indentation_cannot_expand_beyond_the_source_limit ... ok
+
+test result: ok. 7 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\lib.rs (target\debug\deps\teledra_agents-bf7291e5e7a972fb.exe)
+
+running 3 tests
+test tests::parsing_is_case_insensitive_and_trimmed ... ok
+test tests::every_agent_round_trips_through_its_slug ... ok
+test tests::kingdom_goals_remain_a_concrete_operator_contract ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\lib.rs (target\debug\deps\teledra_brain-26ce9ea66381b13f.exe)
+
+running 22 tests
+test tests::a_corrupt_character_is_refused_however_short_the_reply ... ok
+test prompt_fit::tests::prompts_within_budget_are_untouched ... ok
+test tests::collapsed_replies_are_not_language_and_ordinary_prose_is ... ok
+test tests::endpoint_is_normalized_without_accepting_api_paths ... ok
+test tests::every_request_penalises_repetition ... ok
+test tests::language_cleanup_preserves_executable_indentation_and_line_breaks ... ok
+test tests::model_is_a_fixed_invariant ... ok
+test tests::review_requires_explicit_json_revision_and_preserves_actions ... ok
+test prompt_fit::tests::a_huge_request_keeps_its_end_and_the_persona_in_front ... ok
+test prompt_fit::tests::many_mid_sized_messages_are_each_trimmed_once_and_the_loop_ends ... ok
+test prompt_fit::tests::the_persona_and_request_survive_while_the_runaway_context_shrinks ... ok
+test tests::private_review_and_refinement_preserve_fresh_context_and_recent_exchange ... ok
+test tests::generic_private_review_cannot_discard_an_exact_python_edit ... ok
+test tests::stripping_a_corrupt_chinese_reply_to_a_stub_fails_the_turn ... ok
+test tests::one_collapsed_draft_is_retried_and_the_recovery_is_kept ... ok
+test tests::a_twice_collapsed_reply_fails_the_turn_rather_than_anchoring_it ... ok
+test tests::structured_request_is_generic_schema_constrained_and_caller_bounded ... ok
+test tests::caller_budget_and_cancellation_stop_inference_without_detached_retries ... ok
+test tests::caller_budget_limits_the_first_draft_even_with_a_longer_client_timeout ... ok
+test tests::slow_private_audit_returns_the_complete_draft ... FAILED
+test tests::refiner_and_critic_share_the_optional_review_budget ... ok
+test tests::truncation_and_language_retries_share_one_deadline ... ok
+
+failures:
+
+---- tests::slow_private_audit_returns_the_complete_draft stdout ----
+
+thread 'tests::slow_private_audit_returns_the_complete_draft' (55316) panicked at Teledra\Brain\src\lib.rs:841:9:
+assertion `left == right` failed
+  left: String("qwen2.5-coder:14b")
+ right: "qwen2.5:7b"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    tests::slow_private_audit_returns_the_complete_draft
+
+test result: FAILED. 21 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.57s
+
+error: test failed, to rerun pass `-p teledra-brain --lib`
+     Running unittests src\lib.rs (target\debug\deps\teledra_court-f87559576771b8d1.exe)
+
+running 43 tests
+test actions::tests::a_head_inside_a_longer_word_is_ignored ... ok
+test actions::tests::a_citation_does_not_shield_the_payload_behind_it ... ok
+test actions::tests::a_payload_the_model_never_opened_is_still_not_speech ... ok
+test actions::tests::a_bare_tag_at_the_start_of_a_line_is_recovered ... ok
+test actions::tests::a_scalar_field_is_not_speech_but_a_labelled_sentence_is ... ok
+test actions::tests::a_score_payload_is_never_spoken_aloud ... ok
+test actions::tests::a_markdown_wrapped_score_is_still_recovered ... ok
+test actions::tests::a_misspelled_head_still_reaches_its_action ... ok
+test actions::tests::a_fenced_block_is_never_spoken_aloud ... ok
+test actions::tests::a_trailing_body_stops_at_the_next_tag ... ok
+test actions::tests::a_scribe_body_written_after_the_bracket_is_still_captured ... ok
+test actions::tests::a_scribe_tag_with_no_body_writes_nothing ... ok
+test actions::tests::bracketed_tags_are_not_recovered_twice ... ok
+test actions::tests::markdown_links_are_not_action_tags ... ok
+test actions::tests::nested_json_score_is_removed_without_truncation ... ok
+test actions::tests::ordinary_speech_with_braces_survives ... ok
+test actions::tests::an_unrelated_name_is_not_forced_onto_an_action ... ok
+test actions::tests::original_space_delimited_delegations_and_scribe_paths_parse ... ok
+test actions::tests::only_an_exact_source_envelope_is_decoded_and_legacy_python_still_works ... ok
+test actions::tests::prose_colons_are_not_mistaken_for_tags ... ok
+test actions::tests::python_music_edits_preserve_exact_json_and_stay_out_of_speech ... ok
+test actions::tests::python_source_envelope_preserves_every_python_quote_and_bracket ... ok
+test actions::tests::reflection_evidence_is_hidden_and_typed ... ok
+test actions::tests::outward_heads_are_never_guessed ... ok
+test actions::tests::scribe_path_and_content_are_split ... ok
+test actions::tests::unstructured_private_stage_lines_are_not_spoken ... ok
+test actions::tests::upstream_control_and_creation_tags_are_hidden_and_typed ... ok
+test tests::asynchronous_reply_can_be_recorded_for_its_originating_member ... ok
+test tests::cleanup_keeps_actions_out_of_speech_and_preserves_their_payloads ... ok
+test tests::cleanup_handles_case_unicode_and_later_sentences_without_a_word_limit ... ok
+test tests::histories_are_isolated_by_court_member ... ok
+test tests::current_context_follows_history_and_precedes_the_current_request ... ok
+test tests::history_is_bounded_to_recent_complete_exchanges ... ok
+test tests::never_started_reply_removes_only_the_latest_matching_exchange ... ok
+test tests::interrupted_history_keeps_only_the_heard_part_of_the_matching_exchange ... ok
+test tests::observed_shared_salutation_is_removed_without_losing_the_reply ... ok
+test tests::history_budget_skips_nonfitting_pairs_without_spending_the_remaining_budget ... ok
+test tests::prepared_history_stops_teaching_the_same_salutation ... ok
+test tests::prepared_turn_has_policy_history_and_current_user ... ok
+test tests::spoken_cleanup_preserves_quotes_permissions_and_substantive_openings ... ok
+test tests::stale_interruption_does_not_change_an_unrelated_exchange ... ok
+test tests::oversized_recent_artifact_preserves_useful_earlier_complete_exchanges ... ok
+test tests::oversized_history_cannot_evict_the_current_request ... ok
+
+test result: ok. 43 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\lib.rs (target\debug\deps\teledra_fractus-7ab228043c863db1.exe)
+
+running 30 tests
+test tests::a_layer_stack_sets_the_subject_rather_than_defaulting_to_particles ... ok
+test tests::a_one_line_payload_still_reports_its_real_error ... ok
+test tests::a_single_family_request_is_preserved_and_invalid_subjects_still_fail ... ok
+test tests::a_stack_of_only_invented_layers_is_refused ... ok
+test tests::an_invented_layer_does_not_discard_the_real_ones ... ok
+test tests::an_out_of_range_layer_alpha_is_clamped_not_rejected ... ok
+test tests::an_unknown_palette_is_refused ... ok
+test tests::excessive_animation_memory_and_invalid_fps_are_rejected_before_writing ... ok
+test richness::tests::flat_shapes_and_gradients_do_not_count_as_detailed_compositions ... ok
+test tests::a_layers_only_gallery_request_preserves_its_first_family_and_palette ... ok
+test tests::live_preview_frame_count_is_bounded ... ok
+test tests::new_geometry_parameters_are_bounded_and_old_scenes_still_load ... ok
+test tests::one_line_and_multi_line_forms_describe_the_same_scene ... ok
+test richness::tests::resolution_alone_does_not_make_a_plain_shape_richer ... ok
+test tests::oversized_render_is_refused ... ok
+test tests::layered_scene_supports_alpha_and_blend_modes ... ok
+test tests::prose_is_refused_rather_than_stored_as_a_palette ... ok
+test orbits::tests::roulette_geometry_closes_its_motion_and_responds_to_the_seed ... ok
+test tests::version_two_dsl_parses_and_is_bounded ... ok
+test kinetic::tests::radial_geometry_keeps_its_aspect_ratio ... ok
+test tests::the_one_line_form_the_artist_is_taught_parses_with_its_layer_stack ... ok
+test tests::the_researched_hypotrochoid_name_selects_its_existing_spirograph_geometry ... ok
+test tests::original_artist_families_render_non_blank_frames ... ok
+test tests::gallery_removes_the_reported_mandala_and_tree_without_changing_the_subject ... ok
+test richness::tests::rose_controls_change_geometry_and_animation_closes_without_new_subjects ... ok
+test kinetic::tests::seeds_invent_different_compositions ... ok
+test tests::live_preview_contains_distinct_animation_frames ... ok
+test richness::tests::original_single_rose_outline_fails_while_internal_rose_structure_passes ... ok
+test tests::animation_preserves_full_colour_frame_timing_and_motion ... ok
+test kinetic::tests::animated_constructions_close_the_loop_and_change_in_between ... ok
+
+test result: ok. 30 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.21s
+
+     Running unittests src\lib.rs (target\debug\deps\teledra_frankenswarm-7671f63fc7636faa.exe)
+
+running 16 tests
+test autopsy::tests::canonical_numbers_ignore_integral_float_encoding ... ok
+test autopsy::tests::compatibility_detects_one_changed_dimension ... ok
+test models::tests::parses_nested_v1_model_config_correctly ... ok
+test autopsy::tests::semantic_special_tokens_ignore_string_object_encoding ... ok
+test evaluation::tests::exact_match_is_actually_exact ... ok
+test evaluation::tests::remote_endpoints_are_rejected ... ok
+test tests::composition_preserves_agent_provenance ... ok
+test tournament::tests::authorization_fails_closed_without_tensor_analysis ... ok
+test tournament::tests::rejects_unlocked_donor ... ok
+test models::tests::rejects_branch_names_as_locks ... ok
+test runtime::tests::rejects_non_loopback_bind ... ok
+test sandbox::tests::rejects_host_shell_as_runtime ... ok
+test tournament::tests::execution_config_uses_exact_downloaded_snapshots ... ok
+test blackboard::tests::atomic_claim_rejects_a_second_agent ... ok
+test blackboard::tests::state_machine_rejects_skipping_the_lease ... ok
+test blackboard::tests::dependencies_must_finish_before_claim ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+
+     Running unittests src\main.rs (target\debug\deps\frankenswarm-ba2383d6a8404ba7.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\lib.rs (target\debug\deps\teledra_kraken-4722dbafbdb754ae.exe)
+
+running 27 tests
+test skills::forge::tests::aggregate_candidate_diff_survives_a_repair_pass ... ok
+test queue::tests::last_valid_append_wins_and_a_torn_line_is_ignored ... ok
+test queue::tests::compaction_preserves_latest_state ... ok
+test skills::forge::tests::legacy_forge_keeps_three_repair_attempts ... ok
+test hub::tests::claims_each_mission_once ... ok
+test contract::tests::contract_digest_is_deterministic ... ok
+test contract::tests::traversal_and_absolute_paths_are_rejected ... ok
+test skills::coding::tests::natural_language_defaults_to_tree ... ok
+test skills::coding::tests::rejects_oversized_pattern ... ok
+test runner::tests::runner_finishes_a_non_model_tree_job ... ok
+test skills::games::tests::runtime_graduation_requires_real_profile_effect_and_audio ... ok
+test skills::productivity::tests::bounded_text_preserves_both_ends ... ok
+test queue::tests::claiming_is_fifo_and_atomic_at_the_state_boundary ... ok
+test skills::games::tests::pixelfork_host_is_exact ... ok
+test skills::research::tests::deterministic_fallback_keeps_exact_source_labels ... ok
+test skills::games::tests::local_game_manifest_may_confirm_but_not_override_inventory ... ok
+test queue::tests::recursion_is_bounded_by_depth_and_child_count ... ok
+test skills::forge::tests::parses_single_fenced_required_output ... ok
+test skills::research::tests::citation_gate_rejects_missing_and_invented_labels ... ok
+test skills::research::tests::deterministic_fallback_does_not_confuse_labels_inside_sources ... ok
+test skills::research::tests::recovers_json_array_from_fenced_response ... ok
+test skills::research::tests::terms_are_normalized_and_stop_words_removed ... ok
+test skills::tests::one_citation_cannot_shield_a_second_uncited_claim ... ok
+test tests::workspace_profile_has_the_three_release_gates ... ok
+test skills::tests::uncited_research_can_never_pass_the_worker_boundary ... ok
+test skills::tests::v1_operator_skills_have_typed_specs ... ok
+test skills::games::tests::installed_headless_browser_proves_the_behavioral_contract ... ok
+
+test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.72s
+
+     Running unittests src\main.rs (target\debug\deps\kraken-d91380505f180782.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\lib.rs (target\debug\deps\teledra_memory-99b5818c79569795.exe)
+
+running 9 tests
+test tests::recall_keeps_genuine_operator_questions_even_if_only_the_question_matches ... ok
+test tests::sovereign_token_awards_are_parsed_and_accumulated ... ok
+test tests::scheduler_angles_and_avoidance_quotes_do_not_become_recall_evidence ... ok
+test tests::transcript_can_be_recalled_and_dreamed ... ok
+test tests::conversational_operator_requests_are_not_mistaken_for_scheduler_prompts ... ok
+test tests::audience_visits_conduct_and_tokens_survive ... ok
+test tests::substantive_answers_rank_ahead_of_scheduler_prompt_matches ... ok
+test tests::a_recurring_desire_promotes_and_enters_prompt_context ... ok
+test tests::dream_archives_and_bounds_a_long_transcript ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+
+     Running unittests src\lib.rs (target\debug\deps\teledra_music-739adb4c66a7d758.exe)
+
+running 131 tests
+test arrange::tests::bass_can_walk_and_state_an_authored_inversion ... ok
+test arrange::tests::chamber_and_ambient_textures_preserve_authored_duets_and_percussion ... ok
+test arrange::tests::explicit_one_second_piano_notes_overlap_half_second_attacks ... ok
+test arrange::tests::explicit_polyphonic_chord_lengths_survive_following_attacks ... ok
+test arrange::tests::common_tones_and_unchanged_chords_keep_their_sustain ... ok
+test arrange::tests::chordal_roles_sound_full_triads_and_sevenths_at_equal_power ... ok
+test arrange::tests::explicit_quarter_grid_plays_a_sixty_four_slot_phrase_over_sixteen_bars ... ok
+test arrange::tests::incomplete_closing_phrases_do_not_shift_internal_form_boundaries ... ok
+test arrange::tests::a_harmony_cut_breaks_theremin_legato_even_with_a_long_written_duration ... ok
+test arrange::tests::authored_dynamics_durations_and_zero_development_are_respected ... ok
+test arrange::tests::every_unpitched_instrument_keeps_its_tuning_when_the_key_changes ... ok
+test arrange::tests::explicit_form_boundaries_follow_phrases_and_restart_material ... ok
+test arrange::tests::long_offbeat_notes_arrive_in_harmony_while_brief_passing_tones_survive ... ok
+test arrange::tests::literal_and_chromatic_plans_preserve_authored_suspensions ... ok
+test arrange::tests::phrase_register_keeps_in_range_writing_exact_and_wide_phrases_in_safe_midi ... ok
+test arrange::tests::planned_forms_return_the_motif_and_obey_harmonic_rhythm ... ok
+test arrange::tests::inversions_keep_common_tones_and_reduce_harmonic_travel ... ok
+test arrange::tests::melodic_answers_keep_the_written_octave ... ok
+test arrange::tests::passing_and_neighbour_tones_survive_between_structural_beats ... ok
+test arrange::tests::repeated_thirty_two_bar_harmony_stays_in_its_written_register ... ok
+test arrange::tests::legacy_dense_sustaining_parts_have_playable_attacks_and_no_gate_stacking ... ok
+test arrange::tests::sparse_chords_release_conflicting_voices_at_harmonic_changes ... ok
+test arrange::tests::literal_plan_keeps_patch_filter_without_hidden_section_automation ... ok
+test arrange::tests::single_line_releases_end_before_the_next_pitch ... ok
+test arrange::tests::sparse_textures_keep_audible_parts ... ok
+test composer::layered::tests::chapters_have_written_entries_contrast_and_a_recognizable_return ... ok
+test arrange::tests::reported_high_celesta_arp_line_keeps_its_contour_and_octave_relationship ... ok
+test arrange::tests::tuned_timpani_follows_the_written_key_without_becoming_a_chord ... ok
+test arrange::tests::zero_velocity_slots_do_not_hide_the_last_audible_cadence_note ... ok
+test composer::layered::tests::fast_tempo_keeps_the_answering_contour_and_every_note ... ok
+test composer::tests::retained_harps_long_release_leaves_phrase_space_at_fast_tempos ... ok
+test operational_device_pause_and_muted_transport ... ignored, requires an audio device; playback remains muted throughout
+test arrange::tests::struck_and_plucked_voices_keep_their_overlapping_releases ... ok
+test composer::tests::arranger_plays_all_eight_written_bars_once_without_rewriting_the_notes ... ok
+test composer::layered::tests::supporting_harmony_continues_through_the_foreground_breaths ... ok
+test instruments::tests::specific_instrument_names_survive_generic_role_words ... ok
+test python_bridge::tests::invalid_and_oversized_requests_do_not_poison_the_next_note ... ok
+test composer::layered::tests::held_and_strong_theme_arrivals_agree_with_sustained_harmony ... ok
+test instruments::tests::catalog_entries_are_unique_bounded_and_have_compatible_families ... ok
+test synth::tests::boundary_cap_does_not_extend_short_notes_or_leave_one_frame_sounding ... ok
+test python_bridge::tests::persistent_protocol_keeps_binary_frames_and_errors_separate ... ok
+test effects::tests::master_still_removes_rumble_and_ultrasonic_energy ... ok
+test synth::tests::detuned_neighbours_cannot_cancel_a_held_notes_pitch_centre ... ok
+test composer::tests::every_motif_has_audible_phrase_space_at_every_supported_tempo ... ok
+test synth::tests::harmony_boundary_ends_a_sustained_voice_exactly_with_a_smooth_fade ... ok
+test synth::tests::inaudible_partials_do_not_turn_into_a_clamped_false_pitch ... ok
+test effects::tests::master_preserves_musical_layers_without_the_old_presence_notch ... ok
+test synth::tests::ensemble_patches_retain_a_stronger_fundamental_than_any_upper_partial ... ok
+test synth::tests::longer_notes_keep_each_patches_original_envelope_stages ... ok
+test arrange::tests::trigger_trace_matches_actual_voices_and_monophonic_caps ... ok
+test synth::tests::named_parts_select_their_actual_instrument_before_generic_roles ... ok
+test synth::tests::short_glides_arrive_within_the_gate_and_invalid_values_are_ignored ... ok
+test synth::tests::triangle_corner_correction_reduces_folded_upper_harmonics ... ok
+test tests::a_key_change_lands_on_a_close_relation ... ok
+test synth::tests::theremin_glides_smoothly_to_the_target_then_stays_in_tune ... ok
+test tests::a_long_lineage_reaches_the_acoustic_voices ... ok
+test tests::a_mastered_piece_lasts_at_least_two_minutes ... ok
+test tests::a_note_on_a_beat_is_never_thinned_away ... ok
+test tests::a_part_that_never_rests_sounds_every_note_it_was_written ... ok
+test tests::a_re_voiced_track_is_renamed_to_match ... ok
+test tests::a_recorded_verdict_can_be_read_back ... ok
+test tests::a_real_melody_is_left_alone ... ok
+test tests::a_variation_keeps_the_tune ... ok
+test tests::cadence_report_does_not_award_a_terminal_tonic_without_supported_approach ... ok
+test tests::cadence_report_recognizes_authored_arrivals_and_retains_loop_closures ... ok
+test tests::craft_distinguishes_crowding_density_and_silent_roles ... ok
+test tests::default_arrangement_has_every_masterwork_foundation ... ok
+test tests::every_movement_is_audible_to_the_runtime ... ok
+test tests::dangerous_score_sizes_are_rejected ... ok
+test tests::evolution_cycle_names_one_development_axis_and_preserves_craft ... ok
+test tests::key_and_tempo_hold_across_a_run_of_variations ... ok
+test tests::keyboard_colours_keep_the_pianos_harmonic_role_without_added_chords ... ok
+test tests::mastering_replaces_only_duplicate_roles_when_all_seats_are_full ... ok
+test tests::long_running_evolution_does_not_drift_tempo_or_mix_to_the_ceiling ... ok
+test tests::mastering_restores_a_sparse_legacy_lineage ... ok
+test tests::melodic_lines_stay_in_the_scale_while_connecting_chords ... ok
+test python_bridge::tests::longer_notes_use_the_existing_native_patch_exactly ... ok
+test tests::native_variations_preserve_an_authored_ensemble ... ok
+test synth::tests::additional_instruments_render_in_tune_across_their_ranges ... ok
+test tests::one_shot_playback_emits_the_complete_file_once ... ok
+test tests::out_of_range_performance_fields_are_rejected ... ok
+test tests::patterns_repeat_against_the_bar_grid ... ok
+test tests::playback_clock_counts_complete_stereo_frames_across_loops ... ok
+test tests::playback_replacement_at_the_last_frame_keeps_the_incoming_piece_alive ... ok
+test tests::playback_replacement_blends_the_join_and_consumes_every_new_frame ... ok
+test tests::playback_replacement_reuses_an_exhausted_sink_and_rejects_invalid_positions ... ok
+test tests::playback_replacement_keeps_sink_mute_pause_and_requested_mix_position ... ok
+test synth::tests::short_notes_reach_audible_level_across_the_complete_catalog ... ok
+test tests::re_orchestration_keeps_a_voice_long_enough_to_be_heard ... ok
+test tests::re_orchestration_leaves_the_groove_alone ... ok
+test tests::re_orchestration_never_doubles_a_voice ... ok
+test tests::reading_feedback_from_nowhere_is_not_an_error ... ok
+test tests::lowering_the_written_mix_actually_lowers_playback ... ok
+test tests::restoring_a_muted_arrangement_does_not_add_replacement_voices ... ok
+test tests::sections_mute_and_restore_parts ... ok
+test tests::silent_audio_never_reaches_playback ... ok
+test arrange::tests::long_final_polyphonic_notes_receive_their_full_render_tail ... ok
+test tests::the_default_progression_stays_inside_its_mode ... ok
+test synth::tests::complete_catalog_renders_finite_audible_notes_at_each_register ... ok
+test python_bridge::tests::complete_catalog_is_audible_deterministic_and_exact_length ... ok
+test synth::tests::instrument_names_do_not_alias_identical_audio ... ok
+test tests::the_master_keeps_percussion_transients_audible_with_headroom ... ok
+test tests::theremin_renderer_glides_across_slow_connected_half_notes ... ok
+test tests::track_roles_are_inferred_from_their_names ... ok
+test tests::quiet_music_keeps_its_dynamics_and_section_verification ... ok
+test tests::unrelated_json_and_malformed_native_scores_do_not_become_default_music ... ok
+test tests::theremin_renderer_respects_explicit_rests_shorter_than_eighty_milliseconds ... ok
+test theory::tests::analysis_does_not_invent_melody_from_muted_or_percussion_parts ... ok
+test theory::tests::composer_context_exposes_every_executable_voice_with_range_and_role ... ok
+test theory::tests::inversion_reverses_interior_contour_without_random_note_edits ... ok
+test theory::tests::modal_minor_fifth_is_not_reported_as_a_leading_tone_dominant ... ok
+test theory::tests::motif_report_counts_real_authored_intervals_and_rests ... ok
+test theory::tests::native_development_preserves_audible_anchors_and_silent_written_pitches ... ok
+test theory::tests::new_melodic_voices_are_selected_as_motifs ... ok
+test theory::tests::omitted_plan_members_have_musical_defaults ... ok
+test theory::tests::roman_labels_include_mode_alterations_and_extensions ... ok
+test theory::tests::seventh_harmony_and_chromatic_policy_have_specific_analysis ... ok
+test theory::tests::sparse_and_boundary_motifs_remain_valid ... ok
+test theory::tests::thematic_changes_preserve_anchors_rests_and_connected_cell_intervals ... ok
+test theory::tests::zero_velocity_notes_are_rests_in_theory_as_well_as_playback ... ok
+test tests::the_master_leaves_headroom_without_clipping ... ok
+test tests::v1_era_scores_without_the_new_fields_still_load ... ok
+test tests::named_chord_progressions_enter_the_native_score ... ok
+test synth::tests::complete_pitched_catalog_preserves_the_written_note ... ok
+test tests::trigger_positions_are_read_as_a_rhythm_not_as_pitches ... ok
+test tests::rendering_is_deterministic ... ok
+test tests::native_evolution_is_audibly_distinct_and_stays_verified ... ok
+test tests::the_arrangement_moves_between_sections ... ok
+test tests::the_loop_seam_carries_the_tail_into_the_opening ... ok
+test tests::polyphonic_music_retains_periodic_structure_above_white_noise ... ok
+test tests::default_score_validates_and_renders_stereo_audio ... ok
+
+test result: ok. 130 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 44.49s
+
+     Running tests\composer_music.rs (target\debug\deps\composer_music-dcfc4056037a39f3.exe)
+
+running 5 tests
+test phrase_ends_leave_real_space_and_releases_finish_before_new_harmonies ... ok
+test supporting_parts_have_their_own_register_rhythm_and_harmonic_job ... ok
+test composed_material_has_question_answer_contrast_and_a_recognizable_return ... ok
+test all_keys_modes_and_tempos_keep_the_bounded_composition_valid ... ok
+test native_study_renders_complete_verified_audio_and_is_reproducible ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 13.21s
+
+     Running tests\composition_contract.rs (target\debug\deps\composition_contract-7d63fb28435c3c66.exe)
+
+running 9 tests
+test intentional_chromatic_harmony_survives_but_diatonic_repair_preserves_sevenths ... ok
+test explicit_piece_preserves_its_ensemble_form_and_written_melody ... ok
+test additional_modes_construct_diatonic_harmony_and_zero_velocity_is_not_a_voice ... ok
+test planned_wide_melody_degrees_are_never_reinterpreted_as_trigger_positions ... ok
+test native_harmonic_experiments_keep_the_opening_tonic_and_cadential_arrival ... ok
+test expression_arrays_round_trip_and_reject_misalignment_and_non_finite_data ... ok
+test native_experiments_preserve_mixer_mutes_and_try_different_motif_operations ... ok
+test atomic_notes_convert_without_changing_the_written_music ... ok
+test texture_evolution_preserves_authored_instruments_and_polyphony ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\instrument_palette.rs (target\debug\deps\instrument_palette-21c828a8cf8e32ac.exe)
+
+running 5 tests
+test role_metadata_keeps_chords_single_lines_and_drum_parts_separate ... ok
+test composer_context_names_unused_colours_and_respects_variations ... ok
+test generation_schema_and_renderer_share_the_complete_palette ... ok
+test native_texture_evolution_can_reach_every_pitched_instrument_without_changing_roles ... ok
+test every_voice_survives_score_acceptance_and_produces_distinct_verified_audio ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 59.86s
+
+     Running tests\note_trigger_integrity.rs (target\debug\deps\note_trigger_integrity-a628cea558cb5498.exe)
+
+running 5 tests
+test audit_pattern_positions_follow_explicit_form_restarts ... ok
+test legacy_spacing_omissions_have_exact_source_provenance ... ok
+test trigger_audit_attributes_mutes_and_preserves_quiet_positive_dynamics ... ok
+test positive_development_preserves_authored_entrances_rests_and_articulation ... ok
+test every_instrument_triggers_every_authored_onset_at_every_supported_grid ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests\scalar_exercises.rs (target\debug\deps\scalar_exercises-7d69e3d7efff59d1.exe)
+
+running 6 tests
+test drones_percussion_and_silent_scalar_slots_do_not_trigger_scale_guard ... ok
+test brief_scalar_gestures_and_rhythmically_shaped_stepwise_phrases_are_allowed ... ok
+test arpeggio_support_is_allowed_beside_a_real_audible_melody_but_not_a_token_part ... ok
+test attack_and_phrase_diagnostics_use_the_explicit_quarter_note_grid ... ok
+test the_reported_wide_walk_remains_an_exercise_after_register_and_timbre_repairs ... ok
+test complete_uniform_scales_are_rejected_even_when_they_are_solo_and_in_range ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\score_diagnostics.rs (target\debug\deps\score_diagnostics-81dfd2ffe0e6d19c.exe)
+
+running 8 tests
+test spacing_diagnostics_check_the_loop_boundary_and_ignore_zero_velocity_attacks ... ok
+test overlapping_held_notes_are_not_mistaken_for_release_gaps ... ok
+test intentional_in_range_doubling_is_diagnosed_but_not_globally_prohibited ... ok
+test rapid_unrestricted_patch_and_spaced_ambient_sustains_are_not_prohibited ... ok
+test continuous_sixteenth_cello_is_blocked_with_exact_onset_spacing_evidence ... ok
+test shortened_written_notes_create_real_gaps_without_adding_more_null_slots ... ok
+test a_separate_bass_does_not_disguise_the_repeating_scale_exercise ... ok
+test repeated_high_scale_is_not_awarded_complete_structure_or_breathing_for_nulls ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\lib.rs (target\debug\deps\teledra_research-ddf779550ad45288.exe)
+
+running 6 tests
+test tests::binary_responses_are_refused_instead_of_decoded_as_text ... ok
+test tests::duckduckgo_redirects_are_unwrapped_before_fetching ... ok
+test tests::markup_is_reduced_to_readable_text ... ok
+test tests::query_encoding_is_safe ... ok
+test tests::exact_grounding_preserves_negation_numbers_and_actors ... ok
+test tests::local_research_targets_are_rejected ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\lib.rs (target\debug\deps\teledra_sidecars-a38c3bca1060bd50.exe)
+
+running 1 test
+test tests::every_capability_has_a_stable_slug_and_script ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\lib.rs (target\debug\deps\teledra_swarm-df3681507f5e848b.exe)
+
+running 2 tests
+test tests::a_specialist_can_own_the_root_task ... ok
+test tests::mission_completes_only_with_recorded_evidence ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\lib.rs (target\debug\deps\teledra_tower-f920f3fa111ad5d3.exe)
+
+running 2 tests
+test tests::unsafe_resident_paths_are_rejected ... ok
+test tests::legacy_wizard_jsonl_is_imported_and_deduplicated ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src\lib.rs (target\debug\deps\teledra_tts-6257bf6a153a3c37.exe)
+
+running 31 tests
+test pcm::tests::duration_is_reported_from_the_sample_count ... ok
+test pcm::tests::implausible_framing_is_refused_before_allocating ... ok
+test pcm::tests::a_worker_that_dies_is_never_mistaken_for_silence ... ok
+test pcm::tests::a_non_finite_sample_never_reaches_the_speakers ... ok
+test pcm::tests::frames_are_joined_into_one_utterance ... ok
+test pcm::tests::an_empty_utterance_is_expressible ... ok
+test pcm::tests::one_stream_carries_utterances_back_to_back ... ok
+test runtime::tests::operational_speech_interrupt_restart_and_shutdown ... ignored, requires installed Python and an audio device; plays only silence
+test runtime::tests::failed_admission_and_worker_disconnect_release_their_capacity ... ok
+test runtime::tests::a_full_speech_queue_never_blocks_the_court_and_clear_invalidates_old_work ... ok
+test runtime::tests::clear_suppresses_buffered_events_and_stale_sources_without_stealing_new_capacity ... ok
+test runtime::tests::fatal_shutdown_reports_all_pending_captions_after_invalidating_playback ... ok
+test tests::an_empty_queue_asks_for_no_work ... ok
+test tests::an_interrupted_court_drops_what_it_had_planned_to_say ... ok
+test tests::rendering_runs_ahead_of_playback_but_not_without_limit ... ok
+test tests::utterances_are_heard_in_the_order_the_court_asked_for ... ok
+test voice::tests::a_voice_survives_a_round_trip_through_its_slug ... ok
+test voice::tests::an_unknown_voice_is_refused_rather_than_substituted ... ok
+test runtime::tests::captions_start_on_consumption_and_follow_pcm_duration ... ok
+test voice::tests::gain_is_bounded_even_when_set_absurdly ... ok
+test voice::tests::silence_and_noise_are_not_amplified ... ok
+test worker::tests::a_failing_synthesizer_reports_rather_than_returning_silence ... ok
+test worker::tests::a_multiline_utterance_is_refused_before_it_desynchronises_the_pipe ... ok
+test worker::tests::the_queue_and_a_synthesizer_together_leave_no_gap ... ok
+test voice::tests::peak_control_looks_ahead_and_recovers_without_flattening_a_peak ... ok
+test voice::tests::a_boosted_voice_cannot_clip_the_output ... ok
+test voice::tests::loud_syllables_below_the_ceiling_keep_their_waveform ... ok
+test voice::tests::an_explicit_gain_still_controls_output_volume ... ok
+test voice::tests::pauses_do_not_change_speaking_level_or_internal_dynamics ... ok
+test voice::tests::quiet_and_loud_recordings_reach_the_same_speaking_level ... ok
+test voice::tests::peak_control_does_not_turn_a_tone_into_electrical_buzz ... ok
+
+test result: ok. 30 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running unittests src\lib.rs (target\debug\deps\teledra_workshop-f4018212a6003524.exe)
+
+running 2 tests
+test tests::network_and_process_code_is_rejected ... ok
+test tests::upstream_workshop_payload_parses_without_prompt_scaffolding ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests teledra_agents
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+   Doc-tests teledra_brain
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests teledra_court
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests teledra_fractus
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests teledra_frankenswarm
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests teledra_kraken
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests teledra_memory
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests teledra_music
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests teledra_research
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests teledra_sidecars
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests teledra_swarm
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests teledra_tower
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests teledra_tts
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests teledra_workshop
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: 3 targets failed:
+    `-p teledra --bin teledra`
+    `-p teledra --test live_python_evolution`
+    `-p teledra-brain --lib`

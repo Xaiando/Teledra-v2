@@ -1,5 +1,9 @@
 # Teledra V2
 
+For the 14 October 2026 source snapshot and Gemini Argon inspection, start with
+[the review handoff](coordination/GEMINI_ARGON_REVIEW.md) and
+[current validation](coordination/ARGON_VALIDATION.md).
+
 Teledra V2 is the modular rewrite of the sovereign court. It preserves the
 operator-facing capabilities of `D:\Teledra`, while fixing ownership,
 boundedness, background execution, process cleanup, and dead code. The only
